@@ -43,14 +43,34 @@ class AppBlockerAccessibilityService : AccessibilityService() {
     private val appScope by lazy { entryPoint.appScope() }
 
     private var currentOverlay: BlockingOverlay? = null
+    private var currentForegroundPkg: String? = null // 跟踪当前前台应用
+    private var suppressedPkg: String? = null // 用户选择"打开"后抑制该应用的所有窗口事件
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString().orEmpty()
         if (pkg.isEmpty() || pkg == packageName) return // 忽略自身窗口
+
+        // 检测是否切换到不同应用（不包括内部窗口变化）
+        val appSwitched = pkg != currentForegroundPkg
+        if (appSwitched) {
+            DebugLog.log(applicationContext, "[DBG-FS] app switched from $currentForegroundPkg to $pkg")
+            currentForegroundPkg = pkg
+            // 如果切换到其他应用，取消抑制状态
+            if (pkg != suppressedPkg) {
+                suppressedPkg = null
+            }
+        }
+
+        // 如果当前应用被抑制（用户选择"打开"），则忽略其所有窗口事件
+        if (pkg == suppressedPkg) {
+            DebugLog.log(applicationContext, "[DBG-FS] pkg=$pkg is suppressed, ignoring")
+            return
+        }
+
         if (currentOverlay != null) return // 覆盖层显示中：忽略一切后续事件，避免倒计时期间自中断
         val decision = controller.evaluate(pkg)
-        DebugLog.log(applicationContext, "[DBG-FS] event pkg=$pkg decision=$decision")
+        DebugLog.log(applicationContext, "[DBG-FS] event pkg=$pkg decision=$decision appSwitched=$appSwitched")
         if (decision is InterceptionController.Decision.Block) {
             val appLabel = PackageUtil.label(packageManager, pkg)
             val overlay = BlockingOverlay(this, appLabel) { outcome ->
@@ -78,6 +98,7 @@ class AppBlockerAccessibilityService : AccessibilityService() {
         }
         when (outcome) {
             InterceptionOutcome.OPENED -> {
+                suppressedPkg = pkg // 标记该应用为抑制状态，忽略其后续所有窗口事件
                 controller.armSuppression(pkg)
                 overlay?.dismiss() // 目标一直在覆盖层后运行，移除即见
             }
