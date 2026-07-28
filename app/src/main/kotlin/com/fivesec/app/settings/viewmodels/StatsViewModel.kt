@@ -18,7 +18,7 @@ data class AppStatsUi(val packageName: String, val appName: String, val totalInt
 @HiltViewModel
 class StatsViewModel @Inject constructor(
     private val interceptionRepository: InterceptionRepository,
-    timeProvider: TimeProvider,
+    @Inject private val timeProvider: TimeProvider,
 ) : ViewModel() {
 
     private val startOfDay = DateUtil.startOfDayMillis(timeProvider.now())
