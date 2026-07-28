@@ -7,6 +7,7 @@ import com.fivesec.app.domain.model.AppStatistics
 import com.fivesec.app.util.DateUtil
 import com.fivesec.app.util.TimeProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -18,7 +19,7 @@ data class AppStatsUi(val packageName: String, val appName: String, val totalInt
 @HiltViewModel
 class StatsViewModel @Inject constructor(
     private val interceptionRepository: InterceptionRepository,
-    @Inject private val timeProvider: TimeProvider,
+    private val timeProvider: TimeProvider,
 ) : ViewModel() {
 
     private val startOfDay = DateUtil.startOfDayMillis(timeProvider.now())
