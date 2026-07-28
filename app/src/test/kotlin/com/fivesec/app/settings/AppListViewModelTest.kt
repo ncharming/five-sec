@@ -62,7 +62,7 @@ class AppListViewModelTest {
 
     @Test
     fun `移除应用后从清单消失`() = runTest(dispatcher) {
-        repository.insertAll(listOf(TargetApp("com.sina.weibo", isEnabled = true, isDefault = false, addedAt = 0)))
+        repository.insertAll(listOf(TargetApp("com.sina.weibo", appName = "微博", isEnabled = true, isDefault = false, addedAt = 0)))
         viewModel.remove("com.sina.weibo")
         advanceUntilIdle()
         val apps = viewModel.targetApps.first { it.isEmpty() }
@@ -71,7 +71,7 @@ class AppListViewModelTest {
 
     @Test
     fun `切换单应用开关`() = runTest(dispatcher) {
-        repository.insertAll(listOf(TargetApp("tv.danmaku.bili", isEnabled = true, isDefault = true, addedAt = 0)))
+        repository.insertAll(listOf(TargetApp("tv.danmaku.bili", appName = "哔哩哔哩", isEnabled = true, isDefault = true, addedAt = 0)))
         viewModel.setEnabled("tv.danmaku.bili", enabled = false)
         advanceUntilIdle()
         val bili = viewModel.targetApps.first().first { it.packageName == "tv.danmaku.bili" }
