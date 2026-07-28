@@ -27,14 +27,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".blocking.BlockingActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTop"
-            android:taskAffinity=""
-            android:theme="@style/Theme.FiveSec.Blocking" />
-
         <service
             android:name=".interception.AppBlockerAccessibilityService"
             android:exported="false"

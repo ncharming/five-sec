@@ -2,8 +2,6 @@ package com.fivesec.app.blocking
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.fivesec.app.domain.model.Exercise
 import com.fivesec.app.domain.model.InterceptionOutcome
 import kotlinx.coroutines.Job
@@ -62,9 +60,5 @@ class BlockingViewModel(val appLabel: String) : ViewModel() {
 
     companion object {
         private const val DELAY_MS = 1_000L
-
-        fun factory(appLabel: String) = viewModelFactory {
-            initializer { BlockingViewModel(appLabel) }
-        }
     }
 }
