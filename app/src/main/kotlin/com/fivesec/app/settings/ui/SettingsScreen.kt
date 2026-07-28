@@ -31,6 +31,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fivesec.app.R
 import com.fivesec.app.settings.viewmodels.SettingsViewModel
 import com.fivesec.app.util.AccessibilityPermissionHelper
+import com.fivesec.app.util.DebugLog
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,6 +93,30 @@ fun SettingsScreen(
             }
             TextButton(onClick = onOpenStats, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.settings_stats), style = MaterialTheme.typography.bodyLarge)
+            }
+
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+
+            // 临时调试：复制/清空 FSDBG 日志（无 USB 时从手机导出）。确认根因后删除。
+            TextButton(
+                onClick = {
+                    val text = DebugLog.read(context)
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("fivesec_debug", text))
+                    Toast.makeText(context, "已复制调试日志（${text.length} 字符）", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("📋 复制调试日志（FSDBG）", style = MaterialTheme.typography.bodyLarge)
+            }
+            TextButton(
+                onClick = {
+                    DebugLog.clear(context)
+                    Toast.makeText(context, "已清空调试日志", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("🗑 清空调试日志", style = MaterialTheme.typography.bodyMedium)
             }
         }
     }

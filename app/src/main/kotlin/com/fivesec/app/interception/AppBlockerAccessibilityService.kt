@@ -3,6 +3,7 @@ package com.fivesec.app.interception
 import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
 import com.fivesec.app.blocking.BlockingActivity
+import com.fivesec.app.util.DebugLog
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -29,9 +30,17 @@ class AppBlockerAccessibilityService : AccessibilityService() {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString().orEmpty()
         if (pkg.isEmpty() || pkg == packageName) return // 忽略自身窗口
-        if (controller.evaluate(pkg) is InterceptionController.Decision.Block) {
-            performGlobalAction(GLOBAL_ACTION_HOME)
-            startActivity(BlockingActivity.intent(this, pkg))
+        val decision = controller.evaluate(pkg)
+        DebugLog.log(applicationContext, "[DBG-FS] event pkg=$pkg decision=$decision")
+        if (decision is InterceptionController.Decision.Block) {
+            val homeOk = performGlobalAction(GLOBAL_ACTION_HOME)
+            DebugLog.log(applicationContext, "[DBG-FS] HOME returned=$homeOk; calling startActivity(BlockingActivity) for $pkg")
+            try {
+                startActivity(BlockingActivity.intent(this, pkg))
+                DebugLog.log(applicationContext, "[DBG-FS] startActivity returned OK for $pkg")
+            } catch (t: Throwable) {
+                DebugLog.log(applicationContext, "[DBG-FS] startActivity THREW for $pkg", t)
+            }
         }
     }
 

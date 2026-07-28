@@ -3,6 +3,7 @@ package com.fivesec.app.blocking
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import com.fivesec.app.util.DebugLog
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -36,8 +37,10 @@ class BlockingActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (targetPackage.isEmpty()) { finish(); return }
+        DebugLog.log(this,"[DBG-FS] BlockingActivity.onCreate targetPackage=$targetPackage")
+        if (targetPackage.isEmpty()) { DebugLog.log(this,"[DBG-FS] empty targetPackage → finish"); finish(); return }
         setContent { FiveSecTheme { BlockingScreen(viewModel) } }
+        DebugLog.log(this,"[DBG-FS] setContent done appLabel=$appLabel")
 
         lifecycleScope.launch {
             viewModel.ui.collect { state ->
@@ -46,13 +49,25 @@ class BlockingActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        DebugLog.log(this,"[DBG-FS] BlockingActivity.onResume")
+    }
+
     /** 用户离开（Home/息屏/返回）→ 视为被打断。 */
     override fun onPause() {
         super.onPause()
+        DebugLog.log(this,"[DBG-FS] BlockingActivity.onPause → markInterrupted()")
         viewModel.markInterrupted()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        DebugLog.log(this,"[DBG-FS] BlockingActivity.onDestroy")
+    }
+
     private fun handleFinished(outcome: InterceptionOutcome) {
+        DebugLog.log(this,"[DBG-FS] handleFinished outcome=$outcome alreadyHandled=$handled")
         if (handled) return
         handled = true
 
