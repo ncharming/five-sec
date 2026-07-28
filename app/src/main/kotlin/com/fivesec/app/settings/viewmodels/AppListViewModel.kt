@@ -1,12 +1,12 @@
 package com.fivesec.app.settings.viewmodels
 
-import android.app.Application
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.viewModelScope
 import com.fivesec.app.data.repository.TargetAppRepository
 import com.fivesec.app.domain.model.TargetApp
 import com.fivesec.app.util.PackageUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 
 @HiltViewModel
 class AppListViewModel @Inject constructor(
-    private val app: Application,
+    @ApplicationContext private val app: android.content.Context,
     private val targetAppRepository: TargetAppRepository,
 ) : ViewModel() {
 
