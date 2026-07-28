@@ -5,11 +5,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.produceState
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.fivesec.app.data.datastore.SettingsDataStore
+import com.fivesec.app.domain.model.AppSettings
 import com.fivesec.app.settings.ui.AppListScreen
 import com.fivesec.app.settings.ui.OnboardingScreen
 import com.fivesec.app.settings.ui.SettingsScreen
@@ -39,7 +40,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun AppRoot(settingsDataStore: SettingsDataStore) {
-    val settings by settingsDataStore.settings.collectAsStateWithLifecycle(initialValue = null)
+    val settings by produceState<AppSettings?>(initialValue = null) {
+        settingsDataStore.settings.collect { value = it }
+    }
     val current = settings
     if (current == null) return // 首次加载，等待
     val navController = rememberNavController()

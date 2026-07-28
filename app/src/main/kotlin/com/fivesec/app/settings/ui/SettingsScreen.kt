@@ -41,7 +41,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val enabled = settings?.globalInterceptionEnabled ?: true
+    val enabled = settings.globalInterceptionEnabled
 
     var serviceEnabled by remember {
         mutableStateOf(AccessibilityPermissionHelper.isServiceEnabled(context))

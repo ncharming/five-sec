@@ -16,8 +16,11 @@ class SettingsViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
 ) : ViewModel() {
 
-    val settings: StateFlow<AppSettings?> =
-        settingsDataStore.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val settings: StateFlow<AppSettings> = settingsDataStore.settings.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        AppSettings(globalInterceptionEnabled = true, onboardingCompleted = false, statsRetentionDays = 90),
+    )
 
     fun setGlobalEnabled(enabled: Boolean) {
         viewModelScope.launch { settingsDataStore.setGlobalEnabled(enabled) }

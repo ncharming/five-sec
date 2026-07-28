@@ -38,7 +38,7 @@ fun StatsScreen(onBack: () -> Unit, viewModel: StatsViewModel = hiltViewModel())
         )
     }) { padding ->
         val data = ui
-        if (data == null || (data.total == 0 && data.streak == 0)) {
+        if (data.total == 0 && data.streak == 0) {
             Column(Modifier.padding(padding).padding(24.dp)) {
                 Text(stringResource(R.string.stats_empty), style = MaterialTheme.typography.bodyMedium)
             }

@@ -23,7 +23,7 @@ class StatsViewModel @Inject constructor(
     private val startOfDay = DateUtil.startOfDayMillis(timeProvider.now())
     private val today = DateUtil.todayString(timeProvider.now())
 
-    val ui: StateFlow<StatsUi?> =
+    val ui: StateFlow<StatsUi> =
         combine(
             interceptionRepository.observeStats(startOfDay),
             interceptionRepository.observeActiveDays(),
@@ -34,5 +34,5 @@ class StatsViewModel @Inject constructor(
                 opened = day.opened,
                 streak = DateUtil.computeStreak(days, today),
             )
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, StatsUi(0, 0, 0, 0))
 }
