@@ -4,12 +4,14 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import com.fivesec.app.domain.model.InterceptionEvent
 import com.fivesec.app.domain.model.InterceptionOutcome
 import com.fivesec.app.interception.InterceptionController
 import com.fivesec.app.ui.theme.FiveSecTheme
+import com.fivesec.app.blocking.ui.BlockingScreen
 import com.fivesec.app.data.repository.InterceptionRepository
 import com.fivesec.app.util.PackageUtil
 import com.fivesec.app.util.TimeProvider
