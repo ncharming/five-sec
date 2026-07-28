@@ -1,7 +1,7 @@
 package com.fivesec.app.settings.viewmodels
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewmodel.viewModelScope
+import androidx.lifecycle.viewModelScope
 import com.fivesec.app.data.repository.TargetAppRepository
 import com.fivesec.app.domain.model.TargetApp
 import com.fivesec.app.util.PackageUtil
@@ -42,7 +42,7 @@ class AppListViewModel @Inject constructor(
             )
 
             // 处理结果（可以添加错误提示UI）
-            result onFailure { error ->
+            result.onFailure { error ->
                 // 这里可以添加错误提示逻辑
                 android.util.Log.e("AppListViewModel", "Failed to add app: ${error.message}")
             }

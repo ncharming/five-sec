@@ -8,6 +8,7 @@ import com.fivesec.app.util.DateUtil
 import com.fivesec.app.util.TimeProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -39,7 +40,7 @@ class StatsViewModel @Inject constructor(
         }.stateIn(viewModelScope, SharingStarted.Eagerly, StatsUi(0, 0, 0, 0))
 
     // 应用级别统计（与目标应用列表结合使用）
-    fun observeAppStatistics(packageName: String, appName: String): StateFlow<AppStatsUi> =
+    fun observeAppStatistics(packageName: String, appName: String): Flow<AppStatsUi> =
         interceptionRepository.observeAllAppStatistics().stateIn(viewModelScope, SharingStarted.Eagerly, AppStatsUi(packageName, appName, 0, 0.0, 0))
             .combine(
                 // 这里可以添加实时更新逻辑
