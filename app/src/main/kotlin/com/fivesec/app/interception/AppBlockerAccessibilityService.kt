@@ -53,7 +53,7 @@ class AppBlockerAccessibilityService : AccessibilityService() {
         DebugLog.log(applicationContext, "[DBG-FS] event pkg=$pkg decision=$decision")
         if (decision is InterceptionController.Decision.Block) {
             val appLabel = PackageUtil.label(packageManager, pkg)
-            val overlay = BlockingOverlay(applicationContext, appLabel) { outcome ->
+            val overlay = BlockingOverlay(this, appLabel) { outcome ->
                 onBlockingFinished(pkg, outcome)
             }
             currentOverlay = overlay

@@ -31,7 +31,7 @@ class BlockingOverlay(
     appLabel: String,
     private val onFinished: (InterceptionOutcome) -> Unit,
 ) {
-    private val ctx: Context = context.applicationContext ?: context
+    private val ctx: Context = context
     private val viewModel = BlockingViewModel(appLabel)
     private val windowManager = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
