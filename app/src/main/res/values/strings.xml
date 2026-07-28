@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">五秒</string>
+
+    <!-- Accessibility service -->
+    <string name="accessibility_service_label">五秒 · 应用拦截</string>
+    <string name="accessibility_service_description">五秒仅在你打开所选的沉浸式应用时弹出拦截页，引导一次 5 秒提肛锻炼并询问是否打开。本服务只读取应用包名以判断哪个应用进入前台，绝不读取或上传任何窗口内容。</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_title">五秒 · 每次打开前的 5 秒</string>
+    <string name="onboarding_body">在打开抖音、小红书、B站等应用前，五秒会先弹窗，引导你做一次 5 秒提肛，并问你是否真的要打开——给无意识的刷手机加一道减速带。</string>
+    <string name="onboarding_enable_accessibility">开启无障碍服务</string>
+    <string name="onboarding_accessibility_enabled">无障碍服务已开启</string>
+    <string name="onboarding_finish">进入应用</string>
+    <string name="onboarding_restricted_hint">若无法开启，请在 系统 > 无障碍 > 已安装的应用 中「允许受限设置」（Android 13+）。</string>
+
+    <!-- Blocking screen -->
+    <string name="blocking_title">是否打开 %1$s？</string>
+    <string name="blocking_exercise_hint">收紧盆底肌，保持 5 秒</string>
+    <string name="blocking_open">打开</string>
+    <string name="blocking_cancel">取消</string>
+    <string name="blocking_wait">请先完成 5 秒</string>
+
+    <!-- Settings -->
+    <string name="settings_title">五秒</string>
+    <string name="settings_global_switch">拦截总开关</string>
+    <string name="settings_app_list">拦截应用清单</string>
+    <string name="settings_stats">统计</string>
+    <string name="settings_accessibility_status_off">无障碍服务未开启（点击开启）</string>
+    <string name="settings_accessibility_status_on">无障碍服务：已开启</string>
+
+    <!-- App list -->
+    <string name="app_list_title">拦截应用清单</string>
+    <string name="app_list_add">添加应用</string>
+    <string name="app_list_empty">还没有目标应用。点击右上角添加。</string>
+    <string name="app_list_default_badge">默认</string>
+
+    <!-- Stats -->
+    <string name="stats_title">统计</string>
+    <string name="stats_today_intercepted">今日拦截</string>
+    <string name="stats_today_canceled">今日取消</string>
+    <string name="stats_today_opened">今日打开</string>
+    <string name="stats_streak">连续完成天数</string>
+    <string name="stats_empty">暂无数据。被拦截后会在这里显示。</string>
+</resources>
