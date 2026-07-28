@@ -45,6 +45,7 @@ class AppBlockerAccessibilityService : AccessibilityService() {
     private var currentOverlay: BlockingOverlay? = null
     private var currentForegroundPkg: String? = null // 跟踪当前前台应用
     private var suppressedPkg: String? = null // 用户选择"打开"后抑制该应用的所有窗口事件
+    private var userOpenedPkg: String? = null // 用户主动选择"打开"的应用，在该应用使用期间永久放行
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
@@ -55,14 +56,27 @@ class AppBlockerAccessibilityService : AccessibilityService() {
         val appSwitched = pkg != currentForegroundPkg
         if (appSwitched) {
             DebugLog.log(applicationContext, "[DBG-FS] app switched from $currentForegroundPkg to $pkg")
+            val previousForegroundPkg = currentForegroundPkg
             currentForegroundPkg = pkg
-            // 如果切换到其他应用，取消抑制状态
-            if (pkg != suppressedPkg) {
+            // 如果切换到其他非目标应用，取消暂时抑制状态（但保留用户主动打开的标记）
+            if (pkg != suppressedPkg && pkg != userOpenedPkg) {
                 suppressedPkg = null
+            }
+            // 如果用户主动切换到另一个目标应用，清除之前的 userOpenedPkg 标记
+            // 这样可以确保只有当前正在使用的目标应用才不会被拦截
+            val currentIsTarget = controller.isTarget(pkg)
+            if (currentIsTarget && pkg != userOpenedPkg && previousForegroundPkg != userOpenedPkg) {
+                DebugLog.log(applicationContext, "[DBG-FS] switching to another target app, clearing userOpenedPkg=$userOpenedPkg")
+                userOpenedPkg = null
             }
         }
 
-        // 如果当前应用被抑制（用户选择"打开"），则忽略其所有窗口事件
+        // 如果用户主动打开了该应用，则忽略其所有窗口事件
+        if (pkg == userOpenedPkg) {
+            DebugLog.log(applicationContext, "[DBG-FS] pkg=$pkg was opened by user, ignoring")
+            return
+        }
+        // 如果当前应用被暂时抑制（用户选择"打开"后的短暂期间），则忽略其窗口事件
         if (pkg == suppressedPkg) {
             DebugLog.log(applicationContext, "[DBG-FS] pkg=$pkg is suppressed, ignoring")
             return
@@ -98,7 +112,8 @@ class AppBlockerAccessibilityService : AccessibilityService() {
         }
         when (outcome) {
             InterceptionOutcome.OPENED -> {
-                suppressedPkg = pkg // 标记该应用为抑制状态，忽略其后续所有窗口事件
+                userOpenedPkg = pkg // 永久标记该应用为用户主动打开，在使用期间不再拦截
+                suppressedPkg = pkg // 同时设置暂时抑制状态，用于立即生效
                 controller.armSuppression(pkg)
                 overlay?.dismiss() // 目标一直在覆盖层后运行，移除即见
             }

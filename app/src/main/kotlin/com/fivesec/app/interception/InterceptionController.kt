@@ -52,6 +52,9 @@ class InterceptionController @Inject constructor(
 
     fun armSuppression(pkg: String) = gate.armSuppression(pkg, timeProvider.now())
 
+    /** 判断应用是否在拦截目标列表中 */
+    fun isTarget(pkg: String): Boolean = pkg in enabledTargets
+
     companion object {
         const val DEBOUNCE_MS = 800L
         const val SUPPRESSION_MS = 5_000L
