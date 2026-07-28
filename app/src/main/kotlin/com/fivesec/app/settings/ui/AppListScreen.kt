@@ -1,5 +1,6 @@
 package com.fivesec.app.settings.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,7 +10,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,6 +47,8 @@ fun AppListScreen(
 ) {
     val apps by viewModel.targetApps.collectAsStateWithLifecycle()
     var showPicker by remember { mutableStateOf(false) }
+    var showLimitDialog by remember { mutableStateOf(false) }
+    var expandedApp by remember { mutableStateOf<String?>(null) }
 
     Scaffold(topBar = {
         TopAppBar(
@@ -52,7 +57,14 @@ fun AppListScreen(
                 IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = null) }
             },
             actions = {
-                IconButton(onClick = { showPicker = true }) { Icon(Icons.Default.Add, contentDescription = null) }
+                IconButton(onClick = {
+                    // 检查是否达到3个应用限制
+                    if (apps.size >= 3) {
+                        showLimitDialog = true
+                    } else {
+                        showPicker = true
+                    }
+                }) { Icon(Icons.Default.Add, contentDescription = null) }
             },
         )
     }) { padding ->
@@ -63,27 +75,64 @@ fun AppListScreen(
         } else {
             LazyColumn(Modifier.padding(padding)) {
                 items(apps, key = { it.packageName }) { app ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(app.packageName, style = MaterialTheme.typography.bodyLarge)
-                            if (app.isDefault) {
-                                Text(stringResource(R.string.app_list_default_badge), style = MaterialTheme.typography.labelSmall)
+                    val isExpanded = expandedApp == app.packageName
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { expandedApp = if (isExpanded) null else app.packageName }
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(app.appName, style = MaterialTheme.typography.bodyLarge)
+                                    Icon(
+                                        Icons.Default.ArrowDropDown,
+                                        contentDescription = "展开",
+                                        modifier = Modifier.padding(start = 4.dp)
+                                    )
+                                }
+                                if (app.isDefault) {
+                                    Text(stringResource(R.string.app_list_default_badge), style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                            Switch(
+                                checked = app.isEnabled,
+                                onCheckedChange = { viewModel.setEnabled(app.packageName, it) },
+                            )
+                            IconButton(onClick = { viewModel.remove(app.packageName) }) {
+                                Text("✕")
                             }
                         }
-                        Switch(
-                            checked = app.isEnabled,
-                            onCheckedChange = { viewModel.setEnabled(app.packageName, it) },
-                        )
-                        IconButton(onClick = { viewModel.remove(app.packageName) }) {
-                            Text("✕")
+                        if (isExpanded) {
+                            Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                                Text(
+                                    stringResource(R.string.app_list_package_name, app.packageName),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    // 3个应用限制提示对话框
+    if (showLimitDialog) {
+        AlertDialog(
+            onDismissRequest = { showLimitDialog = false },
+            confirmButton = {
+                TextButton(onClick = { showLimitDialog = false }) {
+                    Text("确定")
+                }
+            },
+            title = { Text("提示") },
+            text = { Text(stringResource(R.string.app_list_limit_reached)) },
+        )
     }
 
     if (showPicker) {

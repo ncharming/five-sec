@@ -34,4 +34,9 @@
 - 2 clarification questions resolved on 2026-07-27:
   - FR-006 (5 秒交互模式) → 强制 5 秒减速带：倒计时期间锁定"打开/取消"，结束后才可选择。已补充 User Story 1 的验收场景 2。
   - FR-007 (锻炼种类范围) → MVP 仅固定"5 秒提肛"。
-- All checklist items now pass. Spec is ready for `/speckit-clarify` or `/speckit-plan`.
+- 4 clarification questions resolved on 2026-07-28:
+  - 按钮UI表现 → 5秒倒计时期间按钮置灰且禁用，视觉上传达不可用状态
+  - 应用数量限制 → 严格限制3个应用，达到上限时显示提示
+  - 应用标识方式 → 主要显示友好名称，用户可展开查看包名
+  - 统计维度细化 → 应用级别显示核心三指标：拦截总数、取消率、完成锻炼次数
+- All checklist items continue to pass. Enhanced clarity on UI behavior, constraints, and statistics. Spec is ready for `/speckit-plan`.

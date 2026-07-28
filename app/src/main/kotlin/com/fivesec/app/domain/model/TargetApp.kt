@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "target_apps")
 data class TargetApp(
     @PrimaryKey val packageName: String,
+    val appName: String,           // 应用友好名称（如"小红书"）
     val isEnabled: Boolean = true,
     val isDefault: Boolean = false,
     val addedAt: Long,

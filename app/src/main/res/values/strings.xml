@@ -34,6 +34,8 @@
     <string name="app_list_add">添加应用</string>
     <string name="app_list_empty">还没有目标应用。点击右上角添加。</string>
     <string name="app_list_default_badge">默认</string>
+    <string name="app_list_limit_reached">最多可添加3个应用，请移除不常用应用后重试</string>
+    <string name="app_list_package_name">包名：%1$s</string>
 
     <!-- Stats -->
     <string name="stats_title">统计</string>

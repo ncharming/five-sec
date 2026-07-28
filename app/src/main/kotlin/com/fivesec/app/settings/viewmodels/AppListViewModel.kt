@@ -7,7 +7,6 @@ import com.fivesec.app.data.repository.TargetAppRepository
 import com.fivesec.app.domain.model.TargetApp
 import com.fivesec.app.util.PackageUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -27,7 +26,25 @@ class AppListViewModel @Inject constructor(
 
     fun add(packageName: String, now: Long) {
         viewModelScope.launch {
-            targetAppRepository.upsert(TargetApp(packageName = packageName, isEnabled = true, isDefault = false, addedAt = now))
+            // 获取应用名称
+            val appName = PackageUtil.label(app.packageManager, packageName)
+
+            // 使用新的 addNewApp 方法，包含 3 个应用限制检查
+            val result = targetAppRepository.addNewApp(
+                TargetApp(
+                    packageName = packageName,
+                    appName = appName,
+                    isEnabled = true,
+                    isDefault = false,
+                    addedAt = now
+                )
+            )
+
+            // 处理结果（可以添加错误提示UI）
+            result onFailure { error ->
+                // 这里可以添加错误提示逻辑
+                android.util.Log.e("AppListViewModel", "Failed to add app: ${error.message}")
+            }
         }
     }
 

@@ -3,7 +3,9 @@ package com.fivesec.app.di
 import android.content.Context
 import androidx.room.Room
 import com.fivesec.app.data.db.AppDatabase
+import com.fivesec.app.data.db.AppStatisticsDao
 import com.fivesec.app.data.db.InterceptionEventDao
+import com.fivesec.app.data.db.MIGRATION_1_2
 import com.fivesec.app.data.db.TargetAppDao
 import com.fivesec.app.util.SystemTimeProvider
 import com.fivesec.app.util.TimeProvider
@@ -24,7 +26,9 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
-        Room.databaseBuilder(context, AppDatabase::class.java, "five_sec.db").build()
+        Room.databaseBuilder(context, AppDatabase::class.java, "five_sec.db")
+            .addMigrations(MIGRATION_1_2)
+            .build()
 
     @Provides
     fun provideTargetAppDao(db: AppDatabase): TargetAppDao = db.targetAppDao()
@@ -32,6 +36,9 @@ object AppModule {
     @Provides
     fun provideInterceptionEventDao(db: AppDatabase): InterceptionEventDao =
         db.interceptionEventDao()
+
+    @Provides
+    fun provideAppStatisticsDao(db: AppDatabase): AppStatisticsDao = db.appStatisticsDao()
 
     @Provides
     fun provideTimeProvider(): TimeProvider = SystemTimeProvider()

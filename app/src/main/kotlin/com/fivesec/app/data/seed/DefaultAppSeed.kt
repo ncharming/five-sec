@@ -15,9 +15,10 @@ class DefaultAppSeed @Inject constructor(
         if (targetAppRepository.count() > 0) return
         val now = timeProvider.now()
         targetAppRepository.insertAll(
-            DEFAULT_PACKAGES.map { pkg ->
+            DEFAULT_APPS.map { (packageName, appName) ->
                 com.fivesec.app.domain.model.TargetApp(
-                    packageName = pkg,
+                    packageName = packageName,
+                    appName = appName,
                     isEnabled = true,
                     isDefault = true,
                     addedAt = now,
@@ -27,10 +28,10 @@ class DefaultAppSeed @Inject constructor(
     }
 
     companion object {
-        val DEFAULT_PACKAGES = listOf(
-            "com.ss.android.ugc.aweme", // 抖音
-            "com.xingin.xhs",           // 小红书
-            "tv.danmaku.bili",          // 哔哩哔哩
+        val DEFAULT_APPS = listOf(
+            "com.ss.android.ugc.aweme" to "抖音",
+            "com.xingin.xhs" to "小红书",
+            "tv.danmaku.bili" to "哔哩哔哩",
         )
     }
 }

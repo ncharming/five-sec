@@ -149,8 +149,16 @@ class BlockingOverlay(
             else -> "5"
         }
         waitText.text = if (unlocked) "" else ctx.getString(R.string.blocking_wait)
+
+        // 按钮置灰且禁用状态：倒计时期间视觉上置灰，功能上禁用
         cancelBtn.isEnabled = unlocked
         openBtn.isEnabled = unlocked
+
+        // 视觉置灰处理：使用 alpha 值来模拟置灰效果
+        val buttonAlpha = if (unlocked) 1.0f else 0.5f
+        cancelBtn.alpha = buttonAlpha
+        openBtn.alpha = buttonAlpha
+
         if (state is BlockingViewModel.UiState.Finished) finish(state.outcome)
     }
 
