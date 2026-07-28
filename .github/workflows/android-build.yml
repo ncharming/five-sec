@@ -15,10 +15,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -32,25 +32,26 @@ jobs:
       - name: Set up Gradle 8.9（直接用 gradle 命令，无需 wrapper jar）
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9.0'
+          gradle-version: '8.9'
 
       - name: Build debug APK
+        id: build
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Run unit tests（含 Robolectric；首次会下载 android-all）
         run: gradle :app:testDebugUnitTest --stacktrace
 
-      - name: Upload debug APK（可直接安装）
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Upload debug APK（可直接安装；仅在构建成功时上传）
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v5
         with:
           name: five-sec-debug-apk
           path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Upload unit test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: unit-test-results
           path: app/build/test-results/testDebugUnitTest/*.xml
