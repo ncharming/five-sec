@@ -14,7 +14,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.fivesec.app.R
 import com.fivesec.app.domain.model.InterceptionOutcome
-import com.fivesec.app.util.DebugLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -46,7 +45,7 @@ class BlockingOverlay(
         gravity = Gravity.CENTER
     }
     private val hintText = TextView(ctx).apply {
-        text = ctx.getString(R.string.blocking_exercise_hint)
+        text = ctx.resources.getStringArray(R.array.blocking_exercise_hints).random()
         setTextColor(Color.parseColor("#49454F"))
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
         gravity = Gravity.CENTER
@@ -131,9 +130,7 @@ class BlockingOverlay(
         try {
             windowManager.addView(root, params)
             added = true
-            DebugLog.log(ctx, "[DBG-FS] overlay.show appLabel=${viewModel.appLabel}")
-        } catch (t: Throwable) {
-            DebugLog.log(ctx, "[DBG-FS] overlay.addView THREW", t)
+        } catch (_: Throwable) {
             finish(InterceptionOutcome.INTERRUPTED) // 上不去就按打断处理，让服务清理 currentOverlay
             return
         }
@@ -165,7 +162,6 @@ class BlockingOverlay(
     private fun finish(outcome: InterceptionOutcome) {
         if (finished) return
         finished = true
-        DebugLog.log(ctx, "[DBG-FS] overlay outcome=$outcome")
         onFinished(outcome)
     }
 
@@ -180,7 +176,6 @@ class BlockingOverlay(
             } catch (_: Exception) {
             }
             scope.cancel()
-            DebugLog.log(ctx, "[DBG-FS] overlay.dismiss")
         }
         if (delayMs <= 0L) remove.run() else root.postDelayed(remove, delayMs)
     }

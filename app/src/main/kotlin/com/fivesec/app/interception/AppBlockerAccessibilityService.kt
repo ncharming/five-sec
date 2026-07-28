@@ -7,7 +7,6 @@ import com.fivesec.app.blocking.BlockingOverlay
 import com.fivesec.app.data.repository.InterceptionRepository
 import com.fivesec.app.domain.model.InterceptionEvent
 import com.fivesec.app.domain.model.InterceptionOutcome
-import com.fivesec.app.util.DebugLog
 import com.fivesec.app.util.PackageUtil
 import com.fivesec.app.util.TimeProvider
 import dagger.hilt.EntryPoint
@@ -55,7 +54,6 @@ class AppBlockerAccessibilityService : AccessibilityService() {
         // 检测是否切换到不同应用（不包括内部窗口变化）
         val appSwitched = pkg != currentForegroundPkg
         if (appSwitched) {
-            DebugLog.log(applicationContext, "[DBG-FS] app switched from $currentForegroundPkg to $pkg")
             val previousForegroundPkg = currentForegroundPkg
             currentForegroundPkg = pkg
             // 如果切换到其他非目标应用，取消暂时抑制状态（但保留用户主动打开的标记）
@@ -66,25 +64,21 @@ class AppBlockerAccessibilityService : AccessibilityService() {
             // 这样可以确保只有当前正在使用的目标应用才不会被拦截
             val currentIsTarget = controller.isTarget(pkg)
             if (currentIsTarget && pkg != userOpenedPkg && previousForegroundPkg != userOpenedPkg) {
-                DebugLog.log(applicationContext, "[DBG-FS] switching to another target app, clearing userOpenedPkg=$userOpenedPkg")
                 userOpenedPkg = null
             }
         }
 
         // 如果用户主动打开了该应用，则忽略其所有窗口事件
         if (pkg == userOpenedPkg) {
-            DebugLog.log(applicationContext, "[DBG-FS] pkg=$pkg was opened by user, ignoring")
             return
         }
         // 如果当前应用被暂时抑制（用户选择"打开"后的短暂期间），则忽略其窗口事件
         if (pkg == suppressedPkg) {
-            DebugLog.log(applicationContext, "[DBG-FS] pkg=$pkg is suppressed, ignoring")
             return
         }
 
         if (currentOverlay != null) return // 覆盖层显示中：忽略一切后续事件，避免倒计时期间自中断
         val decision = controller.evaluate(pkg)
-        DebugLog.log(applicationContext, "[DBG-FS] event pkg=$pkg decision=$decision appSwitched=$appSwitched")
         if (decision is InterceptionController.Decision.Block) {
             val appLabel = PackageUtil.label(packageManager, pkg)
             val overlay = BlockingOverlay(this, appLabel) { outcome ->
@@ -96,7 +90,6 @@ class AppBlockerAccessibilityService : AccessibilityService() {
     }
 
     private fun onBlockingFinished(pkg: String, outcome: InterceptionOutcome) {
-        DebugLog.log(applicationContext, "[DBG-FS] onBlockingFinished pkg=$pkg outcome=$outcome")
         val overlay = currentOverlay
         currentOverlay = null
         val completed = outcome != InterceptionOutcome.INTERRUPTED

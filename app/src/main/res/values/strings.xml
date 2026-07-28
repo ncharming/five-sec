@@ -16,7 +16,15 @@
 
     <!-- Blocking screen -->
     <string name="blocking_title">是否打开 %1$s？</string>
-    <string name="blocking_exercise_hint">收紧盆底肌，保持 5 秒</string>
+    <string-array name="blocking_exercise_hints">
+        <item>收紧盆底肌，保持 5 秒</item>
+        <item>深吸一口气，慢慢吐出来</item>
+        <item>眨眼 10 次</item>
+        <item>看一眼远处（6 米外的东西）</item>
+        <item>耸肩到耳根，停 3 秒再放下</item>
+        <item>闭上眼，问自己：现在真的要打开吗？</item>
+        <item>攥紧拳头 3 秒，再完全张开手指</item>
+    </string-array>
     <string name="blocking_open">打开</string>
     <string name="blocking_cancel">取消</string>
     <string name="blocking_wait">请先完成 5 秒</string>
