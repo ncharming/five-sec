@@ -8,10 +8,14 @@ import com.fivesec.app.util.PackageUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @HiltViewModel
 class AppListViewModel @Inject constructor(
@@ -22,8 +26,17 @@ class AppListViewModel @Inject constructor(
     val targetApps: StateFlow<List<TargetApp>> =
         targetAppRepository.observeAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    fun installedApps(): List<PackageUtil.InstalledApp> =
-        PackageUtil.installedUserApps(app.packageManager)
+    private val _installedApps = MutableStateFlow<List<PackageUtil.InstalledApp>>(emptyList())
+    val installedApps: StateFlow<List<PackageUtil.InstalledApp>> = _installedApps.asStateFlow()
+
+    init {
+        // 枚举已安装应用较重（逐个 getApplicationLabel），放到 IO 线程并缓存，避免主线程卡顿。
+        viewModelScope.launch {
+            _installedApps.value = withContext(Dispatchers.IO) {
+                PackageUtil.installedUserApps(app.packageManager)
+            }
+        }
+    }
 
     fun add(packageName: String, now: Long) {
         viewModelScope.launch {

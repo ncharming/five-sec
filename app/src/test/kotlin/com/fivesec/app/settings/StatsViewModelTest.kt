@@ -1,6 +1,10 @@
 package com.fivesec.app.settings
 
+import com.fivesec.app.util.BLACK_ARGB
 import com.fivesec.app.util.DateUtil
+import com.fivesec.app.util.FALLBACK_BRAND_ARGB
+import com.fivesec.app.util.WHITE_ARGB
+import com.fivesec.app.util.onColorForBackground
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -34,5 +38,22 @@ class StatsViewModelTest {
     fun `乱序输入也能正确计算`() {
         val days = listOf("2026-07-25", "2026-07-27", "2026-07-26")
         assertEquals(3, DateUtil.computeStreak(days, "2026-07-27"))
+    }
+
+    @Test
+    fun `浅色背景选黑色前景`() {
+        assertEquals(BLACK_ARGB, onColorForBackground(0xFFFFFFFF.toInt())) // 白底
+        assertEquals(BLACK_ARGB, onColorForBackground(0xFFFFEB3B.toInt())) // 亮黄底
+    }
+
+    @Test
+    fun `深色背景选白色前景`() {
+        assertEquals(WHITE_ARGB, onColorForBackground(0xFF000000.toInt())) // 纯黑底
+        assertEquals(WHITE_ARGB, onColorForBackground(0xFF1A237E.toInt())) // 深靛底
+    }
+
+    @Test
+    fun `品牌色回退为健康绿`() {
+        assertEquals(0xFF00A86B.toInt(), FALLBACK_BRAND_ARGB)
     }
 }

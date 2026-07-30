@@ -44,6 +44,9 @@
     <string name="app_list_default_badge">默认</string>
     <string name="app_list_limit_reached">最多可添加3个应用，请移除不常用应用后重试</string>
     <string name="app_list_package_name">包名：%1$s</string>
+    <string name="app_list_search_hint">搜索应用名称或包名</string>
+    <string name="app_list_search_empty">未找到匹配的应用</string>
+    <string name="app_list_already_added">已添加</string>
 
     <!-- Stats -->
     <string name="stats_title">统计</string>
@@ -52,4 +55,5 @@
     <string name="stats_today_opened">今日打开</string>
     <string name="stats_streak">连续完成天数</string>
     <string name="stats_empty">暂无数据。被拦截后会在这里显示。</string>
+    <string name="stats_app_today_section">各应用今日数据</string>
 </resources>

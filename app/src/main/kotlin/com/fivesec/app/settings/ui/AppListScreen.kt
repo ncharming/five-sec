@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,6 +19,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -31,11 +33,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fivesec.app.R
 import com.fivesec.app.settings.viewmodels.AppListViewModel
 import com.fivesec.app.ui.theme.Spacing
+import com.fivesec.app.util.PackageUtil
 import com.fivesec.app.util.SystemTimeProvider
 import com.fivesec.app.util.TimeProvider
 
@@ -137,22 +141,64 @@ fun AppListScreen(
     }
 
     if (showPicker) {
-        val installed = remember { viewModel.installedApps() }
+        val installed by viewModel.installedApps.collectAsStateWithLifecycle()
+        var query by remember { mutableStateOf("") }
+        val addedKeys = remember(apps) { apps.map { it.packageName }.toSet() }
+        val filtered = remember(installed, query, addedKeys) {
+            PackageUtil.filterInstalledApps(installed, addedKeys, query)
+        }
         AlertDialog(
             onDismissRequest = { showPicker = false },
             confirmButton = { TextButton(onClick = { showPicker = false }) { Text("完成") } },
             title = { Text(stringResource(R.string.app_list_add)) },
             text = {
-                LazyColumn {
-                    items(installed, key = { it.packageName }) { candidate ->
-                        if (candidate.packageName !in apps.map { it.packageName }) {
-                            TextButton(
-                                onClick = {
-                                    viewModel.add(candidate.packageName, timeProvider.now())
-                                    showPicker = false
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text(candidate.label) }
+                Column(Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        placeholder = { Text(stringResource(R.string.app_list_search_hint)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (filtered.isEmpty()) {
+                        Text(
+                            stringResource(R.string.app_list_search_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = Spacing.md),
+                        )
+                    } else {
+                        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+                            items(filtered, key = { it.app.packageName }) { item ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .then(
+                                            if (item.isAdded) Modifier
+                                            else Modifier.clickable {
+                                                viewModel.add(item.app.packageName, timeProvider.now())
+                                                showPicker = false
+                                            }
+                                        )
+                                        .padding(vertical = Spacing.sm),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        item.app.label,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = if (item.isAdded) MaterialTheme.colorScheme.onSurfaceVariant
+                                        else MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    if (item.isAdded) {
+                                        Text(
+                                            stringResource(R.string.app_list_already_added),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
