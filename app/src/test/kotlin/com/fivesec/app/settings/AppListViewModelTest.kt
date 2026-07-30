@@ -8,6 +8,7 @@ import com.fivesec.app.data.db.AppDatabase
 import com.fivesec.app.data.repository.TargetAppRepository
 import com.fivesec.app.domain.model.TargetApp
 import com.fivesec.app.settings.viewmodels.AppListViewModel
+import com.fivesec.app.util.PackageUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -18,6 +19,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -76,5 +78,46 @@ class AppListViewModelTest {
         advanceUntilIdle()
         val bili = viewModel.targetApps.first().first { it.packageName == "tv.danmaku.bili" }
         assertEquals(false, bili.isEnabled)
+    }
+
+    @Test
+    fun `空查询返回全部候选并标记已添加项`() {
+        val candidates = listOf(
+            PackageUtil.InstalledApp("com.xingin.xhs", "小红书"),
+            PackageUtil.InstalledApp("com.sina.weibo", "微博"),
+        )
+        val result = PackageUtil.filterInstalledApps(candidates, setOf("com.xingin.xhs"), query = "")
+        assertEquals(2, result.size)
+        assertTrue(result.first { it.app.packageName == "com.xingin.xhs" }.isAdded)
+        assertFalse(result.first { it.app.packageName == "com.sina.weibo" }.isAdded)
+    }
+
+    @Test
+    fun `按名称不分大小写匹配`() {
+        val candidates = listOf(
+            PackageUtil.InstalledApp("com.xingin.xhs", "小红书"),
+            PackageUtil.InstalledApp("com.sina.weibo", "微博"),
+        )
+        val result = PackageUtil.filterInstalledApps(candidates, emptySet(), query = "小红")
+        assertEquals(1, result.size)
+        assertEquals("com.xingin.xhs", result.first().app.packageName)
+    }
+
+    @Test
+    fun `按包名匹配`() {
+        val candidates = listOf(
+            PackageUtil.InstalledApp("com.sina.weibo", "微博"),
+            PackageUtil.InstalledApp("com.xingin.xhs", "小红书"),
+        )
+        val result = PackageUtil.filterInstalledApps(candidates, emptySet(), query = "com.sina")
+        assertEquals(1, result.size)
+        assertEquals("微博", result.first().app.label)
+    }
+
+    @Test
+    fun `无匹配返回空`() {
+        val candidates = listOf(PackageUtil.InstalledApp("com.xingin.xhs", "小红书"))
+        val result = PackageUtil.filterInstalledApps(candidates, emptySet(), query = "zzzqqq")
+        assertTrue(result.isEmpty())
     }
 }

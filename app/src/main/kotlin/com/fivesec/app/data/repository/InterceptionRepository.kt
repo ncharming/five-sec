@@ -2,6 +2,7 @@ package com.fivesec.app.data.repository
 
 import com.fivesec.app.data.db.AppStatisticsDao
 import com.fivesec.app.data.db.InterceptionEventDao
+import com.fivesec.app.data.db.PackageTodayCount
 import com.fivesec.app.domain.model.AppStatistics
 import com.fivesec.app.domain.model.InterceptionEvent
 import com.fivesec.app.domain.model.InterceptionOutcome
@@ -70,6 +71,10 @@ class InterceptionRepository @Inject constructor(
     }
 
     fun observeActiveDays(): Flow<List<String>> = eventDao.observeActiveDays()
+
+    /** 当日按应用聚合的拦截/打开计数（供应用级今日统计卡片使用）。 */
+    fun observeTodayCountsByPackage(startOfDay: Long): Flow<List<PackageTodayCount>> =
+        eventDao.observeTodayCountsByPackage(startOfDay)
 
     data class DayStats(val total: Int, val canceled: Int, val opened: Int)
 }
