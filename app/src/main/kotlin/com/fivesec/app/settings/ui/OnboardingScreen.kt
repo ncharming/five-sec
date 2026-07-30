@@ -24,12 +24,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.fivesec.app.R
 import com.fivesec.app.data.datastore.SettingsDataStore
+import com.fivesec.app.ui.theme.Spacing
 import com.fivesec.app.util.AccessibilityPermissionHelper
 import kotlinx.coroutines.launch
 
@@ -56,18 +56,18 @@ fun OnboardingScreen(settingsDataStore: SettingsDataStore, onDone: () -> Unit) {
 
     Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.onboarding_title)) }) }) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(Spacing.xl),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(stringResource(R.string.onboarding_body), style = MaterialTheme.typography.bodyLarge)
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(Spacing.xl))
             Text(stringResource(R.string.onboarding_restricted_hint), style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(Spacing.xl))
 
             if (serviceEnabled) {
                 Text(stringResource(R.string.onboarding_accessibility_enabled))
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(Spacing.lg))
                 Button(onClick = {
                     scope.launch {
                         settingsDataStore.setOnboardingCompleted(true)

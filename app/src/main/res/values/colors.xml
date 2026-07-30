@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#5B5BD6</color>
+    <color name="ic_launcher_background">#00A86B</color>
+
+    <!-- 拦截覆盖层（命令式 View）品牌色，与 Compose Color.kt 同源 -->
+    <color name="brand_primary">#00A86B</color>
+    <color name="brand_on_primary">#FFFFFF</color>
+    <color name="brand_surface">#FFFFFF</color>
+    <color name="brand_on_surface">#0E1A14</color>
+    <color name="brand_on_surface_variant">#5B6B62</color>
+
+    <!-- 启动窗背景（values-night/colors.xml 提供深色覆盖） -->
+    <color name="brand_background">#F6F8F6</color>
 </resources>

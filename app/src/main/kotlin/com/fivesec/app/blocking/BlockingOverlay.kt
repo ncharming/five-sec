@@ -12,6 +12,7 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import com.fivesec.app.R
 import com.fivesec.app.domain.model.InterceptionOutcome
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +25,9 @@ import kotlinx.coroutines.launch
  * 拦截覆盖层：由无障碍服务命中目标后，经 WindowManager 绘制全屏
  * [WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY]。
  * 非 Activity → 不受 OEM（如 ColorOS）"后台 startActivity"静默拦截；复用 [BlockingViewModel] 的 5 秒减速带状态机。
+ *
+ * 配色取自 res/values/colors.xml 的 brand_* token，与 Compose Color.kt 同源，保证品牌一致。
+ * 始终浅色：覆盖层弹出在第三方 app 之上，非本 app 主题上下文。
  */
 class BlockingOverlay(
     context: Context,
@@ -38,37 +42,53 @@ class BlockingOverlay(
     @Volatile private var added = false
     @Volatile private var finished = false
 
+    // 品牌色（与 Compose 主题同源）
+    private val primaryColor = ContextCompat.getColor(ctx, R.color.brand_primary)
+    private val onPrimaryColor = ContextCompat.getColor(ctx, R.color.brand_on_primary)
+    private val onSurfaceColor = ContextCompat.getColor(ctx, R.color.brand_on_surface)
+    private val onSurfaceVariantColor = ContextCompat.getColor(ctx, R.color.brand_on_surface_variant)
+    private val surfaceColor = ContextCompat.getColor(ctx, R.color.brand_surface)
+    private val disabledContainer = onSurfaceAlpha(0.12f) // M3 禁用容器：onSurface @ 12%
+    private val disabledText = onSurfaceAlpha(0.38f)      // M3 禁用文字：onSurface @ 38%
+
+    private fun onSurfaceAlpha(alpha: Float): Int {
+        val r = (onSurfaceColor shr 16) and 0xFF
+        val g = (onSurfaceColor shr 8) and 0xFF
+        val b = onSurfaceColor and 0xFF
+        return Color.argb((255 * alpha).toInt(), r, g, b)
+    }
+
     private val titleText = TextView(ctx).apply {
         text = ctx.getString(R.string.blocking_title, viewModel.appLabel)
-        setTextColor(Color.parseColor("#1C1B1F"))
+        setTextColor(onSurfaceColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
         gravity = Gravity.CENTER
     }
     private val hintText = TextView(ctx).apply {
         text = ctx.resources.getStringArray(R.array.blocking_exercise_hints).random()
-        setTextColor(Color.parseColor("#49454F"))
+        setTextColor(onSurfaceVariantColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
         gravity = Gravity.CENTER
     }
     private val countdownText = TextView(ctx).apply {
-        setTextColor(Color.parseColor("#6750A4"))
+        setTextColor(primaryColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 72f)
         gravity = Gravity.CENTER
     }
     private val waitText = TextView(ctx).apply {
-        setTextColor(Color.parseColor("#79747E"))
+        setTextColor(onSurfaceVariantColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
         gravity = Gravity.CENTER
     }
     private val cancelBtn = Button(ctx).apply {
         text = ctx.getString(R.string.blocking_cancel)
         setBackgroundColor(Color.TRANSPARENT)
-        setTextColor(Color.parseColor("#49454F"))
+        setTextColor(disabledText) // 初始锁定态；render() 按 state 切换
     }
     private val openBtn = Button(ctx).apply {
         text = ctx.getString(R.string.blocking_open)
-        backgroundTintList = ColorStateList.valueOf(Color.parseColor("#6750A4"))
-        setTextColor(Color.WHITE)
+        backgroundTintList = ColorStateList.valueOf(disabledContainer)
+        setTextColor(disabledText)
     }
 
     private val root: View = buildRoot()
@@ -108,7 +128,7 @@ class BlockingOverlay(
         }
 
         return FrameLayout(ctx).apply {
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(surfaceColor)
             addView(
                 column,
                 FrameLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
@@ -147,14 +167,18 @@ class BlockingOverlay(
         }
         waitText.text = if (unlocked) "" else ctx.getString(R.string.blocking_wait)
 
-        // 按钮置灰且禁用状态：倒计时期间视觉上置灰，功能上禁用
+        // 倒计时期间功能禁用；颜色按 M3 规范区分启用/禁用态（替代原先 alpha 写法）
         cancelBtn.isEnabled = unlocked
         openBtn.isEnabled = unlocked
-
-        // 视觉置灰处理：使用 alpha 值来模拟置灰效果
-        val buttonAlpha = if (unlocked) 1.0f else 0.5f
-        cancelBtn.alpha = buttonAlpha
-        openBtn.alpha = buttonAlpha
+        if (unlocked) {
+            openBtn.backgroundTintList = ColorStateList.valueOf(primaryColor)
+            openBtn.setTextColor(onPrimaryColor)
+            cancelBtn.setTextColor(primaryColor)
+        } else {
+            openBtn.backgroundTintList = ColorStateList.valueOf(disabledContainer)
+            openBtn.setTextColor(disabledText)
+            cancelBtn.setTextColor(disabledText)
+        }
 
         if (state is BlockingViewModel.UiState.Finished) finish(state.outcome)
     }

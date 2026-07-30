@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色启动窗背景，覆盖 values/colors.xml 的 brand_background -->
+    <color name="brand_background">#0E1A14</color>
+</resources>

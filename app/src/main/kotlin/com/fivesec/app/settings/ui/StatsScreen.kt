@@ -20,11 +20,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fivesec.app.R
 import com.fivesec.app.settings.viewmodels.StatsViewModel
+import com.fivesec.app.ui.theme.Spacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,14 +39,14 @@ fun StatsScreen(onBack: () -> Unit, viewModel: StatsViewModel = hiltViewModel())
     }) { padding ->
         val data = ui
         if (data.total == 0 && data.streak == 0) {
-            Column(Modifier.padding(padding).padding(24.dp)) {
+            Column(Modifier.padding(padding).padding(Spacing.xl)) {
                 Text(stringResource(R.string.stats_empty), style = MaterialTheme.typography.bodyMedium)
             }
             return@Scaffold
         }
-        Column(Modifier.padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(padding).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             StatCard(stringResource(R.string.stats_today_intercepted), data.total.toString())
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 StatCard(stringResource(R.string.stats_today_canceled), data.canceled.toString(), Modifier.weight(1f))
                 StatCard(stringResource(R.string.stats_today_opened), data.opened.toString(), Modifier.weight(1f))
             }
@@ -58,7 +58,7 @@ fun StatsScreen(onBack: () -> Unit, viewModel: StatsViewModel = hiltViewModel())
 @Composable
 private fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
     Card(modifier = modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.padding(Spacing.lg), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(value, style = MaterialTheme.typography.headlineMedium)
             Text(label, style = MaterialTheme.typography.bodyMedium)
         }

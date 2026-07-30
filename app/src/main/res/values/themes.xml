@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.FiveSec" parent="android:Theme.Material.Light.NoActionBar" />
-
-    <style name="Theme.FiveSec.Blocking" parent="Theme.FiveSec">
-        <item name="android:windowBackground">@android:color/white</item>
-        <item name="android:windowNoTitle">true</item>
+    <style name="Theme.FiveSec" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- 启动窗背景对齐 Compose 主题 background，避免启动闪屏；深色由 values-night/colors.xml 覆盖 -->
+        <item name="android:windowBackground">@color/brand_background</item>
     </style>
 </resources>

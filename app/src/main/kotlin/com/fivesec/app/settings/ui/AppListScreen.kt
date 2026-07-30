@@ -11,9 +11,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,11 +31,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fivesec.app.R
 import com.fivesec.app.settings.viewmodels.AppListViewModel
+import com.fivesec.app.ui.theme.Spacing
 import com.fivesec.app.util.SystemTimeProvider
 import com.fivesec.app.util.TimeProvider
 
@@ -69,7 +70,7 @@ fun AppListScreen(
         )
     }) { padding ->
         if (apps.isEmpty()) {
-            Column(Modifier.padding(padding).padding(24.dp)) {
+            Column(Modifier.padding(padding).padding(Spacing.xl)) {
                 Text(stringResource(R.string.app_list_empty), style = MaterialTheme.typography.bodyMedium)
             }
         } else {
@@ -81,7 +82,7 @@ fun AppListScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { expandedApp = if (isExpanded) null else app.packageName }
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
@@ -90,7 +91,7 @@ fun AppListScreen(
                                     Icon(
                                         Icons.Default.ArrowDropDown,
                                         contentDescription = "展开",
-                                        modifier = Modifier.padding(start = 4.dp)
+                                        modifier = Modifier.padding(start = Spacing.xs)
                                     )
                                 }
                                 if (app.isDefault) {
@@ -102,12 +103,12 @@ fun AppListScreen(
                                 onCheckedChange = { viewModel.setEnabled(app.packageName, it) },
                             )
                             IconButton(onClick = { viewModel.remove(app.packageName) }) {
-                                Text("✕")
+                                Icon(Icons.Default.Close, contentDescription = null)
                             }
                         }
                         if (isExpanded) {
-                            Divider(modifier = Modifier.padding(horizontal = 16.dp))
-                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = Spacing.lg))
+                            Column(modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.xs)) {
                                 Text(
                                     stringResource(R.string.app_list_package_name, app.packageName),
                                     style = MaterialTheme.typography.bodySmall,

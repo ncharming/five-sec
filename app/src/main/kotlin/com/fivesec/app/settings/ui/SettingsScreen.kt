@@ -22,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -30,6 +29,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fivesec.app.R
 import com.fivesec.app.settings.viewmodels.SettingsViewModel
+import com.fivesec.app.ui.theme.Spacing
 import com.fivesec.app.util.AccessibilityPermissionHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,7 +58,7 @@ fun SettingsScreen(
     }
 
     Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.settings_title)) }) }) { padding ->
-        Column(Modifier.padding(padding).padding(16.dp).fillMaxWidth()) {
+        Column(Modifier.padding(padding).padding(Spacing.lg).fillMaxWidth()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -67,7 +67,7 @@ fun SettingsScreen(
                 Switch(checked = enabled, onCheckedChange = viewModel::setGlobalEnabled)
             }
 
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            HorizontalDivider(Modifier.padding(vertical = Spacing.md))
 
             TextButton(
                 onClick = { if (!serviceEnabled) AccessibilityPermissionHelper.openAccessibilitySettings(context) },
@@ -81,7 +81,7 @@ fun SettingsScreen(
                 )
             }
 
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            HorizontalDivider(Modifier.padding(vertical = Spacing.md))
 
             TextButton(onClick = onOpenAppList, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.settings_app_list), style = MaterialTheme.typography.bodyLarge)
