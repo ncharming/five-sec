@@ -18,11 +18,12 @@ interface InterceptionEventDao {
     @Query("SELECT COUNT(*) FROM interception_events WHERE timestamp >= :startOfDay AND outcome = :outcome")
     fun observeTodayCountByOutcome(startOfDay: Long, outcome: InterceptionOutcome): Flow<Int>
 
-    /** 当日按应用聚合：每个包名的拦截总数(total)与打开数(opened, outcome=OPENED)。 */
+    /** 当日按应用聚合：每个包名的拦截总数(total)、打开数(opened)与取消数(canceled)。 */
     @Query(
         "SELECT packageName, " +
             "COUNT(*) AS total, " +
-            "SUM(CASE WHEN outcome = 'OPENED' THEN 1 ELSE 0 END) AS opened " +
+            "SUM(CASE WHEN outcome = 'OPENED' THEN 1 ELSE 0 END) AS opened, " +
+            "SUM(CASE WHEN outcome = 'CANCELED' THEN 1 ELSE 0 END) AS canceled " +
             "FROM interception_events WHERE timestamp >= :startOfDay GROUP BY packageName"
     )
     fun observeTodayCountsByPackage(startOfDay: Long): Flow<List<PackageTodayCount>>
@@ -36,4 +37,4 @@ interface InterceptionEventDao {
 }
 
 /** 当日按应用聚合的查询结果投影（非持久化实体）。 */
-data class PackageTodayCount(val packageName: String, val total: Int, val opened: Int)
+data class PackageTodayCount(val packageName: String, val total: Int, val opened: Int, val canceled: Int)
