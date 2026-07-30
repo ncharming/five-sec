@@ -29,6 +29,7 @@ data class AppTodayStatsUi(
     val brandColorArgb: Int,
     val todayInterceptions: Int,
     val todayOpened: Int,
+    val todayCanceled: Int,
 )
 
 @HiltViewModel
@@ -88,6 +89,7 @@ class StatsViewModel @Inject constructor(
                     brandColorArgb = colors[t.packageName] ?: FALLBACK_BRAND_ARGB,
                     todayInterceptions = c?.total ?: 0,
                     todayOpened = c?.opened ?: 0,
+                    todayCanceled = c?.canceled ?: 0,
                 )
             }
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
