@@ -104,7 +104,7 @@ class InterceptionEventDaoTest {
         dao.insert(InterceptionEvent(packageName = pkg, timestamp = millis("2026-08-20"), exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
         dao.insert(InterceptionEvent(packageName = pkg, timestamp = now - 3_600_000, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
 
-        fun totalSince(start: Long) = dao.observeCountsByPackageSince(start).first().single().total
+        suspend fun totalSince(start: Long): Int = dao.observeCountsByPackageSince(start).first().single().total
 
         assertEquals(1, totalSince(DateUtil.startOfDayMillis(now, zone)))   // 日：仅今天
         assertEquals(1, totalSince(DateUtil.startOfWeekMillis(now, zone)))  // 周：本周一 09-07 起
