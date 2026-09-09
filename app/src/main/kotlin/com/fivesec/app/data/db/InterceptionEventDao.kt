@@ -18,15 +18,16 @@ interface InterceptionEventDao {
     @Query("SELECT COUNT(*) FROM interception_events WHERE timestamp >= :startOfDay AND outcome = :outcome")
     fun observeTodayCountByOutcome(startOfDay: Long, outcome: InterceptionOutcome): Flow<Int>
 
-    /** 自给定周期起点按应用聚合：每个包名的拦截总数(total)、打开数(opened)与取消数(canceled)。 */
+    /** 在 [rangeStart, rangeEnd) 内按应用聚合：每个包名的拦截总数(total)、打开数(opened)与取消数(canceled)。 */
     @Query(
         "SELECT packageName, " +
             "COUNT(*) AS total, " +
             "SUM(CASE WHEN outcome = 'OPENED' THEN 1 ELSE 0 END) AS opened, " +
             "SUM(CASE WHEN outcome = 'CANCELED' THEN 1 ELSE 0 END) AS canceled " +
-            "FROM interception_events WHERE timestamp >= :rangeStart GROUP BY packageName"
+            "FROM interception_events " +
+            "WHERE timestamp >= :rangeStart AND timestamp < :rangeEnd GROUP BY packageName"
     )
-    fun observeCountsByPackageSince(rangeStart: Long): Flow<List<PackageRangeCount>>
+    fun observeCountsByPackageBetween(rangeStart: Long, rangeEnd: Long): Flow<List<PackageRangeCount>>
 
     /** 已完成锻炼的日期（按本地日，YYYY-MM-DD），按日期降序。用于计算连击。 */
     @Query(
@@ -34,7 +35,11 @@ interface InterceptionEventDao {
             "FROM interception_events WHERE exerciseCompleted = 1 ORDER BY d DESC"
     )
     fun observeActiveDays(): Flow<List<String>>
+
+    /** 最早拦截事件时间；无事件时为 null。用于生成年份筛选的可选范围。 */
+    @Query("SELECT MIN(timestamp) FROM interception_events")
+    fun observeEarliestTimestamp(): Flow<Long?>
 }
 
-/** 自周期起点按应用聚合的查询结果投影（非持久化实体）。 */
+/** 周期范围内按应用聚合的查询结果投影（非持久化实体）。 */
 data class PackageRangeCount(val packageName: String, val total: Int, val opened: Int, val canceled: Int)

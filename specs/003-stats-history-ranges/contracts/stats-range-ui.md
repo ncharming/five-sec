@@ -17,6 +17,8 @@ data class AppRangeStatsUi(
 class StatsViewModel {
     val selectedRange: StateFlow<StatsRange>        // 默认 DAY
     fun selectRange(range: StatsRange)              // 档位切换入口
+    val availablePeriods: StateFlow<List<StatsPeriod>> // 当前档位筛选项
+    val selectedPeriod: StateFlow<StatsPeriod>      // 默认最新周期
     val appRangeStats: StateFlow<List<AppRangeStatsUi>>  // 当前档位的清单应用聚合
     val ui: StateFlow<StatsUi>                      // 顶部四卡，契约不变
 }
@@ -32,13 +34,15 @@ class StatsViewModel {
 ```text
 统计页
 ├── 顶部：今日拦截 / 今日取消+今日打开 / 连续完成天数        （不变）
-└── 各应用历史数据（标题）
-    ├── [日][周][月][年]  SingleChoiceSegmentedButtonRow   （新增，默认选中"日"）
-    └── AppRangeStatCard × N                                  （沿用品牌色卡片样式）
+    └── 各应用历史数据（标题）
+        ├── [日][周][月][年]  SingleChoiceSegmentedButtonRow   （新增，默认选中"日"）
+        ├── 周期筛选 FilterChip 横向滚动行（日档隐藏）
+        └── AppRangeStatCard × N                                  （沿用品牌色卡片样式）
 ```
 
 **交互约定**：
 - 点击档位 → `selectRange(range)` → `appRangeStats` 即时更新（FR-009）。
+- 点击周期 → `selectPeriod(period)` → 只重订阅 `[start, end)`；日档不展示筛选。
 - 卡片指标标签统一为通用文案「拦截 / 打开 / 取消」（FR-007）；数值为当前档位周期计数。
 - 档位切换不滚动页面、不影响顶部区域。
 

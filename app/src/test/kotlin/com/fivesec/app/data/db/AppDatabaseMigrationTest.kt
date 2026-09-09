@@ -75,7 +75,7 @@ class AppDatabaseMigrationTest {
             .allowMainThreadQueries()
             .build()
 
-        val rows = db.interceptionEventDao().observeCountsByPackageSince(rangeStart = 0).first()
+        val rows = db.interceptionEventDao().observeCountsByPackageBetween(rangeStart = 0, rangeEnd = Long.MAX_VALUE).first()
         assertEquals(2, rows.size)
         val xhs = rows.first { it.packageName == "com.xingin.xhs" }
         assertEquals(1, xhs.total)

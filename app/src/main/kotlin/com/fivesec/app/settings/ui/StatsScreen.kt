@@ -7,11 +7,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +33,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fivesec.app.R
 import com.fivesec.app.settings.viewmodels.AppRangeStatsUi
+import com.fivesec.app.settings.viewmodels.StatsPeriod
 import com.fivesec.app.settings.viewmodels.StatsRange
 import com.fivesec.app.settings.viewmodels.StatsViewModel
 import com.fivesec.app.ui.theme.Spacing
@@ -42,6 +45,8 @@ fun StatsScreen(onBack: () -> Unit, viewModel: StatsViewModel = hiltViewModel())
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val appStats by viewModel.appRangeStats.collectAsStateWithLifecycle()
     val selectedRange by viewModel.selectedRange.collectAsStateWithLifecycle()
+    val availablePeriods by viewModel.availablePeriods.collectAsStateWithLifecycle()
+    val selectedPeriod by viewModel.selectedPeriod.collectAsStateWithLifecycle()
 
     Scaffold(topBar = {
         TopAppBar(
@@ -86,6 +91,20 @@ fun StatsScreen(onBack: () -> Unit, viewModel: StatsViewModel = hiltViewModel())
                         }
                     }
                 }
+                if (selectedRange != StatsRange.DAY) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    ) {
+                        availablePeriods.forEach { period ->
+                            FilterChip(
+                                selected = period == selectedPeriod,
+                                onClick = { viewModel.selectPeriod(period) },
+                                label = { Text(periodLabel(period)) },
+                            )
+                        }
+                    }
+                }
                 appStats.forEach { s -> AppRangeStatCard(s) }
             }
         }
@@ -107,6 +126,16 @@ private fun rangeLabelRes(range: StatsRange): Int = when (range) {
     StatsRange.WEEK -> R.string.stats_range_week
     StatsRange.MONTH -> R.string.stats_range_month
     StatsRange.YEAR -> R.string.stats_range_year
+}
+
+@Composable
+private fun periodLabel(period: StatsPeriod): String = when (period.range) {
+    StatsRange.WEEK -> stringResource(
+        if (period.isCurrent) R.string.stats_period_current_week else R.string.stats_period_last_week,
+    )
+    StatsRange.MONTH -> stringResource(R.string.stats_period_month, period.month ?: 0)
+    StatsRange.YEAR -> stringResource(R.string.stats_period_year, period.year ?: 0)
+    StatsRange.DAY -> stringResource(R.string.stats_range_day)
 }
 
 @Composable

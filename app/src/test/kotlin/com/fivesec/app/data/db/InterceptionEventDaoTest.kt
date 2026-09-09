@@ -51,7 +51,7 @@ class InterceptionEventDaoTest {
         dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 30, exerciseCompleted = true, outcome = InterceptionOutcome.CANCELED))
         dao.insert(InterceptionEvent(packageName = "com.ss.android.ugc.aweme", timestamp = 40, exerciseCompleted = true, outcome = InterceptionOutcome.CANCELED))
 
-        val rows = dao.observeCountsByPackageSince(rangeStart = 0).first()
+        val rows = dao.observeCountsByPackageBetween(rangeStart = 0, rangeEnd = Long.MAX_VALUE).first()
 
         val xhs = rows.first { it.packageName == "com.xingin.xhs" }
         assertEquals(3, xhs.total)
@@ -69,7 +69,7 @@ class InterceptionEventDaoTest {
         dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 5, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
         dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 15, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
 
-        val rows = dao.observeCountsByPackageSince(rangeStart = 10).first()
+        val rows = dao.observeCountsByPackageBetween(rangeStart = 10, rangeEnd = Long.MAX_VALUE).first()
 
         val xhs = rows.first { it.packageName == "com.xingin.xhs" }
         assertEquals(1, xhs.total)
@@ -82,7 +82,7 @@ class InterceptionEventDaoTest {
         dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 10, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
         dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 20, exerciseCompleted = false, outcome = InterceptionOutcome.INTERRUPTED))
 
-        val rows = dao.observeCountsByPackageSince(rangeStart = 0).first()
+        val rows = dao.observeCountsByPackageBetween(rangeStart = 0, rangeEnd = Long.MAX_VALUE).first()
 
         val xhs = rows.single()
         assertEquals(2, xhs.total)
@@ -104,12 +104,13 @@ class InterceptionEventDaoTest {
         dao.insert(InterceptionEvent(packageName = pkg, timestamp = millis("2026-08-20"), exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
         dao.insert(InterceptionEvent(packageName = pkg, timestamp = now - 3_600_000, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
 
-        suspend fun totalSince(start: Long): Int = dao.observeCountsByPackageSince(start).first().single().total
+        suspend fun totalBetween(start: Long, end: Long): Int =
+            dao.observeCountsByPackageBetween(start, end).first().single().total
 
-        assertEquals(1, totalSince(DateUtil.startOfDayMillis(now, zone)))   // 日：仅今天
-        assertEquals(1, totalSince(DateUtil.startOfWeekMillis(now, zone)))  // 周：本周一 09-07 起
-        assertEquals(1, totalSince(DateUtil.startOfMonthMillis(now, zone))) // 月：09-01 起
-        assertEquals(3, totalSince(DateUtil.startOfYearMillis(now, zone)))  // 年：2026-01-01 起（含年初与上月）
+        assertEquals(1, totalBetween(DateUtil.startOfDayMillis(now, zone), millis("2026-09-10", "00:00")))   // 日：仅今天
+        assertEquals(1, totalBetween(DateUtil.startOfWeekMillis(now, zone), millis("2026-09-14", "00:00")))  // 周：本周一 09-07 起
+        assertEquals(1, totalBetween(DateUtil.startOfMonthMillis(now, zone), millis("2026-10-01", "00:00"))) // 月：09-01 起
+        assertEquals(3, totalBetween(DateUtil.startOfYearMillis(now, zone), millis("2027-01-01", "00:00")))  // 年：2026-01-01 起
     }
 
     @Test
@@ -117,11 +118,21 @@ class InterceptionEventDaoTest {
         dao.insert(InterceptionEvent(packageName = "tv.danmaku.bili", timestamp = 1_000, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
         dao.insert(InterceptionEvent(packageName = "tv.danmaku.bili", timestamp = 2_000, exerciseCompleted = true, outcome = InterceptionOutcome.CANCELED))
 
-        val rows = dao.observeCountsByPackageSince(rangeStart = 1_500).first()
+        val rows = dao.observeCountsByPackageBetween(rangeStart = 1_500, rangeEnd = Long.MAX_VALUE).first()
 
         val bili = rows.single()
         assertEquals(1, bili.total) // 首条早于起点不计，次条计入：验证闭区间起点语义
         assertEquals(0, bili.opened)
         assertEquals(1, bili.canceled)
+    }
+
+    @Test
+    fun `周期排他上界之后的事件不计入聚合`() = runTest {
+        dao.insert(InterceptionEvent(packageName = "tv.danmaku.bili", timestamp = 1_000, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
+        dao.insert(InterceptionEvent(packageName = "tv.danmaku.bili", timestamp = 2_000, exerciseCompleted = true, outcome = InterceptionOutcome.CANCELED))
+
+        val rows = dao.observeCountsByPackageBetween(rangeStart = 1_000, rangeEnd = 2_000).first()
+
+        assertEquals(1, rows.single().total)
     }
 }

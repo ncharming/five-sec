@@ -10,6 +10,7 @@ import com.fivesec.app.util.FALLBACK_BRAND_ARGB
 import com.fivesec.app.util.TimeProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import java.time.ZoneId
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -40,6 +41,8 @@ class StatsViewModel @Inject constructor(
     private val timeProvider: TimeProvider,
 ) : ViewModel() {
 
+    private val now = timeProvider.now()
+    private val zone = ZoneId.systemDefault()
     private val startOfDay = DateUtil.startOfDayMillis(timeProvider.now())
     private val today = DateUtil.todayString(timeProvider.now())
 
@@ -77,21 +80,42 @@ class StatsViewModel @Inject constructor(
     private val _selectedRange = MutableStateFlow(StatsRange.DAY)
     val selectedRange: StateFlow<StatsRange> = _selectedRange.asStateFlow()
 
+    /** 当前时间档位下选中的自然周期，默认最新周期。 */
+    private val _selectedPeriod = MutableStateFlow(StatsRange.DAY.currentPeriod(now, zone))
+    val selectedPeriod: StateFlow<StatsPeriod> = _selectedPeriod.asStateFlow()
+
+    /** 筛选行可选项：周仅本周/上周，月至当年 1 月，年至最早事件年份。 */
+    val availablePeriods: StateFlow<List<StatsPeriod>> =
+        _selectedRange
+            .combine(interceptionRepository.observeEarliestTimestamp()) { range, earliest ->
+                range.availablePeriods(now, zone, earliest)
+            }
+            .stateIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                StatsRange.DAY.availablePeriods(now, zone),
+            )
+
     fun selectRange(range: StatsRange) {
-        if (range == _selectedRange.value) return
         _selectedRange.value = range
+        _selectedPeriod.value = range.currentPeriod(now, zone)
     }
 
-    /** 每个目标应用在所选档位周期内的统计（拦截/打开/取消）+ 品牌色，供统计页渲染卡片。
-     *  档位切换时以当前时间重算周期起点并重新订阅查询。 */
+    fun selectPeriod(period: StatsPeriod) {
+        if (period.range != _selectedRange.value) return
+        if (period !in availablePeriods.value) return
+        _selectedPeriod.value = period
+    }
+
+    /** 每个目标应用在所选自然周期内的统计（拦截/打开/取消）+ 品牌色，供统计页渲染卡片。
+     *  周期切换时重新订阅查询；页面停留跨周期不自动刷新（沿用现状）。 */
     @OptIn(ExperimentalCoroutinesApi::class)
     val appRangeStats: StateFlow<List<AppRangeStatsUi>> =
-        selectedRange
-            .flatMapLatest { range ->
-                val rangeStart = range.startMillis(timeProvider.now())
+        selectedPeriod
+            .flatMapLatest { period ->
                 combine(
                     targetAppRepository.observeAll(),
-                    interceptionRepository.observeCountsByPackageSince(rangeStart),
+                    interceptionRepository.observeCountsByPackageBetween(period.startMillis, period.endMillis),
                     brandColors,
                 ) { targets, counts, colors ->
                     val byPkg = counts.associateBy { it.packageName }

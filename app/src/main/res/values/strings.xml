@@ -59,6 +59,10 @@
     <string name="stats_range_week">周</string>
     <string name="stats_range_month">月</string>
     <string name="stats_range_year">年</string>
+    <string name="stats_period_current_week">本周</string>
+    <string name="stats_period_last_week">上周</string>
+    <string name="stats_period_month">%1$d月</string>
+    <string name="stats_period_year">%1$d年</string>
     <string name="stats_metric_intercepted">拦截</string>
     <string name="stats_metric_opened">打开</string>
     <string name="stats_metric_canceled">取消</string>

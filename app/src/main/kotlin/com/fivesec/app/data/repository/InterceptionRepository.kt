@@ -31,9 +31,12 @@ class InterceptionRepository @Inject constructor(
 
     fun observeActiveDays(): Flow<List<String>> = eventDao.observeActiveDays()
 
-    /** 自周期起点按应用聚合的拦截/打开/取消计数（供应用级历史统计卡片使用）。 */
-    fun observeCountsByPackageSince(rangeStart: Long): Flow<List<PackageRangeCount>> =
-        eventDao.observeCountsByPackageSince(rangeStart)
+    /** 周期内按应用聚合的拦截/打开/取消计数（供应用级历史统计卡片使用）。 */
+    fun observeCountsByPackageBetween(rangeStart: Long, rangeEnd: Long): Flow<List<PackageRangeCount>> =
+        eventDao.observeCountsByPackageBetween(rangeStart, rangeEnd)
+
+    /** 最早拦截事件时间，用于推算年份筛选下界。 */
+    fun observeEarliestTimestamp(): Flow<Long?> = eventDao.observeEarliestTimestamp()
 
     data class DayStats(val total: Int, val canceled: Int, val opened: Int)
 }

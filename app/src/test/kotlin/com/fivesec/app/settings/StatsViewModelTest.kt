@@ -1,19 +1,12 @@
 package com.fivesec.app.settings
 
-import com.fivesec.app.settings.viewmodels.StatsRange
-import com.fivesec.app.settings.viewmodels.startMillis
 import com.fivesec.app.util.BLACK_ARGB
 import com.fivesec.app.util.DateUtil
 import com.fivesec.app.util.FALLBACK_BRAND_ARGB
 import com.fivesec.app.util.WHITE_ARGB
 import com.fivesec.app.util.onColorForBackground
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.time.LocalDate
-import java.time.LocalTime
-import java.time.ZoneId
-import java.time.ZonedDateTime
 
 /** 测试统计的核心纯逻辑：连击计算与日期工具。 */
 class StatsViewModelTest {
@@ -64,27 +57,4 @@ class StatsViewModelTest {
         assertEquals(0xFF00A86B.toInt(), FALLBACK_BRAND_ARGB)
     }
 
-    @Test
-    fun `档位映射到对应周期起点`() {
-        val zone = ZoneId.of("Asia/Shanghai")
-        val now = ZonedDateTime.of(LocalDate.parse("2026-09-09"), LocalTime.parse("12:00"), zone).toInstant().toEpochMilli()
-
-        assertEquals(DateUtil.startOfDayMillis(now, zone), StatsRange.DAY.startMillis(now, zone))
-        assertEquals(DateUtil.startOfWeekMillis(now, zone), StatsRange.WEEK.startMillis(now, zone))
-        assertEquals(DateUtil.startOfMonthMillis(now, zone), StatsRange.MONTH.startMillis(now, zone))
-        assertEquals(DateUtil.startOfYearMillis(now, zone), StatsRange.YEAR.startMillis(now, zone))
-    }
-
-    @Test
-    fun `档位周期起点单调递增收敛到日档`() {
-        val zone = ZoneId.of("Asia/Shanghai")
-        val now = ZonedDateTime.of(LocalDate.parse("2026-09-09"), LocalTime.parse("12:00"), zone).toInstant().toEpochMilli()
-
-        val day = StatsRange.DAY.startMillis(now, zone)
-        val week = StatsRange.WEEK.startMillis(now, zone)
-        val month = StatsRange.MONTH.startMillis(now, zone)
-        val year = StatsRange.YEAR.startMillis(now, zone)
-
-        assertTrue(day >= week && week >= month && month >= year)
-    }
 }
