@@ -92,7 +92,7 @@
 
 - [x] T021 [P] 更新 `README.md`：统计模块说明补"各应用历史数据（日/周/月/年）"与数据留存口径（卸载前不清除）
 - [ ] T022 按 `specs/003-stats-history-ranges/quickstart.md` 场景 A~E 完成端到端手测并记录结果
-- [ ] T023 提交全部改动到 `003-stats-history-ranges` 分支并推送；CI（PR 或 dispatch）构建+单测通过后合并 master
+- [x] T023 提交全部改动到 `003-stats-history-ranges` 分支并推送；CI（PR 或 dispatch）构建+单测通过后合并 master
 
 ---
 
