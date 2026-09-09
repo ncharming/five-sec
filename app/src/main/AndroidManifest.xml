@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission"
         xmlns:tools="http://schemas.android.com/tools" />
 
+    <!-- 经 adb 一次性授予后，可在应用内一键开启/自动恢复无障碍服务（signature 级，安装时不会自动授予） -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions"
+        xmlns:tools="http://schemas.android.com/tools" />
+
     <application
         android:name=".FiveSecApp"
         android:allowBackup="true"
