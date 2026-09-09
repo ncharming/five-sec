@@ -16,6 +16,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -27,7 +30,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fivesec.app.R
-import com.fivesec.app.settings.viewmodels.AppTodayStatsUi
+import com.fivesec.app.settings.viewmodels.AppRangeStatsUi
+import com.fivesec.app.settings.viewmodels.StatsRange
 import com.fivesec.app.settings.viewmodels.StatsViewModel
 import com.fivesec.app.ui.theme.Spacing
 import com.fivesec.app.util.onColorForBackground
@@ -36,7 +40,8 @@ import com.fivesec.app.util.onColorForBackground
 @Composable
 fun StatsScreen(onBack: () -> Unit, viewModel: StatsViewModel = hiltViewModel()) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
-    val appStats by viewModel.appTodayStats.collectAsStateWithLifecycle()
+    val appStats by viewModel.appRangeStats.collectAsStateWithLifecycle()
+    val selectedRange by viewModel.selectedRange.collectAsStateWithLifecycle()
 
     Scaffold(topBar = {
         TopAppBar(
@@ -63,11 +68,25 @@ fun StatsScreen(onBack: () -> Unit, viewModel: StatsViewModel = hiltViewModel())
             StatCard(stringResource(R.string.stats_streak), "${data.streak} 天")
             if (appStats.isNotEmpty()) {
                 Text(
-                    stringResource(R.string.stats_app_today_section),
+                    stringResource(R.string.stats_app_history_section),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(top = Spacing.sm),
                 )
-                appStats.forEach { s -> AppTodayStatCard(s) }
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    StatsRange.entries.forEachIndexed { index, range ->
+                        SegmentedButton(
+                            selected = range == selectedRange,
+                            onClick = { viewModel.selectRange(range) },
+                            shape = SegmentedButtonDefaults.itemShape(
+                                index = index,
+                                count = StatsRange.entries.size,
+                            ),
+                        ) {
+                            Text(stringResource(rangeLabelRes(range)))
+                        }
+                    }
+                }
+                appStats.forEach { s -> AppRangeStatCard(s) }
             }
         }
     }
@@ -83,8 +102,15 @@ private fun StatCard(label: String, value: String, modifier: Modifier = Modifier
     }
 }
 
+private fun rangeLabelRes(range: StatsRange): Int = when (range) {
+    StatsRange.DAY -> R.string.stats_range_day
+    StatsRange.WEEK -> R.string.stats_range_week
+    StatsRange.MONTH -> R.string.stats_range_month
+    StatsRange.YEAR -> R.string.stats_range_year
+}
+
 @Composable
-private fun AppTodayStatCard(ui: AppTodayStatsUi, modifier: Modifier = Modifier) {
+private fun AppRangeStatCard(ui: AppRangeStatsUi, modifier: Modifier = Modifier) {
     val bg = Color(ui.brandColorArgb)
     val onColor = Color(onColorForBackground(ui.brandColorArgb))
     Card(
@@ -97,9 +123,9 @@ private fun AppTodayStatCard(ui: AppTodayStatsUi, modifier: Modifier = Modifier)
                 Modifier.padding(top = Spacing.sm).fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
-                AppMetric(stringResource(R.string.stats_today_intercepted), ui.todayInterceptions.toString(), onColor, Modifier.weight(1f))
-                AppMetric(stringResource(R.string.stats_today_canceled), ui.todayCanceled.toString(), onColor, Modifier.weight(1f))
-                AppMetric(stringResource(R.string.stats_today_opened), ui.todayOpened.toString(), onColor, Modifier.weight(1f))
+                AppMetric(stringResource(R.string.stats_metric_intercepted), ui.interceptions.toString(), onColor, Modifier.weight(1f))
+                AppMetric(stringResource(R.string.stats_metric_canceled), ui.canceled.toString(), onColor, Modifier.weight(1f))
+                AppMetric(stringResource(R.string.stats_metric_opened), ui.opened.toString(), onColor, Modifier.weight(1f))
             }
         }
     }

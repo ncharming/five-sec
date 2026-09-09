@@ -4,32 +4,32 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fivesec.app.data.repository.InterceptionRepository
 import com.fivesec.app.data.repository.TargetAppRepository
-import com.fivesec.app.domain.model.AppStatistics
 import com.fivesec.app.util.AppBrandColorExtractor
 import com.fivesec.app.util.DateUtil
 import com.fivesec.app.util.FALLBACK_BRAND_ARGB
 import com.fivesec.app.util.TimeProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class StatsUi(val total: Int, val canceled: Int, val opened: Int, val streak: Int)
-data class AppStatsUi(val packageName: String, val appName: String, val totalInterceptions: Long, val cancellationRate: Double, val completedExercises: Long)
 
-data class AppTodayStatsUi(
+data class AppRangeStatsUi(
     val packageName: String,
     val appName: String,
     val brandColorArgb: Int,
-    val todayInterceptions: Int,
-    val todayOpened: Int,
-    val todayCanceled: Int,
+    val interceptions: Int,
+    val opened: Int,
+    val canceled: Int,
 )
 
 @HiltViewModel
@@ -73,41 +73,41 @@ class StatsViewModel @Inject constructor(
         }
     }
 
-    /** 每个目标应用的今日统计（拦截/打开）+ 品牌色，供统计页渲染卡片。 */
-    val appTodayStats: StateFlow<List<AppTodayStatsUi>> =
-        combine(
-            targetAppRepository.observeAll(),
-            interceptionRepository.observeTodayCountsByPackage(startOfDay),
-            brandColors,
-        ) { targets, counts, colors ->
-            val byPkg = counts.associateBy { it.packageName }
-            targets.map { t ->
-                val c = byPkg[t.packageName]
-                AppTodayStatsUi(
-                    packageName = t.packageName,
-                    appName = t.appName,
-                    brandColorArgb = colors[t.packageName] ?: FALLBACK_BRAND_ARGB,
-                    todayInterceptions = c?.total ?: 0,
-                    todayOpened = c?.opened ?: 0,
-                    todayCanceled = c?.canceled ?: 0,
-                )
-            }
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    /** 当前时间档位（日/周/月/年），默认"日"。 */
+    private val _selectedRange = MutableStateFlow(StatsRange.DAY)
+    val selectedRange: StateFlow<StatsRange> = _selectedRange.asStateFlow()
 
-    // 应用级别统计（与目标应用列表结合使用）
-    fun observeAppStatistics(packageName: String, appName: String): Flow<AppStatsUi> =
-        interceptionRepository.observeAllAppStatistics().stateIn(viewModelScope, SharingStarted.Eagerly, AppStatsUi(packageName, appName, 0, 0.0, 0))
-            .combine(
-                // 这里可以添加实时更新逻辑
-                interceptionRepository.observeAllAppStatistics()
-            ) { baseStats, allStats ->
-                val appStats = allStats.find { it.packageName == packageName }
-                AppStatsUi(
-                    packageName = packageName,
-                    appName = appName,
-                    totalInterceptions = appStats?.totalInterceptions ?: 0,
-                    cancellationRate = appStats?.cancellationRate ?: 0.0,
-                    completedExercises = appStats?.completedExercises ?: 0
-                )
+    fun selectRange(range: StatsRange) {
+        if (range == _selectedRange.value) return
+        _selectedRange.value = range
+    }
+
+    /** 每个目标应用在所选档位周期内的统计（拦截/打开/取消）+ 品牌色，供统计页渲染卡片。
+     *  档位切换时以当前时间重算周期起点并重新订阅查询。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val appRangeStats: StateFlow<List<AppRangeStatsUi>> =
+        selectedRange
+            .flatMapLatest { range ->
+                val rangeStart = range.startMillis(timeProvider.now())
+                combine(
+                    targetAppRepository.observeAll(),
+                    interceptionRepository.observeCountsByPackageSince(rangeStart),
+                    brandColors,
+                ) { targets, counts, colors ->
+                    val byPkg = counts.associateBy { it.packageName }
+                    targets.map { t ->
+                        val c = byPkg[t.packageName]
+                        AppRangeStatsUi(
+                            packageName = t.packageName,
+                            appName = t.appName,
+                            brandColorArgb = colors[t.packageName] ?: FALLBACK_BRAND_ARGB,
+                            interceptions = c?.total ?: 0,
+                            opened = c?.opened ?: 0,
+                            canceled = c?.canceled ?: 0,
+                        )
+                    }
+                }
             }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
 }

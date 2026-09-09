@@ -49,3 +49,10 @@
 
 - A~E 全部场景观察结果与预期一致；
 - 单测/编译全绿（CI 触发于 push master 或手动 Run workflow）。
+
+## Notes（T013 数据留存审计记录，2026-09-09）
+
+- 检索 `DELETE FROM interception_events | eventDao.delete | deleteFromEvents` → **0 匹配**（事件表无删除路径）
+- 检索 `fallbackToDestructiveMigration | createFromAsset` → **0 匹配**（无破坏性迁移/资产库覆盖）
+- 事件表唯一写入点：`InterceptionRepository.record() → eventDao.insert(event)`（去冗余后已收窄为仅此一处）
+- v3 迁移 `MIGRATION_2_3` 仅 `DROP TABLE app_statistics`，不触碰 `interception_events`

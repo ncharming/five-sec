@@ -6,6 +6,11 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.fivesec.app.domain.model.InterceptionEvent
 import com.fivesec.app.domain.model.InterceptionOutcome
+import com.fivesec.app.util.DateUtil
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -39,14 +44,14 @@ class InterceptionEventDaoTest {
     }
 
     @Test
-    fun `按包名聚合今日拦截与打开数`() = runTest {
+    fun `按包名聚合周期内拦截与打开数`() = runTest {
         // 小红书：3 次（2 打开，1 取消）；抖音：1 次（0 打开）
         dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 10, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
         dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 20, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
         dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 30, exerciseCompleted = true, outcome = InterceptionOutcome.CANCELED))
         dao.insert(InterceptionEvent(packageName = "com.ss.android.ugc.aweme", timestamp = 40, exerciseCompleted = true, outcome = InterceptionOutcome.CANCELED))
 
-        val rows = dao.observeTodayCountsByPackage(startOfDay = 0).first()
+        val rows = dao.observeCountsByPackageSince(rangeStart = 0).first()
 
         val xhs = rows.first { it.packageName == "com.xingin.xhs" }
         assertEquals(3, xhs.total)
@@ -60,15 +65,63 @@ class InterceptionEventDaoTest {
     }
 
     @Test
-    fun `早于 startOfDay 的事件不计入今日`() = runTest {
+    fun `早于周期起点的事件不计入聚合`() = runTest {
         dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 5, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
         dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 15, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
 
-        val rows = dao.observeTodayCountsByPackage(startOfDay = 10).first()
+        val rows = dao.observeCountsByPackageSince(rangeStart = 10).first()
 
         val xhs = rows.first { it.packageName == "com.xingin.xhs" }
         assertEquals(1, xhs.total)
         assertEquals(1, xhs.opened)
         assertEquals(0, xhs.canceled)
+    }
+
+    @Test
+    fun `中断事件计入拦截总数但不计入打开与取消`() = runTest {
+        dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 10, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
+        dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 20, exerciseCompleted = false, outcome = InterceptionOutcome.INTERRUPTED))
+
+        val rows = dao.observeCountsByPackageSince(rangeStart = 0).first()
+
+        val xhs = rows.single()
+        assertEquals(2, xhs.total)
+        assertEquals(1, xhs.opened)
+        assertEquals(0, xhs.canceled)
+    }
+
+    @Test
+    fun `四档周期起点各自圈定事件范围且历史完整`() = runTest {
+        val zone = ZoneId.of("Asia/Shanghai")
+        fun millis(date: String, time: String = "12:00"): Long =
+            ZonedDateTime.of(LocalDate.parse(date), LocalTime.parse(time), zone).toInstant().toEpochMilli()
+
+        val now = millis("2026-09-09") // 周三
+        val pkg = "com.xingin.xhs"
+        // 去年（远早于年起点）+ 年初 + 上月（周起点之外）+ 今天
+        dao.insert(InterceptionEvent(packageName = pkg, timestamp = millis("2025-03-15"), exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
+        dao.insert(InterceptionEvent(packageName = pkg, timestamp = millis("2026-01-02"), exerciseCompleted = true, outcome = InterceptionOutcome.CANCELED))
+        dao.insert(InterceptionEvent(packageName = pkg, timestamp = millis("2026-08-20"), exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
+        dao.insert(InterceptionEvent(packageName = pkg, timestamp = now - 3_600_000, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
+
+        fun totalSince(start: Long) = dao.observeCountsByPackageSince(start).first().single().total
+
+        assertEquals(1, totalSince(DateUtil.startOfDayMillis(now, zone)))   // 日：仅今天
+        assertEquals(1, totalSince(DateUtil.startOfWeekMillis(now, zone)))  // 周：本周一 09-07 起
+        assertEquals(1, totalSince(DateUtil.startOfMonthMillis(now, zone))) // 月：09-01 起
+        assertEquals(3, totalSince(DateUtil.startOfYearMillis(now, zone)))  // 年：2026-01-01 起（含年初与上月）
+    }
+
+    @Test
+    fun `历史事件早于任何周期时年档仍完整计入`() = runTest {
+        dao.insert(InterceptionEvent(packageName = "tv.danmaku.bili", timestamp = 1_000, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
+        dao.insert(InterceptionEvent(packageName = "tv.danmaku.bili", timestamp = 2_000, exerciseCompleted = true, outcome = InterceptionOutcome.CANCELED))
+
+        val rows = dao.observeCountsByPackageSince(rangeStart = 1_500).first()
+
+        val bili = rows.single()
+        assertEquals(1, bili.total) // 首条早于起点不计，次条计入：验证闭区间起点语义
+        assertEquals(0, bili.opened)
+        assertEquals(1, bili.canceled)
     }
 }

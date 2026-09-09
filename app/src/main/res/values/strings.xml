@@ -54,6 +54,13 @@
     <string name="stats_today_canceled">今日取消</string>
     <string name="stats_today_opened">今日打开</string>
     <string name="stats_streak">连续完成天数</string>
+    <string name="stats_app_history_section">各应用历史数据</string>
+    <string name="stats_range_day">日</string>
+    <string name="stats_range_week">周</string>
+    <string name="stats_range_month">月</string>
+    <string name="stats_range_year">年</string>
+    <string name="stats_metric_intercepted">拦截</string>
+    <string name="stats_metric_opened">打开</string>
+    <string name="stats_metric_canceled">取消</string>
     <string name="stats_empty">暂无数据。被拦截后会在这里显示。</string>
-    <string name="stats_app_today_section">各应用今日数据</string>
 </resources>

@@ -1,6 +1,7 @@
 package com.fivesec.app.util
 
 import java.time.Instant
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -8,6 +9,24 @@ object DateUtil {
 
     fun startOfDayMillis(now: Long, zone: ZoneId = ZoneId.systemDefault()): Long =
         Instant.ofEpochMilli(now).atZone(zone).toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()
+
+    /** 本自然周起点（周一 00:00，ISO 周；周日输入返回当期周一）。 */
+    fun startOfWeekMillis(now: Long, zone: ZoneId = ZoneId.systemDefault()): Long =
+        Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+            .with(DayOfWeek.MONDAY)
+            .atStartOfDay(zone).toInstant().toEpochMilli()
+
+    /** 本自然月起点（1 号 00:00）。 */
+    fun startOfMonthMillis(now: Long, zone: ZoneId = ZoneId.systemDefault()): Long =
+        Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+            .withDayOfMonth(1)
+            .atStartOfDay(zone).toInstant().toEpochMilli()
+
+    /** 本自然年起点（1 月 1 日 00:00）。 */
+    fun startOfYearMillis(now: Long, zone: ZoneId = ZoneId.systemDefault()): Long =
+        Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+            .withDayOfYear(1)
+            .atStartOfDay(zone).toInstant().toEpochMilli()
 
     fun todayString(now: Long, zone: ZoneId = ZoneId.systemDefault()): String =
         Instant.ofEpochMilli(now).atZone(zone).toLocalDate().toString()

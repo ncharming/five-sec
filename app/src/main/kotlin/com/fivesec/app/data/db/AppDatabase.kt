@@ -6,21 +6,19 @@ import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.fivesec.app.domain.model.AppStatistics
 import com.fivesec.app.domain.model.InterceptionEvent
 import com.fivesec.app.domain.model.InterceptionOutcome
 import com.fivesec.app.domain.model.TargetApp
 
 @Database(
-    entities = [TargetApp::class, InterceptionEvent::class, AppStatistics::class],
-    version = 2, // 版本升级：添加 appName 字段和 AppStatistics 表
+    entities = [TargetApp::class, InterceptionEvent::class],
+    version = 3, // v3：删除冗余的 app_statistics 汇总表（统计统一改为事件流水实时聚合）
     exportSchema = false,
 )
 @TypeConverters(InterceptionOutcomeConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun targetAppDao(): TargetAppDao
     abstract fun interceptionEventDao(): InterceptionEventDao
-    abstract fun appStatisticsDao(): AppStatisticsDao
 }
 
 // 从版本1迁移到版本2：添加 appName 字段和 AppStatistics 表
@@ -47,6 +45,14 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
                 lastUpdated INTEGER NOT NULL DEFAULT 0
             )
         """)
+    }
+}
+
+// 从版本2迁移到版本3：删除冗余的按应用累计汇总表。
+// 统计改为事件流水实时聚合；interception_events 数据不受影响。
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("DROP TABLE IF EXISTS app_statistics")
     }
 }
 
