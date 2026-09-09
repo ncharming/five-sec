@@ -4,6 +4,8 @@ import android.Manifest
 import android.app.Application
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.pm.ApplicationInfo
 import android.content.pm.ResolveInfo
 import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
@@ -115,8 +117,17 @@ class AccessibilityPermissionHelperTest {
     @Test
     @Config(sdk = [31])
     fun `Android 12 有详情页时直达服务详情`() {
+        // Intent.resolveActivity 会读取 activityInfo.applicationInfo.packageName，
+        // 空构造的 ResolveInfo 会 NPE，必须填充完整（模拟真实解析到系统设置）
+        val detailsResolveInfo = ResolveInfo().apply {
+            activityInfo = ActivityInfo().apply {
+                packageName = "com.android.settings"
+                name = "com.android.settings.accessibility.AccessibilityDetailsSettings"
+                applicationInfo = ApplicationInfo().apply { packageName = "com.android.settings" }
+            }
+        }
         Shadows.shadowOf(context.packageManager)
-            .addResolveInfoForIntent(Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS"), ResolveInfo())
+            .addResolveInfoForIntent(Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS"), detailsResolveInfo)
 
         AccessibilityPermissionHelper.openAccessibilitySettings(context)
 
