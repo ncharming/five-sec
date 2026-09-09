@@ -16,6 +16,7 @@ import com.fivesec.app.settings.ui.OnboardingScreen
 import com.fivesec.app.settings.ui.SettingsScreen
 import com.fivesec.app.settings.ui.StatsScreen
 import com.fivesec.app.ui.theme.FiveSecTheme
+import com.fivesec.app.util.AccessibilityPermissionHelper
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -35,6 +36,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { FiveSecTheme { AppRoot(settingsDataStore) } }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 授权过 WRITE_SECURE_SETTINGS 后，打开应用即自动恢复被系统后台清理关闭的无障碍服务
+        AccessibilityPermissionHelper.autoEnableIfPermitted(this)
     }
 }
 

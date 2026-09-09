@@ -51,10 +51,12 @@ class InterceptionEventDaoTest {
         val xhs = rows.first { it.packageName == "com.xingin.xhs" }
         assertEquals(3, xhs.total)
         assertEquals(2, xhs.opened)
+        assertEquals(1, xhs.canceled)
 
         val dou = rows.first { it.packageName == "com.ss.android.ugc.aweme" }
         assertEquals(1, dou.total)
         assertEquals(0, dou.opened)
+        assertEquals(1, dou.canceled)
     }
 
     @Test
@@ -67,5 +69,6 @@ class InterceptionEventDaoTest {
         val xhs = rows.first { it.packageName == "com.xingin.xhs" }
         assertEquals(1, xhs.total)
         assertEquals(1, xhs.opened)
+        assertEquals(0, xhs.canceled)
     }
 }

@@ -70,7 +70,12 @@ fun SettingsScreen(
             HorizontalDivider(Modifier.padding(vertical = Spacing.md))
 
             TextButton(
-                onClick = { if (!serviceEnabled) AccessibilityPermissionHelper.openAccessibilitySettings(context) },
+                onClick = {
+                    if (serviceEnabled) return@TextButton
+                    // 已授权 WRITE_SECURE_SETTINGS 时直接一键开启，失败再跳系统设置
+                    serviceEnabled = AccessibilityPermissionHelper.enableService(context)
+                    if (!serviceEnabled) AccessibilityPermissionHelper.openAccessibilitySettings(context)
+                },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(

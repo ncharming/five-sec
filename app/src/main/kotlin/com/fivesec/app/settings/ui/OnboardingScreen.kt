@@ -75,8 +75,17 @@ fun OnboardingScreen(settingsDataStore: SettingsDataStore, onDone: () -> Unit) {
                     }
                 }) { Text(stringResource(R.string.onboarding_finish)) }
             } else {
-                OutlinedButton(onClick = { AccessibilityPermissionHelper.openAccessibilitySettings(context) }) {
-                    Text(stringResource(R.string.onboarding_enable_accessibility))
+                if (AccessibilityPermissionHelper.hasWriteSecureSettings(context)) {
+                    Button(onClick = {
+                        serviceEnabled = AccessibilityPermissionHelper.enableService(context)
+                        if (!serviceEnabled) {
+                            AccessibilityPermissionHelper.openAccessibilitySettings(context)
+                        }
+                    }) { Text(stringResource(R.string.onboarding_enable_accessibility)) }
+                } else {
+                    OutlinedButton(onClick = { AccessibilityPermissionHelper.openAccessibilitySettings(context) }) {
+                        Text(stringResource(R.string.onboarding_enable_accessibility))
+                    }
                 }
             }
         }

@@ -1,6 +1,8 @@
 package com.fivesec.app.settings.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -49,7 +51,10 @@ fun StatsScreen(onBack: () -> Unit, viewModel: StatsViewModel = hiltViewModel())
             }
             return@Scaffold
         }
-        Column(Modifier.padding(padding).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+        Column(
+            Modifier.padding(padding).padding(Spacing.lg).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+        ) {
             StatCard(stringResource(R.string.stats_today_intercepted), data.total.toString())
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 StatCard(stringResource(R.string.stats_today_canceled), data.canceled.toString(), Modifier.weight(1f))
@@ -93,6 +98,7 @@ private fun AppTodayStatCard(ui: AppTodayStatsUi, modifier: Modifier = Modifier)
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
                 AppMetric(stringResource(R.string.stats_today_intercepted), ui.todayInterceptions.toString(), onColor, Modifier.weight(1f))
+                AppMetric(stringResource(R.string.stats_today_canceled), ui.todayCanceled.toString(), onColor, Modifier.weight(1f))
                 AppMetric(stringResource(R.string.stats_today_opened), ui.todayOpened.toString(), onColor, Modifier.weight(1f))
             }
         }
