@@ -72,9 +72,9 @@ class AppDatabaseMigrationTest {
         }
         helper.close()
 
-        // 以 Room v3 打开：触发 MIGRATION_2_3 并按 v3 schema 校验
+        // 以 Room v4 打开：v2 库依次触发 MIGRATION_2_3 与 MIGRATION_3_4（缺 3_4 会抛迁移缺失异常）
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .allowMainThreadQueries()
             .build()
 
