@@ -63,6 +63,7 @@
 
 ## Notes
 
-- 实施状态（2026-09-12）：T001~T016 代码与自动化测试已全部完成；本机无 JDK 17 / Android SDK（README 既定约束），编译与单测由 GitHub Actions CI 验证（push 分支或 PR 触发）。
-- 场景 A~F 端到端手测（T017）待 CI 出包后于真机执行；重点确认：① 软键盘在无障碍覆盖层上的弹出表现（research.md 风险项 1，若个别 ROM 受限仅影响"当场输入"，栈展示与管理页不受影响）；② 场景 D 随机分布抽检数据。
+- 实施状态（2026-09-12）：T001~T016 代码与自动化测试已全部完成；本机无 JDK 17 / Android SDK（README 既定约束），编译与单测由 GitHub Actions CI 验证。
+- **CI 已通过**（run 34663325867，提交 `65a74ef`）：构建 + 全部单测全绿。过程修复两轮：① `apply` 块内 `hint` 裸赋值解析到外层构造参数（改显式 `setHint()`）与 BlockingOverlay 命名参数不匹配；② 既有 v2→v3 迁移用例补注册 `MIGRATION_3_4`（v4 打开 v2 老库需 2→3→4 完整链）。
+- 场景 A~F 端到端手测（T017）待真机执行（CI Artifacts 下载 `five-sec-debug-apk`）；重点确认：① 软键盘在无障碍覆盖层上的弹出表现（research.md 风险项 1，若个别 ROM 受限仅影响"当场输入"，栈展示与管理页不受影响）；② 场景 D 随机分布抽检数据。
 - 自动化锚点：`HintDaoTest`（按 kind 观察/删除）、`HintRepositoryTest`（LIFO/栈空回落合并池/防复活/入口校验）、`HintListViewModelTest`（截断/空白/删除转发）、`AppDatabaseMigrationTest.v4迁移后既有数据保留且hints表可用`。
