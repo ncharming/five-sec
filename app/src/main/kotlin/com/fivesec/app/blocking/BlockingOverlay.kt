@@ -78,7 +78,8 @@ class BlockingOverlay(
         gravity = Gravity.CENTER
     }
     private val hintInput = EditText(ctx).apply {
-        hint = ctx.getString(R.string.blocking_hint_input_hint)
+        // 显式 setter：裸 `hint =` 会命中外层构造参数 hint（局部作用域优先于隐式接收者），val 不可赋值
+        setHint(ctx.getString(R.string.blocking_hint_input_hint))
         setTextColor(onSurfaceColor)
         setHintTextColor(onSurfaceVariantColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)

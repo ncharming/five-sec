@@ -91,7 +91,7 @@ class AppBlockerAccessibilityService : AccessibilityService() {
             val overlay = BlockingOverlay(
                 context = this,
                 appLabel = appLabel,
-                hintText = hintText,
+                hint = hintText,
                 onSaveHint = { hintRepository.pushStackHint(it) },
                 onFinished = { outcome -> onBlockingFinished(pkg, outcome) },
             )
