@@ -74,7 +74,7 @@
 
 - [x] T016 [P] 更新 `README.md`：功能说明补"拦截页自定义提示（栈式一次性）+ 自定义提示语池"
 - [ ] T017 按 `specs/004-custom-hints/quickstart.md` 场景 A~F 完成端到端手测并记录结果（含软键盘表现、随机分布抽检）
-- [ ] T018 提交全部改动到 `004-custom-hints` 分支并推送；CI（PR 或 dispatch）构建+单测通过后合并 master
+- [x] T018 提交并推送（2026-09-12：经用户决定直接推送 master `5772aaa`；HTTPS token 403 后 origin 切换为 SSH；CI 由 push master 自动触发）
 
 ---
 
