@@ -4,11 +4,13 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.text.InputFilter
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -26,12 +28,17 @@ import kotlinx.coroutines.launch
  * [WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY]。
  * 非 Activity → 不受 OEM（如 ColorOS）"后台 startActivity"静默拦截；复用 [BlockingViewModel] 的 5 秒减速带状态机。
  *
+ * 提示语由服务侧经 HintRepository.takeNextHint 决定（栈式一次性提示优先，栈空随机），经 [hint] 注入；
+ * 输入行把用户写的话入栈（specs/004-custom-hints），输入不受 5 秒按钮锁定影响，未保存草稿随覆盖层移除丢弃。
+ *
  * 配色取自 res/values/colors.xml 的 brand_* token，与 Compose Color.kt 同源，保证品牌一致。
  * 始终浅色：覆盖层弹出在第三方 app 之上，非本 app 主题上下文。
  */
 class BlockingOverlay(
     context: Context,
     appLabel: String,
+    hint: String,
+    private val onSaveHint: (String) -> Unit,
     private val onFinished: (InterceptionOutcome) -> Unit,
 ) {
     private val ctx: Context = context
@@ -65,10 +72,40 @@ class BlockingOverlay(
         gravity = Gravity.CENTER
     }
     private val hintText = TextView(ctx).apply {
-        text = ctx.resources.getStringArray(R.array.blocking_exercise_hints).random()
+        text = hint
         setTextColor(onSurfaceVariantColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
         gravity = Gravity.CENTER
+    }
+    private val hintInput = EditText(ctx).apply {
+        hint = ctx.getString(R.string.blocking_hint_input_hint)
+        setTextColor(onSurfaceColor)
+        setHintTextColor(onSurfaceVariantColor)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+        maxLines = 1
+        filters = arrayOf(InputFilter.LengthFilter(HINT_MAX_LENGTH)) // 30 字硬截断（字符计数）
+        background?.alpha = 64 // 淡化输入框描边，融入减速带视觉（无背景主题下跳过）
+    }
+    private val hintSaveBtn = Button(ctx).apply {
+        text = ctx.getString(R.string.blocking_hint_save)
+        setBackgroundColor(Color.TRANSPARENT)
+        setTextColor(primaryColor)
+    }
+    private val hintFeedback = TextView(ctx).apply {
+        setTextColor(onSurfaceVariantColor)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        gravity = Gravity.CENTER
+        visibility = View.GONE // 保存成功/空白提示的瞬时反馈，默认隐藏
+    }
+
+    /** 反馈复位 runnable；展示新反馈前先取消未完成的复位，避免闪烁。 */
+    private val hideFeedback = Runnable { hintFeedback.visibility = View.GONE }
+
+    private fun showFeedback(resId: Int) {
+        hintFeedback.removeCallbacks(hideFeedback)
+        hintFeedback.setText(resId)
+        hintFeedback.visibility = View.VISIBLE
+        hintFeedback.postDelayed(hideFeedback, FEEDBACK_DURATION_MS)
     }
     private val countdownText = TextView(ctx).apply {
         setTextColor(primaryColor)
@@ -109,6 +146,24 @@ class BlockingOverlay(
         cancelBtn.setOnClickListener { viewModel.cancel() }
         openBtn.setOnClickListener { viewModel.open() }
 
+        // 自定义提示输入行：写句话入栈，下次拦截优先展示（输入不受 5 秒按钮锁定影响）
+        hintSaveBtn.setOnClickListener {
+            val text = hintInput.text?.toString()?.trim().orEmpty()
+            if (text.isEmpty()) {
+                showFeedback(R.string.blocking_hint_empty)
+            } else {
+                onSaveHint(text)
+                hintInput.setText("")
+                showFeedback(R.string.blocking_hint_saved)
+            }
+        }
+        val hintRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(hintInput, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(hintSaveBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+
         val column = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -116,6 +171,9 @@ class BlockingOverlay(
             addView(titleText)
             addView(spacer(dp(12)))
             addView(hintText)
+            addView(spacer(dp(12)))
+            addView(hintRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(hintFeedback)
             addView(spacer(dp(24)))
             addView(
                 countdownText,
@@ -207,5 +265,10 @@ class BlockingOverlay(
     /** 由服务在生命周期结束（如无障碍被关）时调用。 */
     fun markInterrupted() {
         viewModel.markInterrupted()
+    }
+
+    companion object {
+        private const val HINT_MAX_LENGTH = 30
+        private const val FEEDBACK_DURATION_MS = 3_000L
     }
 }

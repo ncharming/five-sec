@@ -29,13 +29,28 @@
     <string name="blocking_cancel">取消</string>
     <string name="blocking_wait">请先完成 5 秒</string>
 
+    <!-- Blocking overlay custom hint input (specs/004-custom-hints) -->
+    <string name="blocking_hint_input_hint">写句话留给下次拦截（30字内）</string>
+    <string name="blocking_hint_save">保存</string>
+    <string name="blocking_hint_saved">已保存，下次拦截时展示</string>
+    <string name="blocking_hint_empty">先写点什么再保存吧</string>
+
     <!-- Settings -->
     <string name="settings_title">五秒</string>
     <string name="settings_global_switch">拦截总开关</string>
     <string name="settings_app_list">拦截应用清单</string>
+    <string name="settings_hints_entry">自定义提示语</string>
     <string name="settings_stats">统计</string>
     <string name="settings_accessibility_status_off">无障碍服务未开启（点击开启）</string>
     <string name="settings_accessibility_status_on">无障碍服务：已开启</string>
+
+    <!-- Custom hint manager (specs/004-custom-hints) -->
+    <string name="hints_title">自定义提示语</string>
+    <string name="hints_add">添加提示语</string>
+    <string name="hints_empty">还没有自定义提示语。添加后会与内置提示随机出现。</string>
+    <string name="hints_input_hint">输入提示语（不超过30字）</string>
+    <string name="hints_add_confirm">添加</string>
+    <string name="hints_dismiss">取消</string>
 
     <!-- App list -->
     <string name="app_list_title">拦截应用清单</string>

@@ -6,19 +6,21 @@ import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.fivesec.app.domain.model.Hint
 import com.fivesec.app.domain.model.InterceptionEvent
 import com.fivesec.app.domain.model.InterceptionOutcome
 import com.fivesec.app.domain.model.TargetApp
 
 @Database(
-    entities = [TargetApp::class, InterceptionEvent::class],
-    version = 3, // v3：删除冗余的 app_statistics 汇总表（统计统一改为事件流水实时聚合）
+    entities = [TargetApp::class, InterceptionEvent::class, Hint::class],
+    version = 4, // v4：新增 hints 表（拦截页栈式一次性提示 + 自定义提示语池）
     exportSchema = false,
 )
 @TypeConverters(InterceptionOutcomeConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun targetAppDao(): TargetAppDao
     abstract fun interceptionEventDao(): InterceptionEventDao
+    abstract fun hintDao(): HintDao
 }
 
 // 从版本1迁移到版本2：添加 appName 字段和 AppStatistics 表
@@ -53,6 +55,19 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("DROP TABLE IF EXISTS app_statistics")
+    }
+}
+
+// 从版本3迁移到版本4：新增 hints 表（拦截页自定义提示语）。
+// 既有两表零触碰。
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS hints (" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "text TEXT NOT NULL, " +
+                "kind TEXT NOT NULL)"
+        )
     }
 }
 

@@ -6,10 +6,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
+import com.fivesec.app.domain.model.Hint
+import com.fivesec.app.domain.model.HintKind
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -89,6 +92,72 @@ class AppDatabaseMigrationTest {
         db.openHelper.readableDatabase
             .query("SELECT name FROM sqlite_master WHERE type='table' AND name='app_statistics'")
             .use { cursor -> assertFalse("app_statistics 应已被迁移删除", cursor.moveToFirst()) }
+
+        db.close()
+        context.deleteDatabase(dbName)
+    }
+
+    /** v3 → v4 迁移：既有两表数据零丢失，hints 表新建可用（specs/004-custom-hints）。 */
+    @Test
+    fun `v4迁移后既有数据保留且hints表可用`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val dbName = "migration-test-v4.db"
+        context.deleteDatabase(dbName)
+
+        // 以 v3 结构手工建库（target_apps / interception_events；v3 已无 app_statistics）
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(dbName)
+                .callback(object : SupportSQLiteOpenHelper.Callback(3) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        db.execSQL(
+                            "CREATE TABLE target_apps (" +
+                                "packageName TEXT NOT NULL PRIMARY KEY, " +
+                                "appName TEXT NOT NULL, " +
+                                "isEnabled INTEGER NOT NULL, " +
+                                "isDefault INTEGER NOT NULL, " +
+                                "addedAt INTEGER NOT NULL)"
+                        )
+                        db.execSQL(
+                            "CREATE TABLE interception_events (" +
+                                "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                                "packageName TEXT NOT NULL, " +
+                                "timestamp INTEGER NOT NULL, " +
+                                "exerciseCompleted INTEGER NOT NULL, " +
+                                "outcome TEXT NOT NULL)"
+                        )
+                    }
+
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                })
+                .build()
+        )
+        helper.writableDatabase.use { db ->
+            db.execSQL("INSERT INTO target_apps VALUES ('com.xingin.xhs', '小红书', 1, 1, 100)")
+            db.execSQL("INSERT INTO interception_events (packageName, timestamp, exerciseCompleted, outcome) VALUES ('com.xingin.xhs', 111, 1, 'OPENED')")
+        }
+        helper.close()
+
+        // 以 Room v4 打开：触发 MIGRATION_3_4
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .allowMainThreadQueries()
+            .build()
+
+        // 既有数据保留
+        assertEquals(1, db.targetAppDao().observeAll().first().size)
+        assertEquals(
+            1,
+            db.interceptionEventDao()
+                .observeCountsByPackageBetween(rangeStart = 0, rangeEnd = Long.MAX_VALUE)
+                .first().single().total,
+        )
+
+        // hints 表可读写
+        db.hintDao().insert(Hint(text = "迁移后新增", kind = HintKind.STACK))
+        db.hintDao().insert(Hint(text = "池条目", kind = HintKind.POOL))
+        assertEquals(listOf("迁移后新增"), db.hintDao().observeByKind(HintKind.STACK).first().map { it.text })
+        assertTrue(db.hintDao().observeByKind(HintKind.POOL).first().isNotEmpty())
 
         db.close()
         context.deleteDatabase(dbName)

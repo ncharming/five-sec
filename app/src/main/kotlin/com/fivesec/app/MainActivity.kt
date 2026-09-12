@@ -12,6 +12,7 @@ import androidx.navigation.compose.rememberNavController
 import com.fivesec.app.data.datastore.SettingsDataStore
 import com.fivesec.app.domain.model.AppSettings
 import com.fivesec.app.settings.ui.AppListScreen
+import com.fivesec.app.settings.ui.HintListScreen
 import com.fivesec.app.settings.ui.OnboardingScreen
 import com.fivesec.app.settings.ui.SettingsScreen
 import com.fivesec.app.settings.ui.StatsScreen
@@ -24,6 +25,7 @@ object Routes {
     const val ONBOARDING = "onboarding"
     const val SETTINGS = "settings"
     const val APP_LIST = "app_list"
+    const val HINTS = "hints"
     const val STATS = "stats"
 }
 
@@ -66,9 +68,11 @@ private fun AppRoot(settingsDataStore: SettingsDataStore) {
             SettingsScreen(
                 onOpenAppList = { navController.navigate(Routes.APP_LIST) },
                 onOpenStats = { navController.navigate(Routes.STATS) },
+                onOpenHints = { navController.navigate(Routes.HINTS) },
             )
         }
         composable(Routes.APP_LIST) { AppListScreen(onBack = { navController.popBackStack() }) }
+        composable(Routes.HINTS) { HintListScreen(onBack = { navController.popBackStack() }) }
         composable(Routes.STATS) { StatsScreen(onBack = { navController.popBackStack() }) }
     }
 }

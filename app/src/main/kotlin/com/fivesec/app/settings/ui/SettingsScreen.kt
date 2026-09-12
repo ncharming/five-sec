@@ -37,6 +37,7 @@ import com.fivesec.app.util.AccessibilityPermissionHelper
 fun SettingsScreen(
     onOpenAppList: () -> Unit,
     onOpenStats: () -> Unit,
+    onOpenHints: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -90,6 +91,9 @@ fun SettingsScreen(
 
             TextButton(onClick = onOpenAppList, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.settings_app_list), style = MaterialTheme.typography.bodyLarge)
+            }
+            TextButton(onClick = onOpenHints, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.settings_hints_entry), style = MaterialTheme.typography.bodyLarge)
             }
             TextButton(onClick = onOpenStats, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.settings_stats), style = MaterialTheme.typography.bodyLarge)
