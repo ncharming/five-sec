@@ -44,10 +44,24 @@ jobs:
 
       - name: Build debug APK
         id: build
-        run: gradle :app:assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          gradle :app:assembleDebug --stacktrace 2>&1 | tee /tmp/build.log
+          status=${PIPESTATUS[0]}
+          if [ $status -ne 0 ]; then
+            tail -n 30 /tmp/build.log | while IFS= read -r line; do echo "::error::${line:0:380}"; done
+            exit $status
+          fi
 
       - name: Run unit tests（含 Robolectric；首次会下载 android-all）
-        run: gradle :app:testDebugUnitTest --stacktrace
+        run: |
+          set -o pipefail
+          gradle :app:testDebugUnitTest --stacktrace 2>&1 | tee /tmp/test.log
+          status=${PIPESTATUS[0]}
+          if [ $status -ne 0 ]; then
+            tail -n 30 /tmp/test.log | while IFS= read -r line; do echo "::error::${line:0:380}"; done
+            exit $status
+          fi
 
       - name: Upload debug APK（可直接安装；仅在构建成功时上传）
         if: always() && steps.build.outcome == 'success'
