@@ -8,7 +8,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,7 +41,6 @@ import com.fivesec.app.ui.theme.Spacing
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HintListScreen(
-    onBack: () -> Unit,
     viewModel: HintListViewModel = hiltViewModel(),
 ) {
     val hints by viewModel.hints.collectAsStateWithLifecycle()
@@ -51,9 +49,6 @@ fun HintListScreen(
     Scaffold(topBar = {
         TopAppBar(
             title = { Text(stringResource(R.string.hints_title)) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = null) }
-            },
             actions = {
                 IconButton(onClick = { showAddDialog = true }) { Icon(Icons.Default.Add, contentDescription = null) }
             },

@@ -10,7 +10,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
@@ -29,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,21 +46,17 @@ import com.fivesec.app.util.TimeProvider
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppListScreen(
-    onBack: () -> Unit,
     viewModel: AppListViewModel = hiltViewModel(),
     timeProvider: TimeProvider = SystemTimeProvider(),
 ) {
     val apps by viewModel.targetApps.collectAsStateWithLifecycle()
     var showPicker by remember { mutableStateOf(false) }
     var showLimitDialog by remember { mutableStateOf(false) }
-    var expandedApp by remember { mutableStateOf<String?>(null) }
+    var expandedApp by rememberSaveable { mutableStateOf<String?>(null) }
 
     Scaffold(topBar = {
         TopAppBar(
             title = { Text(stringResource(R.string.app_list_title)) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = null) }
-            },
             actions = {
                 IconButton(onClick = {
                     // 检查是否达到3个应用限制
