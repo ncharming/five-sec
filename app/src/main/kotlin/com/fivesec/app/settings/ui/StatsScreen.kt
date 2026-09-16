@@ -137,7 +137,7 @@ fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
                                     index = index,
                                     count = StatsRange.entries.size,
                                 ),
-                                colors = SegmentedButtonDefaults.itemColors(
+                                colors = SegmentedButtonDefaults.colors(
                                     activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
                                     activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                                 ),

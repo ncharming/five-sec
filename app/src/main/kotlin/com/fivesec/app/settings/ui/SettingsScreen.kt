@@ -11,7 +11,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -95,6 +94,7 @@ fun SettingsScreen(
                 )
 
                 // 无障碍服务状态：已开启绿色只读；未开启点击一键开启（失败跳系统设置）
+                // 注：TextButtonDefaults 已在 material3 1.3.0 移除，内容色直接由 Text.color 控制
                 TextButton(
                     onClick = {
                         if (serviceEnabled) return@TextButton
@@ -105,15 +105,13 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = Spacing.xs),
-                    colors = TextButtonDefaults.textButtonColors(
-                        contentColor = if (serviceEnabled) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
                 ) {
                     Text(
                         if (serviceEnabled) stringResource(R.string.settings_accessibility_status_on)
                         else stringResource(R.string.settings_accessibility_status_off),
                         style = MaterialTheme.typography.bodyMedium,
+                        color = if (serviceEnabled) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }

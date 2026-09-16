@@ -30,7 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.toBitmap
+import androidx.core.graphics.drawable.toBitmap
 import com.fivesec.app.ui.theme.Spacing
 
 /**
