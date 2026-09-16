@@ -23,11 +23,13 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK（接受许可 + 确保 sdkmanager 可用）
-        uses: android-actions/setup-android@v3
-
-      - name: 安装 platform-35 / build-tools 35.0.0
-        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+      # GitHub 托管 ubuntu 镜像预装 Android SDK（ANDROID_HOME/sdkmanager 就绪）。
+      # 不再使用 android-actions/setup-android@v3：该 action 在 2026-09 runner 更新后
+      # 稳定失败（连 Build/Test 都未执行即红），自带 SDK 直接接受许可并补装组件更可靠。
+      - name: 接受 SDK 许可并补装 platform-35 / build-tools 35.0.0
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle 8.9（直接用 gradle 命令，无需 wrapper jar）
         uses: gradle/actions/setup-gradle@v4
