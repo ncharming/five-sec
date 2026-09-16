@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -37,6 +39,7 @@ import com.fivesec.app.ui.theme.Spacing
 /**
  * 自定义提示语管理页（specs/004-custom-hints）：
  * 添加的提示语并入随机池，与内置提示语合并参与拦截页随机抽取。
+ * 列表下方为"内置提示语"只读区：strings.xml 预设文案置灰展示，仅参与随机抽取，不可增删改。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,6 +47,7 @@ fun HintListScreen(
     viewModel: HintListViewModel = hiltViewModel(),
 ) {
     val hints by viewModel.hints.collectAsStateWithLifecycle()
+    val builtinHints = stringArrayResource(R.array.blocking_exercise_hints)
     var showAddDialog by remember { mutableStateOf(false) }
 
     Scaffold(topBar = {
@@ -54,12 +58,16 @@ fun HintListScreen(
             },
         )
     }) { padding ->
-        if (hints.isEmpty()) {
-            Column(Modifier.padding(padding).padding(Spacing.xl)) {
-                Text(stringResource(R.string.hints_empty), style = MaterialTheme.typography.bodyMedium)
-            }
-        } else {
-            LazyColumn(Modifier.padding(padding)) {
+        LazyColumn(Modifier.padding(padding)) {
+            if (hints.isEmpty()) {
+                item(key = "empty_placeholder") {
+                    Text(
+                        stringResource(R.string.hints_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(Spacing.xl),
+                    )
+                }
+            } else {
                 items(hints, key = { it.id }) { hint ->
                     Row(
                         modifier = Modifier
@@ -77,6 +85,29 @@ fun HintListScreen(
                         }
                     }
                 }
+            }
+
+            // ── 内置提示语只读区：预设文案置灰呈现，与上方可操作项区分 ──
+            item(key = "builtin_header") {
+                Column(Modifier.padding(horizontal = Spacing.lg)) {
+                    HorizontalDivider(Modifier.padding(vertical = Spacing.md))
+                    Text(
+                        stringResource(R.string.hints_builtin_section),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            items(builtinHints.toList(), key = { "builtin_item_$it" }) { text ->
+                Text(
+                    text,
+                    style = MaterialTheme.typography.bodyLarge,
+                    // M3 禁用态内容色约定：onSurface 38% 不透明度
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+                )
             }
         }
     }
