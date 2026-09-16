@@ -96,6 +96,9 @@ class HintRepositoryTest {
             Hint(id = 2, text = "B", kind = HintKind.STACK),
         )
 
+        // 等待重发收敛：B 被 pending 过滤，快照恢复为 [A]
+        awaitUntil { repo.stackSnapshotSizeForTest() == 1 }
+
         // 无论如何 B 不得复活：下一次必须消费 A
         assertEquals("A", repo.takeNextHint(listOf("X")))
         // 删库落库后的重发（列表已不含 B）：栈空回落
@@ -116,6 +119,9 @@ class HintRepositoryTest {
             Hint(id = 1, text = "A", kind = HintKind.STACK),
             Hint(id = 2, text = "A", kind = HintKind.STACK),
         )
+
+        // 等待重发收敛：旧行被 pending 过滤，快照只剩新行
+        awaitUntil { repo.stackSnapshotSizeForTest() == 1 }
 
         // 新行不被 pending 过滤 → 仍可消费一次
         assertEquals("A", repo.takeNextHint(listOf("X")))

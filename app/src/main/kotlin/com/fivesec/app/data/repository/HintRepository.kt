@@ -1,5 +1,6 @@
 package com.fivesec.app.data.repository
 
+import androidx.annotation.VisibleForTesting
 import com.fivesec.app.data.db.HintDao
 import com.fivesec.app.domain.model.Hint
 import com.fivesec.app.domain.model.HintKind
@@ -94,6 +95,10 @@ class HintRepository @Inject constructor(
         if (trimmed.isEmpty()) return null
         return trimmed.take(MAX_HINT_LENGTH)
     }
+
+    /** 仅测试观测：栈快照当前条数，用于等待 observe 重发收敛；生产不调用。 */
+    @VisibleForTesting
+    fun stackSnapshotSizeForTest(): Int = synchronized(lock) { stackSnapshot.size }
 
     companion object {
         const val MAX_HINT_LENGTH = 30
