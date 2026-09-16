@@ -46,9 +46,10 @@ jobs:
         id: build
         run: |
           set -o pipefail
-          gradle :app:assembleDebug --stacktrace 2>&1 | tee /tmp/build.log
-          status=${PIPESTATUS[0]}
-          if [ $status -ne 0 ]; then
+          if gradle :app:assembleDebug --stacktrace 2>&1 | tee /tmp/build.log; then
+            echo "build ok"
+          else
+            status=$?
             tail -n 30 /tmp/build.log | while IFS= read -r line; do echo "::error::${line:0:380}"; done
             exit $status
           fi
@@ -56,9 +57,10 @@ jobs:
       - name: Run unit tests（含 Robolectric；首次会下载 android-all）
         run: |
           set -o pipefail
-          gradle :app:testDebugUnitTest --stacktrace 2>&1 | tee /tmp/test.log
-          status=${PIPESTATUS[0]}
-          if [ $status -ne 0 ]; then
+          if gradle :app:testDebugUnitTest --stacktrace 2>&1 | tee /tmp/test.log; then
+            echo "tests ok"
+          else
+            status=$?
             tail -n 30 /tmp/test.log | while IFS= read -r line; do echo "::error::${line:0:380}"; done
             exit $status
           fi
