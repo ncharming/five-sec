@@ -65,6 +65,29 @@ jobs:
             exit $status
           fi
 
+      - name: 失败时回写诊断日志到仓库（[skip ci] 防循环）
+        if: failure()
+        run: |
+          mkdir -p ci-diag
+          {
+            echo "=== run: ${{ github.sha }} ==="
+            echo "=== gradle -version ==="
+            gradle -version 2>&1 || true
+            echo "=== ANDROID_HOME=$ANDROID_HOME ==="
+            ls -la "$ANDROID_HOME" 2>&1 || true
+            echo "=== installed packages ==="
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --list_installed 2>&1 || true
+            echo "=== build.log tail 150 ==="
+            tail -n 150 /tmp/build.log 2>/dev/null || echo "(no build.log)"
+            echo "=== test.log tail 80 ==="
+            tail -n 80 /tmp/test.log 2>/dev/null || echo "(no test.log)"
+          } > ci-diag/latest.md
+          git config user.name "ci-diag"
+          git config user.email "ci-diag@users.noreply.github.com"
+          git add ci-diag/latest.md
+          git commit -m "ci: 失败诊断日志（自动）[skip ci]"
+          git push origin HEAD:master
+
       - name: Upload debug APK（可直接安装；仅在构建成功时上传）
         if: always() && steps.build.outcome == 'success'
         uses: actions/upload-artifact@v5
