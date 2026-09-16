@@ -1,9 +1,10 @@
 package com.fivesec.app.blocking
 
 import android.content.Context
-import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.text.InputFilter
 import android.util.TypedValue
 import android.view.Gravity
@@ -68,13 +69,14 @@ class BlockingOverlay(
     private val titleText = TextView(ctx).apply {
         text = ctx.getString(R.string.blocking_title, viewModel.appLabel)
         setTextColor(onSurfaceColor)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f) // 对齐 Compose headlineMedium
+        typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
     }
     private val hintText = TextView(ctx).apply {
         text = hint
         setTextColor(onSurfaceVariantColor)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
         gravity = Gravity.CENTER
     }
     private val hintInput = EditText(ctx).apply {
@@ -82,7 +84,7 @@ class BlockingOverlay(
         setHint(ctx.getString(R.string.blocking_hint_input_hint))
         setTextColor(onSurfaceColor)
         setHintTextColor(onSurfaceVariantColor)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
         maxLines = 1
         filters = arrayOf(InputFilter.LengthFilter(HINT_MAX_LENGTH)) // 30 字硬截断（字符计数）
         background?.alpha = 64 // 淡化输入框描边，融入减速带视觉（无背景主题下跳过）
@@ -91,6 +93,7 @@ class BlockingOverlay(
         text = ctx.getString(R.string.blocking_hint_save)
         setBackgroundColor(Color.TRANSPARENT)
         setTextColor(primaryColor)
+        styleAsTextAction() // 统一：无按钮壳的加粗文字动作
     }
     private val hintFeedback = TextView(ctx).apply {
         setTextColor(onSurfaceVariantColor)
@@ -111,6 +114,7 @@ class BlockingOverlay(
     private val countdownText = TextView(ctx).apply {
         setTextColor(primaryColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 72f)
+        typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
     }
     private val waitText = TextView(ctx).apply {
@@ -118,21 +122,38 @@ class BlockingOverlay(
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
         gravity = Gravity.CENTER
     }
+    // 打开按钮：14dp 圆角实心（渲染时按解锁态在品牌绿/禁用灰间切换）
+    private val openBtnBg = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = dp(14).toFloat()
+    }
     private val cancelBtn = Button(ctx).apply {
         text = ctx.getString(R.string.blocking_cancel)
         setBackgroundColor(Color.TRANSPARENT)
         setTextColor(disabledText) // 初始锁定态；render() 按 state 切换
+        styleAsTextAction()
     }
     private val openBtn = Button(ctx).apply {
         text = ctx.getString(R.string.blocking_open)
-        backgroundTintList = ColorStateList.valueOf(disabledContainer)
+        background = openBtnBg
         setTextColor(disabledText)
+        isAllCaps = false
+        typeface = Typeface.DEFAULT_BOLD
     }
 
     private val root: View = buildRoot()
 
     private fun dp(v: Int): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), ctx.resources.displayMetrics).toInt()
+
+    /** 文字动作按钮样式：透明底、加粗、去大写、去系统最小尺寸（保存/取消共用）。 */
+    private fun Button.styleAsTextAction() {
+        isAllCaps = false
+        typeface = Typeface.DEFAULT_BOLD
+        minimumWidth = 0
+        minimumHeight = 0
+        setPadding(dp(12), dp(8), dp(12), dp(8))
+    }
 
     private fun spacer(h: Int): View =
         View(ctx).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, h) }
@@ -230,11 +251,11 @@ class BlockingOverlay(
         cancelBtn.isEnabled = unlocked
         openBtn.isEnabled = unlocked
         if (unlocked) {
-            openBtn.backgroundTintList = ColorStateList.valueOf(primaryColor)
+            openBtnBg.setColor(primaryColor)
             openBtn.setTextColor(onPrimaryColor)
             cancelBtn.setTextColor(primaryColor)
         } else {
-            openBtn.backgroundTintList = ColorStateList.valueOf(disabledContainer)
+            openBtnBg.setColor(disabledContainer)
             openBtn.setTextColor(disabledText)
             cancelBtn.setTextColor(disabledText)
         }

@@ -1,7 +1,7 @@
 package com.fivesec.app.settings.ui
 
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -11,7 +11,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TextButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -29,9 +29,17 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fivesec.app.R
 import com.fivesec.app.settings.viewmodels.SettingsViewModel
+import com.fivesec.app.ui.components.CardSurface
+import com.fivesec.app.ui.components.PageHeader
+import com.fivesec.app.ui.components.fiveSecSwitchColors
 import com.fivesec.app.ui.theme.Spacing
 import com.fivesec.app.util.AccessibilityPermissionHelper
 
+/**
+ * 五秒首页（统一视觉：大标题页头 + 白卡体系）：
+ * 拦截总开关与无障碍状态收进同一张卡片；开关/状态配色与全局品牌绿一致。
+ * 开关与状态点击行为（一键开启 / 跳系统设置）零改动。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -55,33 +63,60 @@ fun SettingsScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.settings_title)) }) }) { padding ->
-        Column(Modifier.padding(padding).padding(Spacing.lg).fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(stringResource(R.string.settings_global_switch), modifier = Modifier.weight(1f))
-                Switch(checked = enabled, onCheckedChange = viewModel::setGlobalEnabled)
-            }
+    Scaffold { padding ->
+        Column(Modifier.padding(padding).fillMaxWidth()) {
+            PageHeader(
+                title = stringResource(R.string.settings_title),
+                subtitle = stringResource(R.string.settings_subtitle),
+            )
 
-            HorizontalDivider(Modifier.padding(vertical = Spacing.md))
+            CardSurface(Modifier.padding(horizontal = Spacing.lg)) {
+                // 拦截总开关
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.lg, vertical = Spacing.lg),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(R.string.settings_global_switch),
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = viewModel::setGlobalEnabled,
+                        colors = fiveSecSwitchColors(),
+                    )
+                }
 
-            TextButton(
-                onClick = {
-                    if (serviceEnabled) return@TextButton
-                    // 已授权 WRITE_SECURE_SETTINGS 时直接一键开启，失败再跳系统设置
-                    serviceEnabled = AccessibilityPermissionHelper.enableService(context)
-                    if (!serviceEnabled) AccessibilityPermissionHelper.openAccessibilitySettings(context)
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    if (serviceEnabled) stringResource(R.string.settings_accessibility_status_on)
-                    else stringResource(R.string.settings_accessibility_status_off),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.fillMaxWidth(),
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                 )
+
+                // 无障碍服务状态：已开启绿色只读；未开启点击一键开启（失败跳系统设置）
+                TextButton(
+                    onClick = {
+                        if (serviceEnabled) return@TextButton
+                        // 已授权 WRITE_SECURE_SETTINGS 时直接一键开启，失败再跳系统设置
+                        serviceEnabled = AccessibilityPermissionHelper.enableService(context)
+                        if (!serviceEnabled) AccessibilityPermissionHelper.openAccessibilitySettings(context)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.xs),
+                    colors = TextButtonDefaults.textButtonColors(
+                        contentColor = if (serviceEnabled) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                ) {
+                    Text(
+                        if (serviceEnabled) stringResource(R.string.settings_accessibility_status_on)
+                        else stringResource(R.string.settings_accessibility_status_off),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
     }

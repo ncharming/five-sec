@@ -18,7 +18,7 @@ class TargetAppRepository @Inject constructor(
      * 检查是否可以添加新应用（3个应用限制）
      * @return true 如果可以添加，false 如果已达到上限
      */
-    suspend fun canAddNewApp(): Boolean = count() < 3
+    suspend fun canAddNewApp(): Boolean = count() < MAX_APPS
 
     /**
      * 添加新应用，强制执行3个应用限制
@@ -44,4 +44,9 @@ class TargetAppRepository @Inject constructor(
 
     suspend fun setEnabled(packageName: String, enabled: Boolean) =
         targetAppDao.setEnabled(packageName, enabled)
+
+    companion object {
+        /** 拦截应用数量上限（添加校验与 UI 名额展示共用单一来源）。 */
+        const val MAX_APPS = 3
+    }
 }
