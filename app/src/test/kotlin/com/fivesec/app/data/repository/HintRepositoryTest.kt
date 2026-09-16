@@ -143,8 +143,12 @@ class HintRepositoryTest {
         awaitUntil { dao.inserted.size == 2 }
 
         val saved = dao.inserted.map { it.text }
-        assertEquals(listOf("保留首尾空白", "一二三四五六七八九十一二三四五六七八九十一二三四十".take(HintRepository.MAX_HINT_LENGTH)), saved)
-        assertEquals(listOf(HintKind.STACK, HintKind.STACK), dao.inserted.map { it.kind })
+        // 两次 pushStackHint 经独立协程并发落库，完成顺序不保证；按集合语义断言转发内容
+        assertEquals(
+            setOf("保留首尾空白", "一二三四五六七八九十一二三四五六七八九十一二三四十".take(HintRepository.MAX_HINT_LENGTH)),
+            saved.toSet(),
+        )
+        dao.inserted.forEach { assertEquals(HintKind.STACK, it.kind) }
         assertEquals(30, HintRepository.MAX_HINT_LENGTH)
     }
 
