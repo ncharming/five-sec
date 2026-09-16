@@ -31,6 +31,18 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
+    // 固定 debug 签名：本地与 CI 构建产物签名保持一致，
+    // 覆盖安装（adb install -r）即可更新且不丢应用数据。
+    // debug keystore 密码为公开约定值，提交进仓库无安全风险（.gitignore 已反排除 debug.keystore）。
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore") // 即 app/debug.keystore
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
