@@ -3,6 +3,7 @@ package com.fivesec.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -23,6 +24,14 @@ object Routes {
     const val HOME = "home"
 }
 
+/**
+ * 应用唯一 Activity（Compose 宿主）。
+ *
+ * 状态栏接管（enableEdgeToEdge）：此前窗口未声明边到边，状态栏底色交由 ROM/框架主题兜底——
+ * 部分设备渲染为灰底/黑条，观感像"状态栏被一层虚化遮住"。显式开启后状态栏透明、
+ * 图标深浅随系统明暗切换，状态栏背后透出的就是应用自身浅色背景；
+ * 正文起始位置由各页 Scaffold 按 WindowInsets 实时内缩（刘海/挖孔机型自适应，无写死高度）。
+ */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
@@ -30,6 +39,7 @@ class MainActivity : ComponentActivity() {
     lateinit var settingsDataStore: SettingsDataStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent { FiveSecTheme { AppRoot(settingsDataStore) } }
     }

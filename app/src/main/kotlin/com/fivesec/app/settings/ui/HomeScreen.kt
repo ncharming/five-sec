@@ -2,6 +2,7 @@ package com.fivesec.app.settings.ui
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
@@ -36,6 +37,8 @@ import com.fivesec.app.R
  * - 选中态品牌绿、未选中灰，无胶囊指示器；点击瞬时切换，无切换动画。
  * - SaveableStateHolder 按页保持滚动位置等 UI 状态；各页 ViewModel 挂在首页
  *   NavBackStackEntry 上，切 Tab 不销毁（统计页首次切入才创建并开始加载数据）。
+ * - 本层统一消费系统栏 insets（consumeWindowInsets）：四个子页面各自持有 Scaffold，
+ *   边到边下状态栏/导航栏高度若内外叠加会出现双重留白。
  * - Tab 不进返回栈：任意 Tab 按返回键直接退出应用，与微信一致。
  */
 private enum class HomeTab(
@@ -82,7 +85,9 @@ fun HomeScreen() {
         },
     ) { padding ->
         stateHolder.SaveableStateProvider(selectedTab.name) {
-            Box(Modifier.padding(padding)) {
+            // consumeWindowInsets：系统栏 insets 已由本层 Scaffold 吃掉，内层各页自己的
+            // Scaffold 不再叠加一次状态栏/导航栏高度（边到边开启后 insets 为真实值，必须防双计）
+            Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
                 when (selectedTab) {
                     HomeTab.FIVE_SEC -> SettingsScreen()
                     HomeTab.APP_LIST -> AppListScreen()
