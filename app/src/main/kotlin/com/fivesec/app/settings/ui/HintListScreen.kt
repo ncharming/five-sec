@@ -3,6 +3,7 @@ package com.fivesec.app.settings.ui
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -34,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
@@ -57,8 +59,9 @@ import kotlinx.coroutines.delay
 /**
  * 自定义提示语管理页（specs/004-custom-hints，统一视觉）：
  * - 大标题页头 + 绿色圆形添加按钮（与拦截应用页同款）；
- * - 自定义提示语入白卡（行内 ✕ 删除，发丝线分隔）；
- * - 下方"内置提示语"只读区：strings.xml 预设文案置灰展示，仅参与随机抽取，不可增删改；
+ * - 自定义与内置两个区块共用同一卡片骨架（CardSurface + 发丝线分隔 + [HintRow] 行几何），
+ *   区分只靠文字颜色（onSurface / onSurfaceVariant）与尾部删除钮——不再"一块白卡配一片散文本"；
+ * - 空态文案也收进同款卡片，首条提示语出现时容器不跳变；
  * - 添加弹窗走统一 FiveSecDialog 外壳：开场聚焦即输、字数反馈收进 supportingText
  *   （上限沿用 MAX_HINT_LENGTH，不新增校验规则）。
  */
@@ -110,13 +113,19 @@ fun HintListScreen(
             }
 
             Column(Modifier.padding(horizontal = Spacing.lg).padding(bottom = Spacing.xl)) {
+                // ── 自定义提示语：白卡列表，行内 ✕ 删除；空态也收进卡片，容器前后一致 ──
                 if (hints.isEmpty()) {
-                    Text(
-                        stringResource(R.string.hints_empty),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = Spacing.md),
-                    )
+                    CardSurface {
+                        Text(
+                            stringResource(R.string.hints_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = Spacing.lg, vertical = Spacing.xl),
+                        )
+                    }
                 } else {
                     CardSurface {
                         hints.forEachIndexed { index, hint ->
@@ -125,42 +134,39 @@ fun HintListScreen(
                                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                                 )
                             }
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    hint.text,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    modifier = Modifier.weight(1f),
-                                )
+                            HintRow(text = hint.text) {
                                 IconButton(onClick = { viewModel.remove(hint.id) }) {
-                                    Icon(Icons.Default.Close, contentDescription = null)
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = stringResource(R.string.hints_delete),
+                                        // 次要色弱化：删除是行内辅助操作，不与正文抢视觉（同 AppList ⋯ 菜单处理）
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    )
                                 }
                             }
                         }
                     }
                 }
 
-                // ── 内置提示语只读区：预设文案置灰呈现，与上方可操作项区分 ──
+                // ── 内置提示语只读区：同一卡片骨架 + 次要文字色，靠"可删/不可删"区分而非容器差异 ──
                 Text(
                     stringResource(R.string.hints_builtin_section),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(top = Spacing.lg, bottom = Spacing.xs),
                 )
-                builtinHints.forEach { text ->
-                    Text(
-                        text,
-                        style = MaterialTheme.typography.bodyLarge,
-                        // M3 禁用态内容色约定：onSurface 38% 不透明度
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = Spacing.sm),
-                    )
+                CardSurface {
+                    builtinHints.forEachIndexed { index, text ->
+                        if (index > 0) {
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                            )
+                        }
+                        HintRow(
+                            text = text,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
@@ -210,5 +216,33 @@ fun HintListScreen(
                 .fillMaxWidth()
                 .focusRequester(focusRequester),
         )
+    }
+}
+
+/**
+ * 提示语行骨架：自定义区与内置区共用，锁定同一行内几何——
+ * 水平 lg / 垂直 sm 内边距 + 48dp 最小内容高，带删除钮的行与纯文本行都是 64dp 行高，
+ * 保证两个区块滚动节奏一致；区分只体现在文字颜色与尾部操作位上。
+ */
+@Composable
+private fun HintRow(
+    text: String,
+    color: Color = MaterialTheme.colorScheme.onSurface,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.lg, vertical = Spacing.sm)
+            .heightIn(min = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = color,
+            modifier = Modifier.weight(1f),
+        )
+        trailing?.invoke()
     }
 }

@@ -50,6 +50,7 @@
     <string name="hints_input_hint">输入提示语</string>
     <string name="hints_add_confirm">添加</string>
     <string name="hints_dismiss">取消</string>
+    <string name="hints_delete">删除这条提示语</string>
     <string name="hints_builtin_section">内置提示语（只读）</string>
     <string name="hints_char_count">%1$d/%2$d</string>
 
