@@ -6,6 +6,10 @@ import androidx.compose.ui.graphics.Color
  * 健康绿品牌色板 —— 全 app 单一事实来源。
  * Light + Dark 两套完整 M3 角色，Theme.kt 据此构建 colorScheme。
  * 拦截覆盖层（命令式 View）需要的几个色同步进 res/values/colors.xml，保持同源。
+ *
+ * surfaceContainer 系列是 M3 浮层（弹窗/菜单/底部抽屉）的默认容器色：
+ * 取 Surface(FFFFFF/0E1A14) 与 SurfaceVariant(DCE5DE/404943) 之间的绿灰过渡阶，
+ * 不覆盖会回退 baseline 紫灰，破坏品牌一致。
  */
 
 // region Light
@@ -33,6 +37,13 @@ val SurfaceVariant = Color(0xFFDCE5DE)
 val OnSurfaceVariant = Color(0xFF5B6B62)
 val Outline = Color(0xFF707972)
 val OutlineVariant = Color(0xFFDDE6E0)
+val SurfaceDim = Color(0xFFD9E0DB)
+val SurfaceBright = Color(0xFFF9FBF9)
+val SurfaceContainerLowest = Color(0xFFFFFFFF)
+val SurfaceContainerLow = Color(0xFFF3F7F4)
+val SurfaceContainer = Color(0xFFEDF2EE)
+val SurfaceContainerHigh = Color(0xFFE7EDE8)
+val SurfaceContainerHighest = Color(0xFFE1E8E3)
 val SurfaceTint = Color(0xFF00A86B)
 val InverseSurface = Color(0xFF2E322F)
 val InverseOnSurface = Color(0xFFEFF1ED)
@@ -65,6 +76,13 @@ val SurfaceVariantDark = Color(0xFF404943)
 val OnSurfaceVariantDark = Color(0xFFBFCBC4)
 val OutlineDark = Color(0xFF8A938D)
 val OutlineVariantDark = Color(0xFF404943)
+val SurfaceDimDark = Color(0xFF0E1A14)
+val SurfaceBrightDark = Color(0xFF35403A)
+val SurfaceContainerLowestDark = Color(0xFF09120D)
+val SurfaceContainerLowDark = Color(0xFF161F1A)
+val SurfaceContainerDark = Color(0xFF1A241E)
+val SurfaceContainerHighDark = Color(0xFF242E28)
+val SurfaceContainerHighestDark = Color(0xFF2F3933)
 val SurfaceTintDark = Color(0xFF6FE0AE)
 val InverseSurfaceDark = Color(0xFFEFF1ED)
 val InverseOnSurfaceDark = Color(0xFF2E322F)

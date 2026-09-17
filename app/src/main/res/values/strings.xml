@@ -51,6 +51,7 @@
     <string name="hints_add_confirm">添加</string>
     <string name="hints_dismiss">取消</string>
     <string name="hints_builtin_section">内置提示语（只读）</string>
+    <string name="hints_char_count">%1$d/%2$d</string>
 
     <!-- Home bottom tabs -->
     <string name="tab_fivesec">五秒</string>
@@ -75,6 +76,11 @@
     <string name="app_list_search_hint">搜索应用名称或包名</string>
     <string name="app_list_search_empty">未找到匹配的应用</string>
     <string name="app_list_already_added">已添加</string>
+
+    <!-- Common dialog（统一弹窗标题/按钮文案，替代此前硬编码中文） -->
+    <string name="common_notice">提示</string>
+    <string name="common_confirm">确定</string>
+    <string name="common_done">完成</string>
 
     <!-- Stats -->
     <string name="stats_title">统计</string>

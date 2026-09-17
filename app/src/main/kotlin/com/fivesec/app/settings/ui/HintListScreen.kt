@@ -6,11 +6,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
@@ -32,6 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -39,6 +43,7 @@ import com.fivesec.app.R
 import com.fivesec.app.data.repository.HintRepository
 import com.fivesec.app.settings.viewmodels.HintListViewModel
 import com.fivesec.app.ui.components.CardSurface
+import com.fivesec.app.ui.components.FiveSecDialog
 import com.fivesec.app.ui.components.PageHeader
 import com.fivesec.app.ui.theme.Spacing
 
@@ -46,7 +51,8 @@ import com.fivesec.app.ui.theme.Spacing
  * 自定义提示语管理页（specs/004-custom-hints，统一视觉）：
  * - 大标题页头 + 绿色圆形添加按钮（与拦截应用页同款）；
  * - 自定义提示语入白卡（行内 ✕ 删除，发丝线分隔）；
- * - 下方"内置提示语"只读区：strings.xml 预设文案置灰展示，仅参与随机抽取，不可增删改。
+ * - 下方"内置提示语"只读区：strings.xml 预设文案置灰展示，仅参与随机抽取，不可增删改；
+ * - 添加弹窗走统一 FiveSecDialog 外壳，附字数反馈（上限沿用 MAX_HINT_LENGTH，不新增校验规则）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +62,8 @@ fun HintListScreen(
     val hints by viewModel.hints.collectAsStateWithLifecycle()
     val builtinHints = stringArrayResource(R.array.blocking_exercise_hints)
     var showAddDialog by remember { mutableStateOf(false) }
+    // 输入内容提升到页面级：FiveSecDialog 在退场动画期间仍持有内容，重开时由"+"按钮重置
+    var newHintText by remember { mutableStateOf("") }
 
     Scaffold { padding ->
         Column(
@@ -68,7 +76,10 @@ fun HintListScreen(
                 subtitle = stringResource(R.string.hints_subtitle),
             ) {
                 FilledIconButton(
-                    onClick = { showAddDialog = true },
+                    onClick = {
+                        newHintText = "" // 每次打开从空输入开始（维持原先 dialog 内 remember 的语义）
+                        showAddDialog = true
+                    },
                     colors = IconButtonDefaults.filledIconButtonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -136,32 +147,45 @@ fun HintListScreen(
         }
     }
 
-    if (showAddDialog) {
-        var text by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { showAddDialog = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.add(text)
-                        showAddDialog = false
-                    },
-                    enabled = text.isNotBlank(), // 空白不可添加（Repository 入口校验双保险）
-                ) { Text(stringResource(R.string.hints_add_confirm)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) { Text(stringResource(R.string.hints_dismiss)) }
-            },
-            title = { Text(stringResource(R.string.hints_add)) },
-            text = {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it.take(HintRepository.MAX_HINT_LENGTH) }, // 30 字硬截断
-                    placeholder = { Text(stringResource(R.string.hints_input_hint)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
+    // 添加提示语弹窗：空白不可添加（Repository 入口校验双保险），30 字硬截断不变
+    val confirmAdd = {
+        // 退场动画期间按钮仍在屏幕上：以可见态作守卫，防重复提交
+        if (showAddDialog) viewModel.add(newHintText)
+        showAddDialog = false
+    }
+    FiveSecDialog(
+        visible = showAddDialog,
+        onDismissRequest = { showAddDialog = false },
+        title = stringResource(R.string.hints_add),
+        confirmButton = {
+            Button(onClick = confirmAdd, enabled = newHintText.isNotBlank()) {
+                Text(stringResource(R.string.hints_add_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { showAddDialog = false }) {
+                Text(stringResource(R.string.hints_dismiss))
+            }
+        },
+    ) {
+        OutlinedTextField(
+            value = newHintText,
+            onValueChange = { newHintText = it.take(HintRepository.MAX_HINT_LENGTH) }, // 30 字硬截断
+            placeholder = { Text(stringResource(R.string.hints_input_hint)) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { if (newHintText.isNotBlank()) confirmAdd() }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        // 字数反馈：仅展示当前长度/上限，截断与校验规则不变
+        Text(
+            stringResource(R.string.hints_char_count, newHintText.length, HintRepository.MAX_HINT_LENGTH),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.End,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Spacing.xs),
         )
     }
 }
