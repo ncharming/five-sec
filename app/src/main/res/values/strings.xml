@@ -47,7 +47,7 @@
     <string name="hints_subtitle">拦截时会随机展示一条</string>
     <string name="hints_add">添加提示语</string>
     <string name="hints_empty">还没有自定义提示语。添加后会与内置提示随机出现。</string>
-    <string name="hints_input_hint">输入提示语（不超过30字）</string>
+    <string name="hints_input_hint">输入提示语</string>
     <string name="hints_add_confirm">添加</string>
     <string name="hints_dismiss">取消</string>
     <string name="hints_builtin_section">内置提示语（只读）</string>
@@ -55,8 +55,8 @@
 
     <!-- Home bottom tabs -->
     <string name="tab_fivesec">五秒</string>
-    <string name="tab_app_list">拦截app</string>
-    <string name="tab_tips">tips</string>
+    <string name="tab_app_list">拦截源</string>
+    <string name="tab_tips">提示语</string>
     <string name="tab_stats">统计</string>
 
     <!-- App list -->

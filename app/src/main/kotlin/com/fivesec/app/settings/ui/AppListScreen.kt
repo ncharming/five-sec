@@ -56,8 +56,10 @@ import com.fivesec.app.settings.viewmodels.AppListViewModel
 import com.fivesec.app.ui.components.AppIcon
 import com.fivesec.app.ui.components.CardSurface
 import com.fivesec.app.ui.components.FiveSecDialog
+import com.fivesec.app.ui.components.FiveSecTextFieldShape
 import com.fivesec.app.ui.components.PageHeader
 import com.fivesec.app.ui.components.fiveSecSwitchColors
+import com.fivesec.app.ui.components.fiveSecTextFieldColors
 import com.fivesec.app.ui.theme.Spacing
 import com.fivesec.app.util.PackageUtil
 import com.fivesec.app.util.SystemTimeProvider
@@ -224,6 +226,8 @@ fun AppListScreen(
             onValueChange = { searchQuery = it },
             placeholder = { Text(stringResource(R.string.app_list_search_hint)) },
             singleLine = true,
+            shape = FiveSecTextFieldShape,
+            colors = fiveSecTextFieldColors(),
             modifier = Modifier.fillMaxWidth(),
         )
         if (filtered.isEmpty()) {

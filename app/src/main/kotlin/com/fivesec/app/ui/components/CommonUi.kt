@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwitchColors
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -38,7 +40,8 @@ import com.fivesec.app.ui.theme.Spacing
  * - PageHeader：大标题页头（headlineMedium 加粗 + 可选副标语 + 右侧动作位）；
  * - CardSurface：白底 22dp 圆角卡片（hairline 描边 + 轻投影），承载各页内容区块；
  * - fiveSecSwitchColors：实心品牌绿开关（选中绿底白钮 / 未选中灰底白钮，无描边）；
- * - AppIcon：应用真实图标锚点（46dp 圆角，失败回退首字方块）。
+ * - AppIcon：应用真实图标锚点（46dp 圆角，失败回退首字方块）；
+ * - FiveSecTextFieldShape / fiveSecTextFieldColors：弹窗表单输入框统一形状与配色。
  */
 
 /** 大标题页头：与 AppListScreen 一致的页面入口样式。 */
@@ -100,6 +103,20 @@ fun fiveSecSwitchColors(): SwitchColors = SwitchDefaults.colors(
     uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
     uncheckedThumbColor = Color.White,
     uncheckedBorderColor = Color.Transparent,
+)
+
+/** 统一输入框圆角：14dp 软圆角，衔接卡片（22dp）与浮层（24dp）的圆角语言；弹窗表单共用。 */
+val FiveSecTextFieldShape = RoundedCornerShape(14.dp)
+
+/**
+ * 统一弹窗表单输入框配色：未聚焦描边弱化为发丝级（outline 45%），聚焦回到品牌绿——
+ * 避免 M3 默认 outline 中灰在白卡弹窗里抢视觉。tips 与拦截应用弹窗共用。
+ */
+@Composable
+fun fiveSecTextFieldColors(): TextFieldColors = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = MaterialTheme.colorScheme.primary,
+    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+    disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
 )
 
 /** 应用图标锚点：读系统真实图标；加载失败回退为首字方块。dimmed 用于"已暂停"弱化。 */
