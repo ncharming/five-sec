@@ -2,6 +2,8 @@ package com.fivesec.app.di
 
 import android.content.Context
 import androidx.room.Room
+import com.fivesec.app.data.datastore.BuiltinHintsSetting
+import com.fivesec.app.data.datastore.SettingsDataStore
 import com.fivesec.app.data.db.AppDatabase
 import com.fivesec.app.data.db.HintDao
 import com.fivesec.app.data.db.InterceptionEventDao
@@ -41,6 +43,11 @@ object AppModule {
 
     @Provides
     fun provideHintDao(db: AppDatabase): HintDao = db.hintDao()
+
+    /** 内置提示语开关的持久化口：DataStore 单例实现（HintRepository 与提示语页共用，单测注入 fake）。 */
+    @Provides
+    @Singleton
+    fun provideBuiltinHintsSetting(impl: SettingsDataStore): BuiltinHintsSetting = impl
 
     @Provides
     fun provideTimeProvider(): TimeProvider = SystemTimeProvider()

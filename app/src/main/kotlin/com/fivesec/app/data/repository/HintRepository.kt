@@ -1,6 +1,7 @@
 package com.fivesec.app.data.repository
 
 import androidx.annotation.VisibleForTesting
+import com.fivesec.app.data.datastore.BuiltinHintsSetting
 import com.fivesec.app.data.db.HintDao
 import com.fivesec.app.domain.model.Hint
 import com.fivesec.app.domain.model.HintKind
@@ -16,7 +17,9 @@ import kotlinx.coroutines.launch
  * 提示语聚合点（specs/004-custom-hints）：
  *  - 无障碍服务在主线程同步调 [takeNextHint] 决定覆盖层展示文本（快照模式，对齐 InterceptionController）；
  *  - 管理页经 [observePool]/[addPoolHint]/[removePoolHint] 维护自定义提示语池；
- *  - 拦截页输入经 [pushStackHint] 入栈。
+ *  - 拦截页输入经 [pushStackHint] 入栈；
+ *  - 内置提示语开关（[BuiltinHintsSetting]，默认开启）只控制内置条目是否参与栈空时的随机回落，
+ *    不影响栈式一次性提示与自定义池。
  *
  * 一次性消费不变式：同一栈顶至多被 takeNextHint 返回一次——内存弹栈后立即标记 consumedPending，
  * observe 在删库落库前重发时按该集合过滤（防"栈顶复活"），删库确认后随最新列表收敛。
@@ -24,15 +27,23 @@ import kotlinx.coroutines.launch
 @Singleton
 class HintRepository @Inject constructor(
     private val hintDao: HintDao,
+    builtinHintsSetting: BuiltinHintsSetting,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val lock = Any()
     private var stackSnapshot: List<Hint> = emptyList() // id 升序，栈顶 = last()
     private var poolSnapshot: List<String> = emptyList()
+
+    // 内置开关快照：后台协程收集 DataStore 流，主线程 takeNextHint 只读 volatile（对齐 globalEnabled 收集模式）
+    @Volatile private var builtinEnabled = true
+
     private val consumedPending = mutableSetOf<Long>() // 已内存弹出、待删库确认的栈顶 id
 
     init {
+        scope.launch {
+            builtinHintsSetting.builtinHintsEnabled.collect { builtinEnabled = it }
+        }
         scope.launch {
             hintDao.observeByKind(HintKind.STACK).collect { entries ->
                 synchronized(lock) {
@@ -50,7 +61,8 @@ class HintRepository @Inject constructor(
 
     /**
      * 覆盖层创建时调用（主线程安全：锁内纯内存操作，删库走后台协程）。
-     * 栈非空 → 返回栈顶文本并消费；栈空 → 返回 (内置 + 自定义池).random()。
+     * 栈非空 → 返回栈顶文本并消费（栈与内置开关无关）；栈空 → 从候选随机：
+     * 开关开启 = (内置 + 自定义池)，关闭 = 仅自定义池（池亦空 → 空串，无提示语可展示）。
      */
     fun takeNextHint(builtinHints: List<String>): String {
         val top = synchronized(lock) {
@@ -65,8 +77,9 @@ class HintRepository @Inject constructor(
             return top.text
         }
         val pool = synchronized(lock) { poolSnapshot.toList() }
-        // builtin 恒非空（资源数组）；randomOrNull 兜底防崩（生产不可达）
-        return (builtinHints + pool).randomOrNull() ?: builtinHints.firstOrNull().orEmpty()
+        // 内置开关关闭：内置条目退出随机，候选仅剩自定义池；两边皆空时返回空串（不再兜底内置）
+        val candidates = if (builtinEnabled) builtinHints + pool else pool
+        return candidates.randomOrNull().orEmpty()
     }
 
     /** 拦截页"保存"：入栈（一次性提示，下次拦截优先展示）。 */

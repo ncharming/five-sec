@@ -1,5 +1,6 @@
 package com.fivesec.app.data.repository
 
+import com.fivesec.app.data.datastore.BuiltinHintsSetting
 import com.fivesec.app.data.db.HintDao
 import com.fivesec.app.domain.model.Hint
 import com.fivesec.app.domain.model.HintKind
@@ -12,7 +13,8 @@ import org.junit.Test
 
 /**
  * HintRepository 消费逻辑测试（specs/004-custom-hints）：
- * LIFO 顺序、栈空回落合并池随机、一次性消费防复活（按 id 过滤）、入口校验、持久化转发。
+ * LIFO 顺序、栈空回落合并池随机、一次性消费防复活（按 id 过滤）、入口校验、持久化转发、
+ * 内置提示语开关（关闭后内置条目退出随机、池空返回空串、栈不受影响、开启恢复）。
  * 快照收集走真实后台协程，用轮询 await 观测就绪；DAO 用 StateFlow 手控 fake（insert/delete 仅记录）。
  */
 class HintRepositoryTest {
@@ -37,6 +39,15 @@ class HintRepositoryTest {
         }
     }
 
+    /** 手控 fake 开关源：StateFlow 改值即模拟持久化配置变化（仓库经后台协程收集）。 */
+    private class FakeBuiltinHintsSetting(initial: Boolean = true) : BuiltinHintsSetting {
+        val state = MutableStateFlow(initial)
+        override val builtinHintsEnabled: Flow<Boolean> = state
+        override suspend fun setBuiltinHintsEnabled(enabled: Boolean) {
+            state.value = enabled
+        }
+    }
+
     private fun awaitUntil(timeoutMs: Long = 5_000, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (!condition()) {
@@ -49,7 +60,7 @@ class HintRepositoryTest {
     fun `栈非空时LIFO消费-最新优先`() {
         val dao = FakeHintDao()
         dao.stackState.value = listOf(Hint(id = 1, text = "A", kind = HintKind.STACK), Hint(id = 2, text = "B", kind = HintKind.STACK))
-        val repo = HintRepository(dao)
+        val repo = HintRepository(dao, FakeBuiltinHintsSetting())
 
         // 快照就绪观测：builtin 单元素 X；stack 未就绪时返回 X，就绪后消费栈顶 B
         awaitUntil { repo.takeNextHint(listOf("X")) == "B" }
@@ -64,7 +75,7 @@ class HintRepositoryTest {
     fun `栈空时从内置加自定义池合并随机`() {
         val dao = FakeHintDao()
         dao.poolState.value = listOf(Hint(id = 10, text = "P", kind = HintKind.POOL))
-        val repo = HintRepository(dao)
+        val repo = HintRepository(dao, FakeBuiltinHintsSetting())
 
         // pool 不被消费，轮询安全；builtin 空 + 池就绪后恒返回 P（唯一元素确定性）
         awaitUntil { repo.takeNextHint(emptyList()) == "P" }
@@ -83,10 +94,62 @@ class HintRepositoryTest {
     }
 
     @Test
+    fun `内置开关关闭后内置条目退出随机-仅剩自定义池`() {
+        val dao = FakeHintDao()
+        val setting = FakeBuiltinHintsSetting(initial = true)
+        dao.poolState.value = listOf(Hint(id = 10, text = "P", kind = HintKind.POOL))
+        val repo = HintRepository(dao, setting)
+
+        // 开启期：内置 X 会出现（builtin [X] + pool [P] 合并随机，50 次 X 缺席概率≈0）
+        awaitUntil { repo.takeNextHint(listOf("X")) == "P" }
+        var sawBuiltin = false
+        repeat(50) { if (repo.takeNextHint(listOf("X")) == "X") sawBuiltin = true }
+        assertTrue("开关开启时内置条目应参与随机", sawBuiltin)
+
+        // 关闭：快照经后台协程收集，轮询至连续 30 次抽取全为 P（X 绝迹即开关已生效）
+        setting.state.value = false
+        awaitUntil { List(30) { repo.takeNextHint(listOf("X")) }.all { it == "P" } }
+
+        // 重新开启：内置条目恢复参与随机
+        setting.state.value = true
+        awaitUntil {
+            var saw = false
+            repeat(50) { if (repo.takeNextHint(listOf("X")) == "X") saw = true }
+            saw
+        }
+    }
+
+    @Test
+    fun `内置关闭且池空时返回空串-不兜底内置`() {
+        val dao = FakeHintDao()
+        val setting = FakeBuiltinHintsSetting(initial = true)
+        val repo = HintRepository(dao, setting)
+
+        // 开启时栈空正常回落内置（确定性：builtin [X] 池空）
+        awaitUntil { repo.takeNextHint(listOf("X")) == "X" }
+
+        // 关闭后无任何候选 → 空串（覆盖层提示语区无内容，不再兜底内置第一条）
+        setting.state.value = false
+        awaitUntil { repo.takeNextHint(listOf("X")).isEmpty() }
+    }
+
+    @Test
+    fun `内置关闭不影响栈式一次性提示`() {
+        val dao = FakeHintDao()
+        val setting = FakeBuiltinHintsSetting(initial = false) // 直接以关闭态构造
+        dao.stackState.value = listOf(Hint(id = 1, text = "A", kind = HintKind.STACK))
+        val repo = HintRepository(dao, setting)
+
+        // 栈优先与内置开关无关：关闭态仍照常消费栈顶
+        awaitUntil { repo.takeNextHint(listOf("X")) == "A" }
+        awaitUntil { dao.deletedIds.contains(1L) }
+    }
+
+    @Test
     fun `删库未落地时observe重发不会复活已消费栈顶`() {
         val dao = FakeHintDao()
         dao.stackState.value = listOf(Hint(id = 1, text = "A", kind = HintKind.STACK), Hint(id = 2, text = "B", kind = HintKind.STACK))
-        val repo = HintRepository(dao)
+        val repo = HintRepository(dao, FakeBuiltinHintsSetting())
 
         awaitUntil { repo.takeNextHint(listOf("X")) == "B" } // 消费 B
 
@@ -110,7 +173,7 @@ class HintRepositoryTest {
     fun `防复活按id过滤-同文本新行不受误伤`() {
         val dao = FakeHintDao()
         dao.stackState.value = listOf(Hint(id = 1, text = "A", kind = HintKind.STACK))
-        val repo = HintRepository(dao)
+        val repo = HintRepository(dao, FakeBuiltinHintsSetting())
 
         awaitUntil { repo.takeNextHint(listOf("X")) == "A" } // 消费 id=1，pending={1}
 
@@ -131,7 +194,7 @@ class HintRepositoryTest {
     @Test
     fun `pushStackHint校验-空白拒绝超长截断`() {
         val dao = FakeHintDao()
-        val repo = HintRepository(dao)
+        val repo = HintRepository(dao, FakeBuiltinHintsSetting())
 
         repo.pushStackHint("   ")
         repo.pushStackHint("")
@@ -155,7 +218,7 @@ class HintRepositoryTest {
     @Test
     fun `addPoolHint与removePoolHint转发`() {
         val dao = FakeHintDao()
-        val repo = HintRepository(dao)
+        val repo = HintRepository(dao, FakeBuiltinHintsSetting())
 
         repo.addPoolHint("早点睡觉")
         awaitUntil { dao.inserted.size == 1 }

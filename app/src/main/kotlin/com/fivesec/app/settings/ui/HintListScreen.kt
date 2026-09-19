@@ -23,6 +23,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,12 +34,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -52,8 +57,10 @@ import com.fivesec.app.ui.components.CardSurface
 import com.fivesec.app.ui.components.FiveSecDialog
 import com.fivesec.app.ui.components.FiveSecTextFieldShape
 import com.fivesec.app.ui.components.PageHeader
+import com.fivesec.app.ui.components.fiveSecSwitchColors
 import com.fivesec.app.ui.components.fiveSecTextFieldColors
 import com.fivesec.app.ui.theme.Spacing
+import android.widget.Toast
 import kotlinx.coroutines.delay
 
 /**
@@ -63,7 +70,9 @@ import kotlinx.coroutines.delay
  *   区分只靠文字颜色（onSurface / onSurfaceVariant）与尾部删除钮——不再"一块白卡配一片散文本"；
  * - 空态文案也收进同款卡片，首条提示语出现时容器不跳变；
  * - 添加弹窗走统一 FiveSecDialog 外壳：开场聚焦即输、字数反馈收进 supportingText
- *   （上限沿用 MAX_HINT_LENGTH，不新增校验规则）。
+ *   （上限沿用 MAX_HINT_LENGTH，不新增校验规则）；
+ * - 内置区块标题行尾部是启停开关（复用拦截应用行同款 [Switch] + fiveSecSwitchColors）：
+ *   关闭后内置条目退出拦截页随机、卡片整体置灰弱化；条目内容保持只读不受影响。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +81,15 @@ fun HintListScreen(
 ) {
     val hints by viewModel.hints.collectAsStateWithLifecycle()
     val builtinHints = stringArrayResource(R.array.blocking_exercise_hints)
+    val builtinEnabled by viewModel.builtinEnabled.collectAsStateWithLifecycle()
+    val builtinSwitchDesc = stringResource(R.string.hints_builtin_switch)
+    val context = LocalContext.current
+    // 保存失败 toast：开关已由 ViewModel 回退收敛，这里只负责告知用户
+    LaunchedEffect(viewModel) {
+        viewModel.saveFailed.collect {
+            Toast.makeText(context, R.string.hints_builtin_save_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
     var showAddDialog by remember { mutableStateOf(false) }
     // 输入内容提升到页面级：FiveSecDialog 在退场动画期间仍持有内容，重开时由"+"按钮重置
     var newHintText by remember { mutableStateOf("") }
@@ -149,13 +167,30 @@ fun HintListScreen(
                 }
 
                 // ── 内置提示语只读区：同一卡片骨架 + 次要文字色，靠"可删/不可删"区分而非容器差异 ──
-                Text(
-                    stringResource(R.string.hints_builtin_section),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = Spacing.lg, bottom = Spacing.xs),
-                )
-                CardSurface {
+                // 标题行尾部启停开关：与「拦截源」应用行同款（Switch + fiveSecSwitchColors），仅控制内置条目
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = Spacing.lg, bottom = Spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(R.string.hints_builtin_section),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = builtinEnabled,
+                        onCheckedChange = viewModel::setBuiltinEnabled,
+                        colors = fiveSecSwitchColors(),
+                        modifier = Modifier.semantics { contentDescription = builtinSwitchDesc },
+                    )
+                }
+                // 关闭时整卡置灰（与拦截应用页"已暂停"行 0.62 弱化一致），条目本身仍只读展示
+                CardSurface(
+                    modifier = Modifier.alpha(if (builtinEnabled) 1f else BUILTIN_DISABLED_ALPHA),
+                ) {
                     builtinHints.forEachIndexed { index, text ->
                         if (index > 0) {
                             HorizontalDivider(
@@ -246,3 +281,6 @@ private fun HintRow(
         trailing?.invoke()
     }
 }
+
+/** 内置区关闭态弱化透明度：与拦截应用页"已暂停"行的 0.62 弱化保持一致。 */
+private const val BUILTIN_DISABLED_ALPHA = 0.62f
