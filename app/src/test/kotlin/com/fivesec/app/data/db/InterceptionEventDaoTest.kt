@@ -135,4 +135,22 @@ class InterceptionEventDaoTest {
 
         assertEquals(1, rows.single().total)
     }
+
+    /** 空态契约锚点：统计页不再因"无记录"整页消失，前提是查询层无记录时
+     *  照常执行并发射零值（而非不发射/返回 null），这里锁死该前提。 */
+    @Test
+    fun `空表时今日计数查询照常执行且返回零值`() = runTest {
+        val startOfToday = DateUtil.startOfDayMillis(System.currentTimeMillis())
+
+        assertEquals(0, dao.observeTodayCount(startOfToday).first())
+        assertEquals(0, dao.observeTodayCountByOutcome(startOfToday, InterceptionOutcome.OPENED).first())
+        assertEquals(0, dao.observeTodayCountByOutcome(startOfToday, InterceptionOutcome.CANCELED).first())
+    }
+
+    @Test
+    fun `空表时按应用聚合与连击日期查询返回空集合而非不发射`() = runTest {
+        assertEquals(emptyList<PackageRangeCount>(), dao.observeCountsByPackageBetween(0, Long.MAX_VALUE).first())
+        assertEquals(emptyList<String>(), dao.observeActiveDays().first())
+        assertEquals(null, dao.observeEarliestTimestamp().first())
+    }
 }

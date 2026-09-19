@@ -104,5 +104,4 @@
     <string name="stats_metric_intercepted">拦截</string>
     <string name="stats_metric_opened">打开</string>
     <string name="stats_metric_canceled">取消</string>
-    <string name="stats_empty">暂无数据。被拦截后会在这里显示。</string>
 </resources>

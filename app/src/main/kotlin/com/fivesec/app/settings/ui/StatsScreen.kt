@@ -47,6 +47,9 @@ import com.fivesec.app.ui.theme.Spacing
  * 今日三指标合并为单卡三列（发丝线分隔）；各应用卡改白底 + 真实图标 + 三列指标，
  * 替换原彩色整卡；日/周/月/年分段与周期 Chip 选中态统一品牌绿。
  * 数据口径与状态逻辑零改动。
+ *
+ * 空态契约（specs/002 FR 口径）：当天无拦截记录不是"无数据"，而是"数值为 0 的有效数据"——
+ * 查询层（COUNT 聚合）照常执行并返回零值，本页照常渲染 0 值卡片，不做整页短路跳过。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,16 +62,6 @@ fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
 
     Scaffold { padding ->
         val data = ui
-        if (data.total == 0 && data.streak == 0) {
-            Column(Modifier.padding(padding).padding(Spacing.xl)) {
-                Text(
-                    stringResource(R.string.stats_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            return@Scaffold
-        }
         Column(
             Modifier.padding(padding).verticalScroll(rememberScrollState()),
         ) {
