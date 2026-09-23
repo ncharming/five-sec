@@ -7,8 +7,10 @@ import com.fivesec.app.R
 import com.fivesec.app.blocking.BlockingOverlay
 import com.fivesec.app.data.repository.HintRepository
 import com.fivesec.app.data.repository.InterceptionRepository
+import com.fivesec.app.data.repository.TodoRepository
 import com.fivesec.app.domain.model.InterceptionEvent
 import com.fivesec.app.domain.model.InterceptionOutcome
+import com.fivesec.app.util.DateUtil
 import com.fivesec.app.util.PackageUtil
 import com.fivesec.app.util.TimeProvider
 import dagger.hilt.EntryPoint
@@ -32,6 +34,7 @@ class AppBlockerAccessibilityService : AccessibilityService() {
         fun controller(): InterceptionController
         fun repository(): InterceptionRepository
         fun hintRepository(): HintRepository
+        fun todoRepository(): TodoRepository
         fun timeProvider(): TimeProvider
         fun appScope(): CoroutineScope
     }
@@ -42,6 +45,7 @@ class AppBlockerAccessibilityService : AccessibilityService() {
     private val controller by lazy { entryPoint.controller() }
     private val repository by lazy { entryPoint.repository() }
     private val hintRepository by lazy { entryPoint.hintRepository() }
+    private val todoRepository by lazy { entryPoint.todoRepository() }
     private val timeProvider by lazy { entryPoint.timeProvider() }
     private val appScope by lazy { entryPoint.appScope() }
 
@@ -85,14 +89,16 @@ class AppBlockerAccessibilityService : AccessibilityService() {
         val decision = controller.evaluate(pkg)
         if (decision is InterceptionController.Decision.Block) {
             val appLabel = PackageUtil.label(packageManager, pkg)
-            // 展示即消费：栈式一次性提示优先（LIFO），栈空回落 内置+自定义池 随机（specs/004-custom-hints）
+            // 提示语：循环游标取下一条（specs/005：内置+池单一序列，替换 004 的"栈优先+随机"）
             val builtinHints = resources.getStringArray(R.array.blocking_exercise_hints).toList()
             val hintText = hintRepository.takeNextHint(builtinHints)
+            // 今日待办快照：覆盖层创建瞬间定格（specs/005：拦截时机顺带提示今日任务）
+            val todos = todoRepository.todayTodos(DateUtil.todayString(timeProvider.now()))
             val overlay = BlockingOverlay(
                 context = this,
                 appLabel = appLabel,
                 hint = hintText,
-                onSaveHint = { hintRepository.pushStackHint(it) },
+                todos = todos,
                 onFinished = { outcome -> onBlockingFinished(pkg, outcome) },
             )
             currentOverlay = overlay

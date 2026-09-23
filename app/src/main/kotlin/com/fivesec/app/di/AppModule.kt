@@ -3,6 +3,7 @@ package com.fivesec.app.di
 import android.content.Context
 import androidx.room.Room
 import com.fivesec.app.data.datastore.BuiltinHintsSetting
+import com.fivesec.app.data.datastore.DataStoreHintCursorStore
 import com.fivesec.app.data.datastore.SettingsDataStore
 import com.fivesec.app.data.db.AppDatabase
 import com.fivesec.app.data.db.HintDao
@@ -10,7 +11,10 @@ import com.fivesec.app.data.db.InterceptionEventDao
 import com.fivesec.app.data.db.MIGRATION_1_2
 import com.fivesec.app.data.db.MIGRATION_2_3
 import com.fivesec.app.data.db.MIGRATION_3_4
+import com.fivesec.app.data.db.MIGRATION_4_5
 import com.fivesec.app.data.db.TargetAppDao
+import com.fivesec.app.data.db.TodoDao
+import com.fivesec.app.data.repository.HintCursorStore
 import com.fivesec.app.util.SystemTimeProvider
 import com.fivesec.app.util.TimeProvider
 import dagger.Module
@@ -31,7 +35,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "five_sec.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
 
     @Provides
@@ -48,6 +52,13 @@ object AppModule {
     @Provides
     @Singleton
     fun provideBuiltinHintsSetting(impl: SettingsDataStore): BuiltinHintsSetting = impl
+
+    @Provides
+    fun provideTodoDao(db: AppDatabase): TodoDao = db.todoDao()
+
+    @Provides
+    @Singleton
+    fun provideHintCursorStore(impl: DataStoreHintCursorStore): HintCursorStore = impl
 
     @Provides
     fun provideTimeProvider(): TimeProvider = SystemTimeProvider()

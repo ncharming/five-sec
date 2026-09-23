@@ -36,6 +36,7 @@ class SettingsDataStore @Inject constructor(
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_completed")
         val RETENTION_DAYS = intPreferencesKey("stats_retention_days")
         val BUILTIN_HINTS_ENABLED = booleanPreferencesKey("builtin_hints_enabled")
+        val HINT_CURSOR = intPreferencesKey("hint_cycle_cursor") // 提示语循环游标（specs/005）
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -45,6 +46,13 @@ class SettingsDataStore @Inject constructor(
             statsRetentionDays = p[Keys.RETENTION_DAYS] ?: 90,
             builtinHintsEnabled = p[Keys.BUILTIN_HINTS_ENABLED] ?: true, // 首次使用默认开启 = 现行为
         )
+    }
+
+    /** 提示语循环游标：下一次应展示的序列下标；进程重启后续接而非归零（specs/005-daily-todos）。 */
+    val hintCursor: Flow<Int> = context.dataStore.data.map { p -> p[Keys.HINT_CURSOR] ?: 0 }
+
+    suspend fun setHintCursor(value: Int) {
+        context.dataStore.edit { it[Keys.HINT_CURSOR] = value }
     }
 
     val globalEnabled: Flow<Boolean> = settings.map { it.globalInterceptionEnabled }

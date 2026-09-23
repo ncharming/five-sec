@@ -6,7 +6,7 @@ import androidx.room.Query
 import com.fivesec.app.domain.model.Hint
 import kotlinx.coroutines.flow.Flow
 
-/** 提示语表访问：按 kind 过滤，id 升序（栈序 = 入库序，栈顶为最后一个元素）。 */
+/** 提示语表访问：按 kind 过滤，id 升序（kind 语义见 Hint KDoc；005 起 pool 即全部口径）。 */
 @Dao
 interface HintDao {
 

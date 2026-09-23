@@ -47,7 +47,7 @@ import kotlinx.coroutines.delay
  *  - visible 驱动而非调用方 if 条件挂载：退场动画必须在所有关闭路径（点遮罩、返回键、按钮）
  *    下都能播放，因此挂载状态由外壳自持，动画播完才卸载窗口并回调 [onDismissRequest]；
  *  - 退场动画期间按钮仍在屏幕上（只是淡出中），有副作用的确认动作由调用方以 visible 状态
- *    自行防重复提交（见 HintListScreen / AppListScreen 的 confirm 守卫）；
+ *    自行防重复提交（见 HintListScreen / InterceptScreen 的 confirm 守卫）；
  *  - 圆角 24dp（比卡片 22dp 略大，强化浮层语义，与主题 shapes.extraLarge 同值）；
  *  - 左右 24dp 屏幕边距 + 480dp 最大宽度：手机上是贴齐页面边距的卡片式弹窗，平板不无限拉宽。
  */

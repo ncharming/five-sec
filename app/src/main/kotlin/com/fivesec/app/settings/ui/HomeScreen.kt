@@ -7,12 +7,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Lightbulb
-import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -33,28 +33,30 @@ import androidx.compose.ui.res.stringResource
 import com.fivesec.app.R
 
 /**
- * 仿微信首页骨架：底部 4 Tab（五秒 / 拦截app / tips / 统计）。
+ * 首页骨架（specs/005-daily-todos 起为 4 Tab：待办 / 拦截 / 提示语 / 统计，默认落待办）：
  * - 选中态品牌绿、未选中灰，无胶囊指示器；点击瞬时切换，无切换动画。
  * - SaveableStateHolder 按页保持滚动位置等 UI 状态；各页 ViewModel 挂在首页
  *   NavBackStackEntry 上，切 Tab 不销毁（统计页首次切入才创建并开始加载数据）。
  * - 本层统一消费系统栏 insets（consumeWindowInsets）：四个子页面各自持有 Scaffold，
  *   边到边下状态栏/导航栏高度若内外叠加会出现双重留白。
  * - Tab 不进返回栈：任意 Tab 按返回键直接退出应用，与微信一致。
+ * - 演进：原「五秒」Tab 的总开关卡已并入「拦截」页顶部（InterceptScreen），
+ *   腾出的首页位给「待办」（TodoScreen）。本文件虽居 settings/ui 目录，声明为根包（历史布局）。
  */
 private enum class HomeTab(
     @StringRes val labelRes: Int,
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector,
 ) {
-    FIVE_SEC(R.string.tab_fivesec, Icons.Filled.Timer, Icons.Outlined.Timer),
-    APP_LIST(R.string.tab_app_list, Icons.Filled.Apps, Icons.Outlined.Apps),
+    TODOS(R.string.tab_todos, Icons.Filled.Checklist, Icons.Outlined.Checklist),
+    INTERCEPT(R.string.tab_intercept, Icons.Filled.Apps, Icons.Outlined.Apps),
     TIPS(R.string.tab_tips, Icons.Filled.Lightbulb, Icons.Outlined.Lightbulb),
     STATS(R.string.tab_stats, Icons.Filled.BarChart, Icons.Outlined.BarChart),
 }
 
 @Composable
 fun HomeScreen() {
-    var selectedTab by rememberSaveable { mutableStateOf(HomeTab.FIVE_SEC) }
+    var selectedTab by rememberSaveable { mutableStateOf(HomeTab.TODOS) }
     val stateHolder = rememberSaveableStateHolder()
 
     Scaffold(
@@ -89,8 +91,8 @@ fun HomeScreen() {
             // Scaffold 不再叠加一次状态栏/导航栏高度（边到边开启后 insets 为真实值，必须防双计）
             Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
                 when (selectedTab) {
-                    HomeTab.FIVE_SEC -> SettingsScreen()
-                    HomeTab.APP_LIST -> AppListScreen()
+                    HomeTab.TODOS -> TodoScreen()
+                    HomeTab.INTERCEPT -> InterceptScreen()
                     HomeTab.TIPS -> HintListScreen()
                     HomeTab.STATS -> StatsScreen()
                 }

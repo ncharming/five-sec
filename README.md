@@ -5,20 +5,28 @@
 ## 工作原理
 
 1. 通过 **无障碍服务（AccessibilityService）** 检测目标应用进入前台。
-2. 命中后先返回桌面隐藏目标，再弹出全屏拦截页 `BlockingActivity`。
-3. 拦截页强制 **5 秒提肛倒计时**，期间"打开/取消"按钮锁定。
+2. 命中后直接弹出全屏拦截覆盖层（`TYPE_ACCESSIBILITY_OVERLAY` 窗口，非 Activity——规避 OEM 对后台启动界面的静默拦截）。
+3. 拦截页强制 **5 秒提肛倒计时**，期间"打开/取消"按钮锁定；页面同时展示一条提示语（内置+自定义按顺序**循环**轮换）和**今日待办**卡片。
 4. 倒计时结束后可选择：
-   - **打开**：在短暂抑制窗口内重新启动目标应用（避免二次拦截）。
+   - **打开**：在 5 秒抑制窗口内重新启动目标应用（避免二次拦截）。
    - **取消**：留在桌面。
 5. 所有数据本地存储（Room + DataStore），**无需账号、无需联网**。
 
+## 每日待办（specs/005-daily-todos）
+
+底部四个 Tab：**待办 / 拦截 / 提示语 / 统计**，默认落在「待办」。
+
+- **待办页**：维护一份固定每日清单——新增、重命名、删除、启用/停用、当天勾选，每个自然日自动回到未完成（惰性求值，无需手动重置）；上限 20 条、每条 ≤30 字。
+- **拦截时机提醒**：任一目标应用触发拦截时，覆盖层会用一块紧凑卡片展示「今日待办 2/5」与未完成条目（最多 3 条）；全部完成显示"今日待办已全部完成 ✓"；没有启用待办时整块隐藏。卡片只读，勾选回待办页完成。
+- 待办**不进统计页、不产生任何通知**；提醒只发生在拦截弹出的那一刻。
+
 ## 自定义提示语
 
-拦截页的提示语有两层来源（specs/004-custom-hints）：
+拦截页的提示语有两层来源（specs/004-custom-hints 引入，specs/005-daily-todos 改为循环）：
 
-- **栈式一次性提示**：拦截页提供输入框（30 字内），写下的话**入栈保存**；下次拦截**优先展示最新一条**，展示后即消费（无论最终选择打开还是取消），栈空后恢复随机提示。相当于给未来的自己留一句话。
-- **自定义提示语池**：设置页「拦截应用清单」下方进入「自定义提示语」，添加的提示语与内置 7 条合并，在栈为空时**随机抽取**展示。
-- **内置提示语开关**：「提示语」页内置区标题行右侧有启停开关（默认开启，持久化到 DataStore）。关闭后内置 7 条**不再参与随机抽取**（栈式提示与自定义池不受影响；池也为空时拦截页提示语位置为空），内置卡片整体置灰提示未启用；内置条目本身保持只读。
+- **内置提示语**：7 条固定文案，只读；「提示语」页内置区标题行右侧有启停开关（默认开启，持久化到 DataStore），关闭后内置条目**退出循环序列**（仅剩自定义池参与轮换，池也为空时拦截页提示语位置为空）。
+- **自定义提示语池**：「提示语」Tab 中添加（≤30 字），与（启用的）内置合成单一序列，**每次拦截按顺序轮换展示一条**，到末尾回到开头；轮换进度（游标）持久化，进程重启后续接而非归零。
+- 早期版本在拦截页"留一句话"的一次性提示已退役；升级时这些文字会自动并入池中继续参与轮换（数据零丢失）。
 
 ## 技术栈
 
@@ -52,8 +60,9 @@ minSdk 26（Android 8.0）/ targetSdk 35，单 `app` 模块。
 1. 安装后启动，按引导开启「五秒 · 应用拦截」无障碍服务。
    - Android 12+ 会直达该服务的开关详情页，拨开开关并确认即可，无需在长列表里翻找；
    - Android 13+ 若被「受限设置」拦截，到 **无障碍 > 已安装的应用 > 允许受限设置**。
-2. 默认已内置抖音、小红书、B站三个目标应用；可在「拦截应用清单」增删。
-3. 点击桌面抖音图标即可触发拦截页。
+2. 默认已内置抖音、小红书、B站三个目标应用；在「拦截」Tab 可管理总开关、无障碍状态与目标应用增删。
+3. 在「待办」Tab 添加你的每日任务，之后每次拦截都会顺带提醒你今天还剩什么没做。
+4. 点击桌面抖音图标即可触发拦截页。
 
 ## 统计与数据留存
 
@@ -86,4 +95,7 @@ adb shell pm grant com.fivesec.app android.permission.WRITE_SECURE_SETTINGS
 
 ## 文档
 
-设计文档位于 `specs/001-app-intercept-exercise/`：[spec.md](specs/001-app-intercept-exercise/spec.md)、[plan.md](specs/001-app-intercept-exercise/plan.md)、[research.md](specs/001-app-intercept-exercise/research.md)、[data-model.md](specs/001-app-intercept-exercise/data-model.md)、[quickstart.md](specs/001-app-intercept-exercise/quickstart.md)。
+设计文档位于 `specs/` 目录：
+
+- [001-app-intercept-exercise](specs/001-app-intercept-exercise/spec.md)：拦截 + 5 秒锻炼（[plan](specs/001-app-intercept-exercise/plan.md)、[data-model](specs/001-app-intercept-exercise/data-model.md)、[quickstart](specs/001-app-intercept-exercise/quickstart.md)）
+- [005-daily-todos](specs/005-daily-todos/spec.md)：每日待办与拦截流程打通 + 信息架构重构 + 提示语循环（[plan](specs/005-daily-todos/plan.md)、[data-model](specs/005-daily-todos/data-model.md)、[quickstart](specs/005-daily-todos/quickstart.md)）

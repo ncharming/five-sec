@@ -2,6 +2,7 @@ package com.fivesec.app.settings
 
 import com.fivesec.app.data.datastore.BuiltinHintsSetting
 import com.fivesec.app.data.db.HintDao
+import com.fivesec.app.data.repository.HintCursorStore
 import com.fivesec.app.data.repository.HintRepository
 import com.fivesec.app.domain.model.Hint
 import com.fivesec.app.domain.model.HintKind
@@ -71,7 +72,14 @@ class HintListViewModelTest {
     fun setUp() {
         Dispatchers.setMain(dispatcher)
         dao = RecordingDao()
-        repo = HintRepository(dao, FakeBuiltinHintsSetting())
+        repo = HintRepository(
+            dao,
+            object : HintCursorStore { // 循环游标与列表管理无关，恒 0 即可
+                override fun observeCursor(): Flow<Int> = kotlinx.coroutines.flow.flowOf(0)
+                override suspend fun writeCursor(value: Int) = Unit
+            },
+            FakeBuiltinHintsSetting(), // 内置开关与列表管理用例无关，恒开启即可
+        )
     }
 
     @After

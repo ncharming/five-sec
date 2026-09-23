@@ -35,7 +35,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,42 +50,67 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fivesec.app.R
 import com.fivesec.app.data.repository.TargetAppRepository
 import com.fivesec.app.domain.model.TargetApp
 import com.fivesec.app.settings.viewmodels.AppListViewModel
+import com.fivesec.app.settings.viewmodels.SettingsViewModel
 import com.fivesec.app.ui.components.AppIcon
 import com.fivesec.app.ui.components.CardSurface
+import com.fivesec.app.ui.components.CapacitySegments
 import com.fivesec.app.ui.components.FiveSecDialog
 import com.fivesec.app.ui.components.FiveSecTextFieldShape
 import com.fivesec.app.ui.components.PageHeader
 import com.fivesec.app.ui.components.fiveSecSwitchColors
 import com.fivesec.app.ui.components.fiveSecTextFieldColors
 import com.fivesec.app.ui.theme.Spacing
+import com.fivesec.app.util.AccessibilityPermissionHelper
 import com.fivesec.app.util.PackageUtil
 import com.fivesec.app.util.SystemTimeProvider
 import com.fivesec.app.util.TimeProvider
 
 /**
- * 拦截应用清单（重设计原型 v1 落地）：
- * - 大标题 + 副标语 + 绿色圆形添加按钮；名额进度常驻展示，超限前置可见；
- * - 白卡列表：应用图标作视觉锚点，状态点标注"拦截中/已暂停"，暂停行整体弱化；
- * - 每行收敛为两个控件：⋯ 菜单（包名 / 移除）+ 启用开关，减少误触与视觉噪音；
- * - 名额满提示与添加应用弹窗走统一 FiveSecDialog 外壳（文案进 strings.xml，不硬编码）。
+ * 拦截页（specs/005-daily-todos 信息架构重构）：原「五秒」首页与「拦截源」页的合并体。
+ * 自上而下：页头（+ 添加应用）→ 拦截总开关卡（含无障碍状态行）→ 名额行 → 应用卡片列表 → 名额满提示。
+ *
+ * 两个既有 ViewModel 并挂本页、职责不合并：[SettingsViewModel] 管 DataStore 总开关，
+ * [AppListViewModel] 管目标应用清单——开关与清单语义不同，合并只会制造胖 VM。
+ * 开关/无障碍状态行为与原 SettingsScreen 零改动；清单交互与原 AppListScreen 零改动。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppListScreen(
-    viewModel: AppListViewModel = hiltViewModel(),
+fun InterceptScreen(
+    settingsViewModel: SettingsViewModel = hiltViewModel(),
+    appListViewModel: AppListViewModel = hiltViewModel(),
     timeProvider: TimeProvider = SystemTimeProvider(),
 ) {
-    val apps by viewModel.targetApps.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val settings by settingsViewModel.settings.collectAsStateWithLifecycle()
+    val globalEnabled = settings.globalInterceptionEnabled
+
+    val apps by appListViewModel.targetApps.collectAsStateWithLifecycle()
     var showPicker by remember { mutableStateOf(false) }
     var showLimitDialog by remember { mutableStateOf(false) }
     // 搜索词提升到页面级：FiveSecDialog 在退场动画期间仍持有内容，重开时由"+"按钮重置
     var searchQuery by remember { mutableStateOf("") }
     val isFull = apps.size >= TargetAppRepository.MAX_APPS
+
+    // 无障碍服务状态：ON_RESUME 重查（用户跳系统设置开启后返回时刷新），与原五秒页一致
+    var serviceEnabled by remember { mutableStateOf(AccessibilityPermissionHelper.isServiceEnabled(context)) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                serviceEnabled = AccessibilityPermissionHelper.isServiceEnabled(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Scaffold { padding ->
         Column(
@@ -91,10 +118,10 @@ fun AppListScreen(
                 .padding(padding)
                 .fillMaxSize(),
         ) {
-            // ── 页头：大标题 + 副标语 + 添加按钮 ──
+            // ── 页头：大标题 + 副标语 + 添加应用按钮 ──
             PageHeader(
-                title = stringResource(R.string.app_list_title),
-                subtitle = stringResource(R.string.app_list_subtitle),
+                title = stringResource(R.string.intercept_title),
+                subtitle = stringResource(R.string.intercept_subtitle),
             ) {
                 FilledIconButton(
                     onClick = {
@@ -112,6 +139,54 @@ fun AppListScreen(
                     modifier = Modifier.size(44.dp),
                 ) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.app_list_add))
+                }
+            }
+
+            // ── 拦截总开关卡（原五秒页主体，行为零改动） ──
+            CardSurface(Modifier.padding(horizontal = Spacing.lg)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.lg, vertical = Spacing.lg),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(R.string.settings_global_switch),
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = globalEnabled,
+                        onCheckedChange = settingsViewModel::setGlobalEnabled,
+                        colors = fiveSecSwitchColors(),
+                    )
+                }
+
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                )
+
+                // 无障碍服务状态：已开启绿色只读；未开启点击一键开启（失败跳系统设置）
+                // 注：TextButtonDefaults 已在 material3 1.3.0 移除，内容色直接由 Text.color 控制
+                TextButton(
+                    onClick = {
+                        if (serviceEnabled) return@TextButton
+                        // 已授权 WRITE_SECURE_SETTINGS 时直接一键开启，失败再跳系统设置
+                        serviceEnabled = AccessibilityPermissionHelper.enableService(context)
+                        if (!serviceEnabled) AccessibilityPermissionHelper.openAccessibilitySettings(context)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.xs),
+                ) {
+                    Text(
+                        if (serviceEnabled) stringResource(R.string.settings_accessibility_status_on)
+                        else stringResource(R.string.settings_accessibility_status_off),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (serviceEnabled) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
             }
 
@@ -155,8 +230,8 @@ fun AppListScreen(
                         }
                         AppRow(
                             app = app,
-                            onToggle = { viewModel.setEnabled(app.packageName, it) },
-                            onRemove = { viewModel.remove(app.packageName) },
+                            onToggle = { appListViewModel.setEnabled(app.packageName, it) },
+                            onRemove = { appListViewModel.remove(app.packageName) },
                         )
                     }
                 }
@@ -206,7 +281,7 @@ fun AppListScreen(
     }
 
     // ── 添加应用弹窗：搜索 + 列表直选，行点击即添加并关闭 ──
-    val installed by viewModel.installedApps.collectAsStateWithLifecycle()
+    val installed by appListViewModel.installedApps.collectAsStateWithLifecycle()
     val addedKeys = remember(apps) { apps.map { it.packageName }.toSet() }
     val filtered = remember(installed, searchQuery, addedKeys) {
         PackageUtil.filterInstalledApps(installed, addedKeys, searchQuery)
@@ -247,7 +322,7 @@ fun AppListScreen(
                                 if (item.isAdded) Modifier
                                 else Modifier.clickable {
                                     // 退场动画期间行仍在屏幕上：以可见态作守卫，防重复添加
-                                    if (showPicker) viewModel.add(item.app.packageName, timeProvider.now())
+                                    if (showPicker) appListViewModel.add(item.app.packageName, timeProvider.now())
                                     showPicker = false
                                 },
                             )
@@ -366,23 +441,5 @@ private fun AppRow(
             onCheckedChange = onToggle,
             colors = fiveSecSwitchColors(),
         )
-    }
-}
-
-/** 名额进度段（上限 = TargetAppRepository.MAX_APPS）。 */
-@Composable
-private fun CapacitySegments(filled: Int, total: Int) {
-    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-        repeat(total) { index ->
-            Box(
-                modifier = Modifier
-                    .size(width = 16.dp, height = 6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(
-                        if (index < filled) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.surfaceVariant,
-                    ),
-            )
-        }
     }
 }

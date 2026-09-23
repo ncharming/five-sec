@@ -3,6 +3,7 @@ package com.fivesec.app.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -44,7 +45,7 @@ import com.fivesec.app.ui.theme.Spacing
  * - FiveSecTextFieldShape / fiveSecTextFieldColors：弹窗表单输入框统一形状与配色。
  */
 
-/** 大标题页头：与 AppListScreen 一致的页面入口样式。 */
+/** 大标题页头：与 InterceptScreen 一致的页面入口样式。 */
 @Composable
 fun PageHeader(
     title: String,
@@ -118,6 +119,31 @@ fun fiveSecTextFieldColors(): TextFieldColors = OutlinedTextFieldDefaults.colors
     unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
     disabledBorderColor = MaterialTheme.colorScheme.outlineVariant,
 )
+
+/**
+ * 名额进度段：已用名额以品牌绿段展示（拦截应用 n/3 与待办 n/20 共用）。
+ * segmentWidth 可调：段数越多段越窄（20 段待办用 10dp，3 段应用用默认 16dp）。
+ */
+@Composable
+fun CapacitySegments(
+    filled: Int,
+    total: Int,
+    segmentWidth: Dp = 16.dp,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        repeat(total) { index ->
+            Box(
+                modifier = Modifier
+                    .size(width = segmentWidth, height = 6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(
+                        if (index < filled) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+            )
+        }
+    }
+}
 
 /** 应用图标锚点：读系统真实图标；加载失败回退为首字方块。dimmed 用于"已暂停"弱化。 */
 @Composable

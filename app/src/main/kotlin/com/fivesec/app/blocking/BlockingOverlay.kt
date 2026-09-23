@@ -5,19 +5,18 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.text.InputFilter
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.fivesec.app.R
 import com.fivesec.app.domain.model.InterceptionOutcome
+import com.fivesec.app.domain.model.TodayTodo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,8 +28,10 @@ import kotlinx.coroutines.launch
  * [WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY]。
  * 非 Activity → 不受 OEM（如 ColorOS）"后台 startActivity"静默拦截；复用 [BlockingViewModel] 的 5 秒减速带状态机。
  *
- * 提示语由服务侧经 HintRepository.takeNextHint 决定（栈式一次性提示优先，栈空随机），经 [hint] 注入；
- * 输入行把用户写的话入栈（specs/004-custom-hints），输入不受 5 秒按钮锁定影响，未保存草稿随覆盖层移除丢弃。
+ * 提示语由服务侧经 HintRepository 循环游标决定（specs/005-daily-todos：内置+池单一序列轮转），经 [hint] 注入。
+ * "今日待办"紧凑卡片（specs/005-daily-todos）在 [todos] 注入瞬间定格：标题「今日待办 D/T」+ 未完成条目
+ * （○ 前缀，最多 3 行，超出折叠）；全部完成显示完成态整行；启用数为 0 整块隐藏。只读、不参与 render() 锁定。
+ * 004 的"拦截页写提示语"输入行已整体移除（specs/005：栈式机制退役，池在提示语页维护）。
  *
  * 配色取自 res/values/colors.xml 的 brand_* token，与 Compose Color.kt 同源，保证品牌一致。
  * 始终浅色：覆盖层弹出在第三方 app 之上，非本 app 主题上下文。
@@ -39,7 +40,7 @@ class BlockingOverlay(
     context: Context,
     appLabel: String,
     hint: String,
-    private val onSaveHint: (String) -> Unit,
+    todos: List<TodayTodo>,
     private val onFinished: (InterceptionOutcome) -> Unit,
 ) {
     private val ctx: Context = context
@@ -79,38 +80,27 @@ class BlockingOverlay(
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
         gravity = Gravity.CENTER
     }
-    private val hintInput = EditText(ctx).apply {
-        // 显式 setter：裸 `hint =` 会命中外层构造参数 hint（局部作用域优先于隐式接收者），val 不可赋值
-        setHint(ctx.getString(R.string.blocking_hint_input_hint))
+
+    // ── 今日待办紧凑卡片（specs/005-daily-todos）：标题行 + 条目行，内容在构造时一次定格 ──
+    private val todoTitle = TextView(ctx).apply {
         setTextColor(onSurfaceColor)
-        setHintTextColor(onSurfaceVariantColor)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-        maxLines = 1
-        filters = arrayOf(InputFilter.LengthFilter(HINT_MAX_LENGTH)) // 30 字硬截断（字符计数）
-        background?.alpha = 64 // 淡化输入框描边，融入减速带视觉（无背景主题下跳过）
-    }
-    private val hintSaveBtn = Button(ctx).apply {
-        text = ctx.getString(R.string.blocking_hint_save)
-        setBackgroundColor(Color.TRANSPARENT)
-        setTextColor(primaryColor)
-        styleAsTextAction() // 统一：无按钮壳的加粗文字动作
-    }
-    private val hintFeedback = TextView(ctx).apply {
-        setTextColor(onSurfaceVariantColor)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+        typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
-        visibility = View.GONE // 保存成功/空白提示的瞬时反馈，默认隐藏
+    }
+    private val todoItems = TextView(ctx).apply {
+        setTextColor(onSurfaceVariantColor)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+        gravity = Gravity.CENTER
+        setLineSpacing(dp(4).toFloat(), 1f)
+    }
+    private val todoBlock = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        addView(todoTitle, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        addView(todoItems, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
     }
 
-    /** 反馈复位 runnable；展示新反馈前先取消未完成的复位，避免闪烁。 */
-    private val hideFeedback = Runnable { hintFeedback.visibility = View.GONE }
-
-    private fun showFeedback(resId: Int) {
-        hintFeedback.removeCallbacks(hideFeedback)
-        hintFeedback.setText(resId)
-        hintFeedback.visibility = View.VISIBLE
-        hintFeedback.postDelayed(hideFeedback, FEEDBACK_DURATION_MS)
-    }
     private val countdownText = TextView(ctx).apply {
         setTextColor(primaryColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 72f)
@@ -141,12 +131,18 @@ class BlockingOverlay(
         typeface = Typeface.DEFAULT_BOLD
     }
 
+    private val spacerBeforeTodos = spacer(dp(12)) // 待办卡片前导 spacer：空清单时与卡片一起 GONE，布局回现状
+
     private val root: View = buildRoot()
+
+    init {
+        applyTodos(todos)
+    }
 
     private fun dp(v: Int): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), ctx.resources.displayMetrics).toInt()
 
-    /** 文字动作按钮样式：透明底、加粗、去大写、去系统最小尺寸（保存/取消共用）。 */
+    /** 文字动作按钮样式：透明底、加粗、去大写、去系统最小尺寸（取消按钮共用）。 */
     private fun Button.styleAsTextAction() {
         isAllCaps = false
         typeface = Typeface.DEFAULT_BOLD
@@ -158,6 +154,36 @@ class BlockingOverlay(
     private fun spacer(h: Int): View =
         View(ctx).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, h) }
 
+    /** 待办卡片内容填充（contracts/todo-ui.md 渲染规则表）：空清单整块 GONE（含前导 spacer），全完成仅标题行。 */
+    private fun applyTodos(todos: List<TodayTodo>) {
+        if (todos.isEmpty()) {
+            todoBlock.visibility = View.GONE
+            spacerBeforeTodos.visibility = View.GONE
+            return
+        }
+        spacerBeforeTodos.visibility = View.VISIBLE
+        todoBlock.visibility = View.VISIBLE
+        val done = todos.count { it.isDone }
+        val pending = todos.filterNot { it.isDone }
+        if (pending.isEmpty()) {
+            todoTitle.text = ctx.getString(R.string.blocking_todos_all_done)
+            todoTitle.setTextColor(primaryColor)
+            todoItems.visibility = View.GONE
+            return
+        }
+        todoTitle.text = ctx.getString(R.string.blocking_todos_title, done, todos.size)
+        todoTitle.setTextColor(onSurfaceColor)
+        todoItems.visibility = View.VISIBLE
+        val shown = pending.take(TODO_MAX_LINES)
+        val text = shown.joinToString("\n") { TODO_BULLET + it.text }
+        val overflow = pending.size - shown.size
+        todoItems.text = if (overflow > 0) {
+            text + "\n" + ctx.getString(R.string.blocking_todos_more, overflow)
+        } else {
+            text
+        }
+    }
+
     private fun buildRoot(): View {
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -168,24 +194,6 @@ class BlockingOverlay(
         cancelBtn.setOnClickListener { viewModel.cancel() }
         openBtn.setOnClickListener { viewModel.open() }
 
-        // 自定义提示输入行：写句话入栈，下次拦截优先展示（输入不受 5 秒按钮锁定影响）
-        hintSaveBtn.setOnClickListener {
-            val text = hintInput.text?.toString()?.trim().orEmpty()
-            if (text.isEmpty()) {
-                showFeedback(R.string.blocking_hint_empty)
-            } else {
-                onSaveHint(text)
-                hintInput.setText("")
-                showFeedback(R.string.blocking_hint_saved)
-            }
-        }
-        val hintRow = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(hintInput, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            addView(hintSaveBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        }
-
         val column = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -193,9 +201,8 @@ class BlockingOverlay(
             addView(titleText)
             addView(spacer(dp(12)))
             addView(hintText)
-            addView(spacer(dp(12)))
-            addView(hintRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-            addView(hintFeedback)
+            addView(spacerBeforeTodos) // 待办卡片前导 spacer（类字段）：空清单时与卡片一起 GONE，布局回现状
+            addView(todoBlock, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(spacer(dp(24)))
             addView(
                 countdownText,
@@ -290,7 +297,10 @@ class BlockingOverlay(
     }
 
     companion object {
-        private const val HINT_MAX_LENGTH = 30
-        private const val FEEDBACK_DURATION_MS = 3_000L
+        /** 待办条目最多展示行数：5 秒内可读的上限，超出折叠进 blocking_todos_more。 */
+        private const val TODO_MAX_LINES = 3
+
+        /** 未完成条目前缀符号（与 "✓" 同属覆盖层符号常量，不入资源）。 */
+        private const val TODO_BULLET = "○ "
     }
 }

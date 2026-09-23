@@ -17,6 +17,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
+/**
+ * HintDao 测试（specs/005-daily-todos 去栈化）：
+ * kind 只剩 pool 口径（stack 已随拦截页输入入口退役，存量行由 MIGRATION_4_5 改挂 pool）。
+ */
 @RunWith(RobolectricTestRunner::class)
 class HintDaoTest {
 
@@ -38,41 +42,25 @@ class HintDaoTest {
     }
 
     @Test
-    fun `按kind过滤且id升序返回`() = runTest {
-        dao.insert(Hint(text = "第一条", kind = HintKind.STACK))
-        dao.insert(Hint(text = "池条目", kind = HintKind.POOL))
-        dao.insert(Hint(text = "第二条", kind = HintKind.STACK))
-
-        val stack = dao.observeByKind(HintKind.STACK).first()
-        assertEquals(listOf("第一条", "第二条"), stack.map { it.text })
-        // 栈序 = 入库序，栈顶为最后一个元素
-        assertTrue(stack.last().id > stack.first().id)
+    fun `池条目按id升序返回`() = runTest {
+        dao.insert(Hint(text = "第一条", kind = HintKind.POOL))
+        dao.insert(Hint(text = "第二条", kind = HintKind.POOL))
 
         val pool = dao.observeByKind(HintKind.POOL).first()
-        assertEquals(listOf("池条目"), pool.map { it.text })
+        assertEquals(listOf("第一条", "第二条"), pool.map { it.text })
+        assertTrue(pool.last().id > pool.first().id) // 添加顺序 = 轮转顺序
     }
 
     @Test
     fun `deleteById删除指定行且不影响其他行`() = runTest {
-        val id1 = dao.insert(Hint(text = "保留", kind = HintKind.STACK))
-        val id2 = dao.insert(Hint(text = "删除我", kind = HintKind.STACK))
+        val id1 = dao.insert(Hint(text = "保留", kind = HintKind.POOL))
+        val id2 = dao.insert(Hint(text = "删除我", kind = HintKind.POOL))
 
         dao.deleteById(id2)
 
-        val stack = dao.observeByKind(HintKind.STACK).first()
-        assertEquals(listOf("保留"), stack.map { it.text })
-        assertEquals(id1, stack.single().id)
-    }
-
-    @Test
-    fun `删除池条目不影响栈条目`() = runTest {
-        dao.insert(Hint(text = "栈", kind = HintKind.STACK))
-        val poolId = dao.insert(Hint(text = "池", kind = HintKind.POOL))
-
-        dao.deleteById(poolId)
-
-        assertTrue(dao.observeByKind(HintKind.POOL).first().isEmpty())
-        assertEquals(listOf("栈"), dao.observeByKind(HintKind.STACK).first().map { it.text })
+        val pool = dao.observeByKind(HintKind.POOL).first()
+        assertEquals(listOf("保留"), pool.map { it.text })
+        assertEquals(id1, pool.single().id)
     }
 
     @Test

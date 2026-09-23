@@ -10,10 +10,11 @@ import com.fivesec.app.domain.model.Hint
 import com.fivesec.app.domain.model.InterceptionEvent
 import com.fivesec.app.domain.model.InterceptionOutcome
 import com.fivesec.app.domain.model.TargetApp
+import com.fivesec.app.domain.model.Todo
 
 @Database(
-    entities = [TargetApp::class, InterceptionEvent::class, Hint::class],
-    version = 4, // v4：新增 hints 表（拦截页栈式一次性提示 + 自定义提示语池）
+    entities = [TargetApp::class, InterceptionEvent::class, Hint::class, Todo::class],
+    version = 5, // v5：新增 todos 表（每日待办）+ hints 存量 stack 行改挂 pool（specs/005-daily-todos）
     exportSchema = false,
 )
 @TypeConverters(InterceptionOutcomeConverter::class)
@@ -21,6 +22,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun targetAppDao(): TargetAppDao
     abstract fun interceptionEventDao(): InterceptionEventDao
     abstract fun hintDao(): HintDao
+    abstract fun todoDao(): TodoDao
 }
 
 // 从版本1迁移到版本2：添加 appName 字段和 AppStatistics 表
@@ -68,6 +70,23 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
                 "text TEXT NOT NULL, " +
                 "kind TEXT NOT NULL)"
         )
+    }
+}
+
+// 从版本4迁移到版本5：新增 todos 表（每日待办，specs/005-daily-todos）；
+// 同时把 hints 存量 stack 行改挂为 pool——拦截页输入入口退役后，用户留的话并入循环序列零丢失。
+// 既有三表结构零触碰（interception_events 红线）。
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // 列定义必须与 Room 为 Todo 实体生成的 schema 逐字一致（AppDatabaseMigrationTest 守住）
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS `todos` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`text` TEXT NOT NULL, " +
+                "`isEnabled` INTEGER NOT NULL, " +
+                "`lastCompletedDate` TEXT NOT NULL)"
+        )
+        database.execSQL("UPDATE hints SET kind = 'pool' WHERE kind = 'stack'")
     }
 }
 
