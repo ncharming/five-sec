@@ -57,6 +57,23 @@
     <string name="todos_detail_title">待办内容</string>
     <string name="todos_detail_close">关闭</string>
 
+    <!-- Todos 重复规则（specs/006-recurring-todos） -->
+    <string name="todos_rule_title">重复</string>
+    <string name="todos_rule_daily">每天</string>
+    <string name="todos_rule_weekly">按星期几</string>
+    <string name="todos_rule_interval">每 N 天</string>
+    <string name="todos_rule_dow_1">周一</string>
+    <string name="todos_rule_dow_2">周二</string>
+    <string name="todos_rule_dow_3">周三</string>
+    <string name="todos_rule_dow_4">周四</string>
+    <string name="todos_rule_dow_5">周五</string>
+    <string name="todos_rule_dow_6">周六</string>
+    <string name="todos_rule_dow_7">周日</string>
+    <string name="todos_rule_interval_days">天</string>
+    <string name="todos_rule_interval_hint">完成后隔 N 天再次出现（2–365 天）</string>
+    <string name="todos_rule_weekly_required">至少选择一天</string>
+    <string name="todos_not_due_today">今天不用做</string>
+
     <!-- Custom hint manager（specs/004 引入；specs/005 起循环展示） -->
     <string name="hints_title">自定义提示语</string>
     <string name="hints_subtitle">拦截时按顺序循环展示一条</string>

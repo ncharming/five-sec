@@ -4,13 +4,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -24,6 +27,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,6 +35,9 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,6 +54,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,6 +65,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fivesec.app.R
 import com.fivesec.app.data.repository.TodoRepository
+import com.fivesec.app.domain.model.Todo
+import com.fivesec.app.domain.model.TodoRule
 import com.fivesec.app.settings.viewmodels.TodoRow
 import com.fivesec.app.settings.viewmodels.TodoViewModel
 import com.fivesec.app.ui.components.CardSurface
@@ -66,12 +76,15 @@ import com.fivesec.app.ui.components.PageHeader
 import com.fivesec.app.ui.components.fiveSecSwitchColors
 import com.fivesec.app.ui.components.fiveSecTextFieldColors
 import com.fivesec.app.ui.theme.Spacing
+import com.fivesec.app.util.TodoRecurrence
+import java.time.DayOfWeek
 
 /**
- * 待办页（specs/005-daily-todos，首页默认 Tab）：固定每日清单的增删改/启停/今日勾选。
+ * 待办页（specs/005-daily-todos；006 增重复规则，首页默认 Tab）：固定每日清单的增删改/启停/今日勾选/规则编辑。
  * 视觉沿用四页统一语言（PageHeader + 白卡行骨架 + FiveSecDialog 弹窗）；名额行已移除——
  * 容量语义由「满员底部提示 + 添加兜底弹窗」承载。标题 ≤200 字：列表单行省略，点条目看只读全文弹窗。
- * 只读约定：拦截覆盖层上的待办卡片由本页数据派生（快照），勾选只发生在本页（FR-005）。
+ * 不轮到的日子（specs/006）：行灰显 +「今天不用做」+ 禁勾，条目不消失；规则在编辑弹窗三选一配置。
+ * 只读约定：拦截覆盖层上的待办卡片由本页数据派生（快照只含轮到条目），勾选只发生在本页（FR-005）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -185,22 +198,28 @@ fun TodoScreen(
         visible = showAddDialog,
         title = stringResource(R.string.todos_add_title),
         initialText = "",
+        initialRule = TodoRule.DAILY,
         onDismiss = { showAddDialog = false },
-        onConfirm = { text ->
-            if (showAddDialog) viewModel.add(text) // 退场动画期间防重复提交（外壳约定）
+        onConfirm = { text, rule ->
+            if (showAddDialog) viewModel.add(text, rule) // 退场动画期间防重复提交（外壳约定）
             showAddDialog = false
         },
     )
 
-    // 重命名弹窗
+    // 重命名弹窗（specs/006：同时承载规则编辑；规则变了才发定向 UPDATE，文本照旧独立走 rename）
     editTarget?.let { target ->
+        val existingRule = TodoRule(target.todo.repeatType, target.todo.repeatDays, target.todo.intervalDays)
         TodoEditDialog(
             visible = true,
             title = stringResource(R.string.todos_edit_title),
             initialText = target.todo.text,
+            initialRule = existingRule,
             onDismiss = { editTarget = null },
-            onConfirm = { text ->
-                if (editTarget != null) viewModel.rename(target.todo.id, text)
+            onConfirm = { text, rule ->
+                if (editTarget != null) {
+                    viewModel.rename(target.todo.id, text)
+                    if (rule != existingRule) viewModel.setRecurrence(target.todo.id, rule)
+                }
                 editTarget = null
             },
         )
@@ -294,15 +313,21 @@ private fun TodoItemRow(
         Checkbox(
             checked = row.doneToday,
             onCheckedChange = { onToggleDone() },
-            enabled = enabled, // 停用条目不可勾选（FR-003）
+            enabled = enabled && row.dueToday, // 停用或不轮到都不可勾（FR-003 / specs/006 FR-005）
             colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary),
         )
         Column(
             modifier = Modifier
                 .weight(1f)
                 .padding(start = Spacing.xs)
-                .alpha(if (enabled) 1f else 0.62f)
-                .clickable(onClick = onShowDetail), // 单行省略是展示层截断：点条目看全文
+                .alpha(
+                    when {
+                        !enabled -> 0.62f // 停用弱化（既有语义）
+                        !row.dueToday -> 0.45f // 不轮到灰显（specs/006）
+                        else -> 1f
+                    },
+                )
+                .clickable(onClick = onShowDetail), // 单行省略是展示层截断：点条目看全文（任何状态可用）
         ) {
             Text(
                 row.todo.text,
@@ -314,6 +339,15 @@ private fun TodoItemRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (enabled && !row.dueToday) {
+                // 「今天不用做」标注：仅"启用但不轮到"显示——停用行的不可勾原因由开关表达，避免双重误导
+                Text(
+                    stringResource(R.string.todos_not_due_today),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
         }
         Switch(
             checked = enabled,
@@ -353,25 +387,60 @@ private fun TodoItemRow(
     }
 }
 
-/** 新建/重命名共用表单弹窗：多行输入（只为长文本可见性，换行折叠为空格），200 字硬截断，空白不可确认。 */
+/**
+ * 新建/重命名共用表单弹窗：多行输入（换行折叠为空格）+ 重复规则区（specs/006），200 字硬截断，空白不可确认。
+ * 规则区三选一：每天 / 按星期几（多选周几，全空禁存并提示）/ 每 N 天（越界即时收敛显示 2..365）。
+ * 弹窗内存态保留用户切走的规则勾选（体验细节），保存只落当前选中规则、其余两列归零（见 data-model 不变式）。
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun TodoEditDialog(
     visible: Boolean,
     title: String,
     initialText: String,
+    initialRule: TodoRule,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
+    onConfirm: (String, TodoRule) -> Unit,
 ) {
-    // rememberSaveable(text)：退场动画期间弹窗仍持内容；重开时由调用方以新 key 重建重置
+    // rememberSaveable：退场动画期间弹窗仍持内容；重开时由调用方以新 key 重建重置（initialText/initialRule 参与 key）
     var text by rememberSaveable(visible, initialText) { mutableStateOf(initialText) }
+    var ruleType by rememberSaveable(visible, initialText) { mutableStateOf(initialRule.repeatType) }
+    var repeatDays by rememberSaveable(visible, initialText) { mutableStateOf(initialRule.repeatDays) }
+    var intervalText by rememberSaveable(visible, initialText) {
+        mutableStateOf(
+            initialRule.intervalDays
+                .takeIf { initialRule.repeatType == TodoRecurrence.REPEAT_INTERVAL }
+                ?.toString()
+                ?: "3",
+        )
+    }
+
+    val weeklyIncomplete = ruleType == TodoRecurrence.REPEAT_WEEKLY && repeatDays == 0
+    val intervalDays = (intervalText.toIntOrNull() ?: TodoRecurrence.MIN_INTERVAL_DAYS)
+        .coerceIn(TodoRecurrence.MIN_INTERVAL_DAYS, TodoRecurrence.MAX_INTERVAL_DAYS)
+
     FiveSecDialog(
         visible = visible,
         onDismissRequest = onDismiss,
         title = title,
         confirmButton = {
             Button(
-                onClick = { onConfirm(text.trim()) },
-                enabled = text.trim().isNotBlank(),
+                onClick = {
+                    val rule = when (ruleType) {
+                        TodoRecurrence.REPEAT_WEEKLY -> {
+                            val days = DayOfWeek.values()
+                                .filter { repeatDays and TodoRecurrence.bitOf(it) != 0 }
+                                .toSet()
+                            if (days.isEmpty()) return@Button // 防御：按钮已禁用，正常不可达
+                            TodoRule.weekly(days)
+                        }
+
+                        TodoRecurrence.REPEAT_INTERVAL -> TodoRule.interval(intervalDays)
+                        else -> TodoRule.DAILY
+                    }
+                    onConfirm(text.trim(), rule)
+                },
+                enabled = text.trim().isNotBlank() && !weeklyIncomplete,
             ) {
                 Text(stringResource(R.string.todos_save))
             }
@@ -404,5 +473,120 @@ private fun TodoEditDialog(
                 .fillMaxWidth()
                 .padding(top = Spacing.xs),
         )
+
+        // ── 重复规则区（specs/006） ──
+        Text(
+            stringResource(R.string.todos_rule_title),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Spacing.md),
+        )
+        SingleChoiceSegmentedButtonRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Spacing.xs),
+        ) {
+            SegmentedButton(
+                selected = ruleType == TodoRecurrence.REPEAT_DAILY,
+                onClick = { ruleType = TodoRecurrence.REPEAT_DAILY },
+                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
+            ) {
+                Text(stringResource(R.string.todos_rule_daily))
+            }
+            SegmentedButton(
+                selected = ruleType == TodoRecurrence.REPEAT_WEEKLY,
+                onClick = { ruleType = TodoRecurrence.REPEAT_WEEKLY },
+                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+            ) {
+                Text(stringResource(R.string.todos_rule_weekly))
+            }
+            SegmentedButton(
+                selected = ruleType == TodoRecurrence.REPEAT_INTERVAL,
+                onClick = { ruleType = TodoRecurrence.REPEAT_INTERVAL },
+                shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+            ) {
+                Text(stringResource(R.string.todos_rule_interval))
+            }
+        }
+
+        when (ruleType) {
+            TodoRecurrence.REPEAT_WEEKLY -> {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = Spacing.xs),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+                ) {
+                    DayOfWeek.values().forEach { day ->
+                        val bit = TodoRecurrence.bitOf(day)
+                        FilterChip(
+                            selected = repeatDays and bit != 0,
+                            onClick = { repeatDays = repeatDays xor bit },
+                            label = { Text(todoRuleDayLabel(day)) },
+                        )
+                    }
+                }
+                if (weeklyIncomplete) {
+                    Text(
+                        stringResource(R.string.todos_rule_weekly_required),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = Spacing.xs),
+                    )
+                }
+            }
+
+            TodoRecurrence.REPEAT_INTERVAL -> {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = Spacing.xs),
+                ) {
+                    OutlinedTextField(
+                        value = intervalText,
+                        onValueChange = { raw ->
+                            // 只留数字 + 越界即时收敛显示（输 1 → 2、输 999 → 365）；清空允许（保存时兜底 MIN）
+                            val digits = raw.filter { it.isDigit() }.take(3)
+                            intervalText = if (digits.isEmpty()) {
+                                ""
+                            } else {
+                                digits.toInt()
+                                    .coerceIn(TodoRecurrence.MIN_INTERVAL_DAYS, TodoRecurrence.MAX_INTERVAL_DAYS)
+                                    .toString()
+                            }
+                        },
+                        label = { Text(stringResource(R.string.todos_rule_interval)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        shape = FiveSecTextFieldShape,
+                        colors = fiveSecTextFieldColors(),
+                        modifier = Modifier.width(120.dp),
+                    )
+                    Text(stringResource(R.string.todos_rule_interval_days))
+                }
+                Text(
+                    stringResource(R.string.todos_rule_interval_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = Spacing.xs),
+                )
+            }
+        }
     }
+}
+
+/** 周几 FilterChip 文案（资源引用，中文第一语言）。 */
+@Composable
+private fun todoRuleDayLabel(day: DayOfWeek): String = when (day) {
+    DayOfWeek.MONDAY -> stringResource(R.string.todos_rule_dow_1)
+    DayOfWeek.TUESDAY -> stringResource(R.string.todos_rule_dow_2)
+    DayOfWeek.WEDNESDAY -> stringResource(R.string.todos_rule_dow_3)
+    DayOfWeek.THURSDAY -> stringResource(R.string.todos_rule_dow_4)
+    DayOfWeek.FRIDAY -> stringResource(R.string.todos_rule_dow_5)
+    DayOfWeek.SATURDAY -> stringResource(R.string.todos_rule_dow_6)
+    else -> stringResource(R.string.todos_rule_dow_7)
 }

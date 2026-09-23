@@ -31,6 +31,16 @@ interface TodoDao {
     @Query("UPDATE todos SET lastCompletedDate = :date WHERE id = :id")
     suspend fun setCompletedDate(id: Long, date: String)
 
+    /**
+     * 定向更新重复规则三列（specs/006）：绝不触碰 text/isEnabled/lastCompletedDate——
+     * 规则修改与并发勾选/启停互不覆盖；"不清锚点"由此免费成立（锚点=lastCompletedDate）。
+     */
+    @Query(
+        "UPDATE todos SET repeatType = :repeatType, repeatDays = :repeatDays, intervalDays = :intervalDays " +
+            "WHERE id = :id",
+    )
+    suspend fun updateRecurrence(id: Long, repeatType: Int, repeatDays: Int, intervalDays: Int)
+
     @Query("DELETE FROM todos WHERE id = :id")
     suspend fun deleteById(id: Long)
 

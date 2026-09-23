@@ -2,7 +2,9 @@ package com.fivesec.app.data.repository
 
 import com.fivesec.app.data.db.TodoDao
 import com.fivesec.app.domain.model.Todo
+import com.fivesec.app.domain.model.TodoRule
 import com.fivesec.app.domain.model.TodayTodo
+import com.fivesec.app.util.TodoRecurrence
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -36,22 +38,34 @@ class TodoRepository @Inject constructor(
         }
     }
 
-    /** 覆盖层创建时调用（主线程安全：锁内纯内存映射）；只含启用条目，isDone 按 today 口径映射。 */
+    /** 覆盖层创建时调用（主线程安全：锁内纯内存映射）；只含「启用且今天轮到」条目，
+     *  isDone 按 today 口径映射——覆盖层卡片的 D/T 分母、○ 未完成列表、空块隐藏因此自动
+     *  只看轮到条目（FR-006/FR-007），服务与 BlockingOverlay 零改动。 */
     fun todayTodos(today: String): List<TodayTodo> = synchronized(lock) {
-        snapshot.filter { it.isEnabled }.map { TodayTodo(it.text, it.lastCompletedDate == today) }
+        snapshot.filter {
+            it.isEnabled && TodoRecurrence.isDue(it.repeatType, it.repeatDays, it.intervalDays, it.lastCompletedDate, today)
+        }.map { TodayTodo(it.text, it.lastCompletedDate == today) }
     }
 
     /** 待办页列表（id 升序，含停用条目；透传 DAO）。 */
     fun observeAll(): Flow<List<Todo>> = todoDao.observeAll()
 
-    /** 新增：校验（trim/空白拒/200 字截断）+ 上限 20；失败返回中文文案的 Result。 */
-    suspend fun add(text: String): Result<Unit> {
+    /** 新增：校验（trim/空白拒/200 字截断 + 规则兜底校验）+ 上限 20；失败返回中文文案的 Result。
+     *  [rule] 缺省 = 每天（既有调用零改动）。 */
+    suspend fun add(text: String, rule: TodoRule = TodoRule.DAILY): Result<Unit> {
         val normalized = normalize(text)
             ?: return Result.failure(IllegalArgumentException("待办内容不能为空"))
+        val safeRule = normalizeRule(rule).getOrElse { return Result.failure(it) }
         if (todoDao.count() >= MAX_TODOS) {
             return Result.failure(IllegalStateException("最多可添加${MAX_TODOS}条待办，请删除后重试"))
         }
-        return runCatching { todoDao.insert(Todo(text = normalized)); Unit }
+        val todo = Todo(
+            text = normalized,
+            repeatType = safeRule.repeatType,
+            repeatDays = safeRule.repeatDays,
+            intervalDays = safeRule.intervalDays,
+        )
+        return runCatching { todoDao.insert(todo); Unit }
     }
 
     /** 重命名：同一校验口径，定向更新 text 列（避免覆盖并发发生的勾选/启停）。 */
@@ -64,6 +78,26 @@ class TodoRepository @Inject constructor(
     suspend fun remove(id: Long) = todoDao.deleteById(id)
 
     suspend fun setEnabled(id: Long, enabled: Boolean) = todoDao.setEnabled(id, enabled)
+
+    /** 修改重复规则：定向更新三列（不触碰并发勾选/启停/文本，"不清锚点"因此免费成立）；
+     *  周几空集拒绝、间隔越界收敛（与 TodoRule 工厂同一口径的兜底）。 */
+    suspend fun setRecurrence(id: Long, rule: TodoRule): Result<Unit> {
+        val safeRule = normalizeRule(rule).getOrElse { return Result.failure(it) }
+        return runCatching {
+            todoDao.updateRecurrence(id, safeRule.repeatType, safeRule.repeatDays, safeRule.intervalDays)
+        }
+    }
+
+    /** 规则兜底校验（主拦截在编辑弹窗表单层）：周几至少一天；间隔收敛 2..365。 */
+    private fun normalizeRule(rule: TodoRule): Result<TodoRule> = when {
+        rule.repeatType == TodoRecurrence.REPEAT_WEEKLY && rule.repeatDays == 0 ->
+            Result.failure(IllegalArgumentException("每周至少选择一天"))
+
+        rule.repeatType == TodoRecurrence.REPEAT_INTERVAL ->
+            Result.success(rule.copy(intervalDays = TodoRecurrence.coerceIntervalDays(rule.intervalDays)))
+
+        else -> Result.success(rule)
+    }
 
     /** 勾选写 [today]、取消写空串；today 由调用方按当天口径传入（VM 持 TimeProvider）。 */
     suspend fun setCompleted(id: Long, today: String, completed: Boolean) {

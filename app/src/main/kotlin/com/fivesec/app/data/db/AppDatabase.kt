@@ -14,7 +14,7 @@ import com.fivesec.app.domain.model.Todo
 
 @Database(
     entities = [TargetApp::class, InterceptionEvent::class, Hint::class, Todo::class],
-    version = 5, // v5：新增 todos 表（每日待办）+ hints 存量 stack 行改挂 pool（specs/005-daily-todos）
+    version = 6, // v6：todos 新增重复规则三列（specs/006-recurring-todos，老数据默认=每天零感知）
     exportSchema = false,
 )
 @TypeConverters(InterceptionOutcomeConverter::class)
@@ -87,6 +87,17 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
                 "`lastCompletedDate` TEXT NOT NULL)"
         )
         database.execSQL("UPDATE hints SET kind = 'pool' WHERE kind = 'stack'")
+    }
+}
+
+// 从版本5迁移到版本6：todos 新增重复规则三列（specs/006-recurring-todos）。
+// 纯 ADD COLUMN + DEFAULT 0：存量行自动归入"每天"规则，零数据迁移语句、零丢失；
+// 列定义必须与 Room 为 Todo 实体生成的 schema 逐字一致（AppDatabaseMigrationTest 守住）。
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE todos ADD COLUMN repeatType INTEGER NOT NULL DEFAULT 0")
+        database.execSQL("ALTER TABLE todos ADD COLUMN repeatDays INTEGER NOT NULL DEFAULT 0")
+        database.execSQL("ALTER TABLE todos ADD COLUMN intervalDays INTEGER NOT NULL DEFAULT 0")
     }
 }
 

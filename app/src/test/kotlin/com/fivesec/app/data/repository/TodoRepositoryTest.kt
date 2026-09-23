@@ -2,6 +2,9 @@ package com.fivesec.app.data.repository
 
 import com.fivesec.app.data.db.TodoDao
 import com.fivesec.app.domain.model.Todo
+import com.fivesec.app.domain.model.TodoRule
+import com.fivesec.app.util.TodoRecurrence
+import java.time.DayOfWeek
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,9 +15,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * TodoRepository 测试（specs/005-daily-todos）：
- * 快照过滤（只含启用项）、完成态按日期惰性求值、入口校验（空白/200 字）、上限 20、
- * 定向 UPDATE 转发（rename/setEnabled/setCompleted）。
+ * TodoRepository 测试（specs/005-daily-todos；006 增重复规则）：
+ * 快照过滤（只含启用且今天轮到）、完成态按日期惰性求值、入口校验（空白/200 字/周几空集/间隔收敛）、
+ * 上限 20、定向 UPDATE 转发（rename/setEnabled/setCompleted/setRecurrence）。
  * 快照收集走真实后台协程，用轮询 await 观测就绪；DAO 用 StateFlow 手控 fake（写操作仅记录）。
  */
 class TodoRepositoryTest {
@@ -27,6 +30,7 @@ class TodoRepositoryTest {
         val enabledChanges = CopyOnWriteArrayList<Pair<Long, Boolean>>()
         val completionChanges = CopyOnWriteArrayList<Triple<Long, String, Boolean>>()
         val deletedIds = CopyOnWriteArrayList<Long>()
+        val recurrenceCalls = CopyOnWriteArrayList<RecurrenceCall>()
 
         override fun observeAll(): Flow<List<Todo>> = state
 
@@ -56,8 +60,18 @@ class TodoRepositoryTest {
             state.value = state.value.filterNot { it.id == id }
         }
 
+        override suspend fun updateRecurrence(id: Long, repeatType: Int, repeatDays: Int, intervalDays: Int) {
+            recurrenceCalls += RecurrenceCall(id, repeatType, repeatDays, intervalDays)
+            state.value = state.value.map {
+                if (it.id == id) it.copy(repeatType = repeatType, repeatDays = repeatDays, intervalDays = intervalDays) else it
+            }
+        }
+
         override suspend fun count(): Int = state.value.size
     }
+
+    /** setRecurrence 定向 UPDATE 的转发记录（四元组，断言精确列值）。 */
+    private data class RecurrenceCall(val id: Long, val type: Int, val days: Int, val interval: Int)
 
     private fun awaitUntil(timeoutMs: Long = 5_000, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + timeoutMs
@@ -163,5 +177,115 @@ class TodoRepositoryTest {
         assertEquals(listOf(7L to "新文案"), dao.renamed.toList())
         assertEquals(listOf(7L to false), dao.enabledChanges.toList())
         assertFalse(dao.state.value.any { it.id == 7L })
+    }
+
+    // ── 重复规则（specs/006） ──
+
+    @Test
+    fun `todayTodos周几条目只在其日期轮到`() = runTest {
+        val dao = FakeTodoDao()
+        val mask = TodoRecurrence.bitOf(DayOfWeek.MONDAY) or
+            TodoRecurrence.bitOf(DayOfWeek.WEDNESDAY) or
+            TodoRecurrence.bitOf(DayOfWeek.FRIDAY)
+        dao.state.value = listOf(
+            Todo(id = 1, text = "周一三五", repeatType = TodoRecurrence.REPEAT_WEEKLY, repeatDays = mask),
+            Todo(id = 2, text = "每天", repeatType = TodoRecurrence.REPEAT_DAILY),
+        )
+        val repo = TodoRepository(dao)
+
+        awaitUntil { repo.todayTodos("2026-09-23").isNotEmpty() } // 快照就绪（每天条恒可见）
+
+        assertEquals(listOf("周一三五", "每天"), repo.todayTodos("2026-09-23").map { it.text })
+        assertEquals(listOf("每天"), repo.todayTodos("2026-09-24").map { it.text }) // 周四未命中
+    }
+
+    @Test
+    fun `todayTodos间隔条目完成灰显期隐藏_第N天复活`() = runTest {
+        val dao = FakeTodoDao()
+        dao.state.value = listOf(
+            Todo(
+                id = 1,
+                text = "每3天",
+                repeatType = TodoRecurrence.REPEAT_INTERVAL,
+                intervalDays = 3,
+                lastCompletedDate = "2026-09-23",
+            ),
+        )
+        val repo = TodoRepository(dao)
+
+        awaitUntil { repo.todayTodos("2026-09-26").isNotEmpty() } // 快照就绪
+
+        assertTrue(repo.todayTodos("2026-09-23").isEmpty()) // 完成当天
+        assertTrue(repo.todayTodos("2026-09-25").isEmpty()) // 灰显期
+        assertEquals("每3天", repo.todayTodos("2026-09-26").single().text) // 第 3 天复活
+    }
+
+    @Test
+    fun `setRecurrence周几空集拒绝且不落库`() = runTest {
+        val dao = FakeTodoDao()
+        dao.state.value = listOf(Todo(id = 7, text = "旧文案"))
+        val repo = TodoRepository(dao)
+
+        val result = repo.setRecurrence(7, TodoRule(TodoRecurrence.REPEAT_WEEKLY, 0, 0))
+
+        assertTrue(result.isFailure)
+        assertEquals(0, dao.recurrenceCalls.size)
+    }
+
+    @Test
+    fun `setRecurrence间隔越界收敛并定向转发三列不触碰锚点`() = runTest {
+        val dao = FakeTodoDao()
+        dao.state.value = listOf(Todo(id = 7, text = "旧文案", lastCompletedDate = "2026-09-23"))
+        val repo = TodoRepository(dao)
+
+        assertTrue(repo.setRecurrence(7, TodoRule(TodoRecurrence.REPEAT_INTERVAL, 0, 999)).isSuccess)
+
+        assertEquals(
+            listOf(RecurrenceCall(7L, TodoRecurrence.REPEAT_INTERVAL, 0, 365)),
+            dao.recurrenceCalls.toList(),
+        )
+        assertEquals("2026-09-23", dao.state.value.single().lastCompletedDate) // 锚点未被触碰
+    }
+
+    @Test
+    fun `setRecurrence周几规则落位掩码`() = runTest {
+        val dao = FakeTodoDao()
+        dao.state.value = listOf(Todo(id = 7, text = "旧文案"))
+        val repo = TodoRepository(dao)
+        val mask = TodoRecurrence.bitOf(DayOfWeek.MONDAY) or TodoRecurrence.bitOf(DayOfWeek.FRIDAY)
+
+        assertTrue(repo.setRecurrence(7, TodoRule(TodoRecurrence.REPEAT_WEEKLY, mask, 0)).isSuccess)
+
+        assertEquals(
+            listOf(RecurrenceCall(7L, TodoRecurrence.REPEAT_WEEKLY, mask, 0)),
+            dao.recurrenceCalls.toList(),
+        )
+    }
+
+    @Test
+    fun `add带周几规则落库`() = runTest {
+        val dao = FakeTodoDao()
+        val repo = TodoRepository(dao)
+
+        val result = repo.add("锻炼", TodoRule.weekly(setOf(DayOfWeek.WEDNESDAY)))
+
+        assertTrue(result.isSuccess)
+        val inserted = dao.inserted.single()
+        assertEquals(TodoRecurrence.REPEAT_WEEKLY, inserted.repeatType)
+        assertEquals(TodoRecurrence.bitOf(DayOfWeek.WEDNESDAY), inserted.repeatDays)
+        assertEquals(0, inserted.intervalDays)
+    }
+
+    @Test
+    fun `add缺省规则落库为每天`() = runTest {
+        val dao = FakeTodoDao()
+        val repo = TodoRepository(dao)
+
+        assertTrue(repo.add("普通每日").isSuccess)
+
+        val inserted = dao.inserted.single()
+        assertEquals(TodoRecurrence.REPEAT_DAILY, inserted.repeatType)
+        assertEquals(0, inserted.repeatDays)
+        assertEquals(0, inserted.intervalDays)
     }
 }

@@ -9,6 +9,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.fivesec.app.domain.model.Hint
 import com.fivesec.app.domain.model.HintKind
 import com.fivesec.app.domain.model.Todo
+import com.fivesec.app.util.TodoRecurrence
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -72,9 +73,9 @@ class AppDatabaseMigrationTest {
         }
         helper.close()
 
-        // 以 Room v5 打开：v3 库依次触发 MIGRATION_2_3/3_4/4_5（缺任一会抛迁移缺失异常）
+        // 以 Room v6 打开：v2 库依次触发 MIGRATION_2_3/3_4/4_5/5_6（缺任一会抛迁移缺失异常）
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .allowMainThreadQueries()
             .build()
 
@@ -138,9 +139,9 @@ class AppDatabaseMigrationTest {
         }
         helper.close()
 
-        // 以 Room v5 打开：触发 MIGRATION_3_4 与 MIGRATION_4_5（完整迁移链）
+        // 以 Room v6 打开：触发 MIGRATION_3_4/4_5/5_6（完整迁移链）
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .allowMainThreadQueries()
             .build()
 
@@ -211,9 +212,9 @@ class AppDatabaseMigrationTest {
         }
         helper.close()
 
-        // 以 Room v5 打开：触发 MIGRATION_4_5
+        // 以 Room v6 打开：触发 MIGRATION_4_5 与 MIGRATION_5_6
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .allowMainThreadQueries()
             .build()
 
@@ -239,6 +240,94 @@ class AppDatabaseMigrationTest {
         // todos 表可读写（列定义与 Room 生成的 schema 逐字一致，否则打开即抛校验异常）
         db.todoDao().insert(Todo(text = "背 20 个单词", isEnabled = true, lastCompletedDate = ""))
         assertEquals(listOf("背 20 个单词"), db.todoDao().observeAll().first().map { it.text })
+
+        db.close()
+        context.deleteDatabase(dbName)
+    }
+
+    /** v5 → v6 迁移：老待办零丢失且规则列默认"每天"，行为与升级前逐位一致（specs/006-recurring-todos）。 */
+    @Test
+    fun `v6迁移后老待办保留且规则列默认每天`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val dbName = "migration-test-v6.db"
+        context.deleteDatabase(dbName)
+
+        // 以 v5 结构手工建库（四表；todos 为 005 的四列 schema，无规则列）
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(dbName)
+                .callback(object : SupportSQLiteOpenHelper.Callback(5) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        db.execSQL(
+                            "CREATE TABLE target_apps (" +
+                                "packageName TEXT NOT NULL PRIMARY KEY, " +
+                                "appName TEXT NOT NULL, " +
+                                "isEnabled INTEGER NOT NULL, " +
+                                "isDefault INTEGER NOT NULL, " +
+                                "addedAt INTEGER NOT NULL)"
+                        )
+                        db.execSQL(
+                            "CREATE TABLE interception_events (" +
+                                "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                                "packageName TEXT NOT NULL, " +
+                                "timestamp INTEGER NOT NULL, " +
+                                "exerciseCompleted INTEGER NOT NULL, " +
+                                "outcome TEXT NOT NULL)"
+                        )
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS hints (" +
+                                "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                                "text TEXT NOT NULL, " +
+                                "kind TEXT NOT NULL)"
+                        )
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS todos (" +
+                                "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                                "text TEXT NOT NULL, " +
+                                "isEnabled INTEGER NOT NULL, " +
+                                "lastCompletedDate TEXT NOT NULL)"
+                        )
+                    }
+
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                })
+                .build()
+        )
+        helper.writableDatabase.use { db ->
+            // 三种老数据形态：启用已勾选 / 启用未勾选 / 停用
+            db.execSQL("INSERT INTO todos (text, isEnabled, lastCompletedDate) VALUES ('已勾选', 1, '2026-09-23')")
+            db.execSQL("INSERT INTO todos (text, isEnabled, lastCompletedDate) VALUES ('未勾选', 1, '')")
+            db.execSQL("INSERT INTO todos (text, isEnabled, lastCompletedDate) VALUES ('已停用', 0, '2026-09-23')")
+        }
+        helper.close()
+
+        // 以 Room v6 打开：触发 MIGRATION_5_6（注册完整链，缺迁移即抛异常的既有守卫模式）
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .allowMainThreadQueries()
+            .build()
+
+        // 行零丢失、字段值不变、规则三列默认 0（= 每天）
+        val rows = db.todoDao().observeAll().first()
+        assertEquals(3, rows.size)
+        val byText = rows.associateBy { it.text }
+        assertEquals("2026-09-23", byText.getValue("已勾选").lastCompletedDate)
+        assertEquals(true, byText.getValue("已勾选").isEnabled)
+        assertEquals("", byText.getValue("未勾选").lastCompletedDate)
+        assertEquals(false, byText.getValue("已停用").isEnabled)
+        rows.forEach {
+            assertEquals(TodoRecurrence.REPEAT_DAILY, it.repeatType)
+            assertEquals(0, it.repeatDays)
+            assertEquals(0, it.intervalDays)
+        }
+
+        // v6 打开后新列可正常读写（带规则写入并读回）
+        db.todoDao().insert(
+            Todo(text = "升级后新增", isEnabled = true, lastCompletedDate = "", intervalDays = 3, repeatType = TodoRecurrence.REPEAT_INTERVAL),
+        )
+        val inserted = db.todoDao().observeAll().first().single { it.text == "升级后新增" }
+        assertEquals(TodoRecurrence.REPEAT_INTERVAL, inserted.repeatType)
+        assertEquals(3, inserted.intervalDays)
 
         db.close()
         context.deleteDatabase(dbName)

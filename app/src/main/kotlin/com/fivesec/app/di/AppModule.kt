@@ -12,6 +12,7 @@ import com.fivesec.app.data.db.MIGRATION_1_2
 import com.fivesec.app.data.db.MIGRATION_2_3
 import com.fivesec.app.data.db.MIGRATION_3_4
 import com.fivesec.app.data.db.MIGRATION_4_5
+import com.fivesec.app.data.db.MIGRATION_5_6
 import com.fivesec.app.data.db.TargetAppDao
 import com.fivesec.app.data.db.TodoDao
 import com.fivesec.app.data.repository.HintCursorStore
@@ -35,7 +36,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "five_sec.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .build()
 
     @Provides

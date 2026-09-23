@@ -18,7 +18,7 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 对齐远端基线：`git fetch origin` 并确认 master == origin/master（远端并行推送是常态，动手前必做）
+- [x] T001 对齐远端基线：`git fetch origin` 并确认 master == origin/master（远端并行推送是常态，动手前必做）
 
 ---
 
@@ -26,11 +26,11 @@
 
 **⚠️ CRITICAL**: 以下未完成前不得开始任何用户故事
 
-- [ ] T002 [P] 新建 `TodoRule` 值类型于 `app/src/main/kotlin/com/fivesec/app/domain/model/TodoRule.kt`：`(repeatType, repeatDays, intervalDays)` 三元组 + `DAILY` 缺省实例 + `weekly(Set<DayOfWeek>)` / `interval(Int)` 工厂；纯 Kotlin 零 Android import；中文 KDoc 说明位掩码口径（bit0=周一…bit6=周日）
-- [ ] T003 [P] 新建轮到判定纯逻辑于 `app/src/main/kotlin/com/fivesec/app/util/TodoRecurrence.kt`：`isDue(repeatType, repeatDays, intervalDays, lastCompletedDate, today)` 按 contracts/todo-recurrence.md 判定表实现（含防御口径：today 解析失败→false、last 非法→视同从未完成）；常量 `REPEAT_DAILY/WEEKLY/INTERVAL`、`MIN/MAX_INTERVAL_DAYS`；零时钟读取
-- [ ] T004 扩展 `Todo` 实体于 `app/src/main/kotlin/com/fivesec/app/domain/model/Todo.kt`（+repeatType/repeatDays/intervalDays，默认 0）并新增 `TodoDao.updateRecurrence` 定向 UPDATE 于 `app/src/main/kotlin/com/fivesec/app/data/db/TodoDao.kt`（不触碰 text/isEnabled/lastCompletedDate）
-- [ ] T005 注册迁移：`app/src/main/kotlin/com/fivesec/app/data/db/AppDatabase.kt` version 5→6 + `MIGRATION_5_6`（3× ALTER TABLE ADD COLUMN ... INTEGER NOT NULL DEFAULT 0，逐字对齐 Room schema）；`app/src/main/kotlin/com/fivesec/app/di/AppModule.kt` 迁移数组追加
-- [ ] T006 [P] 新建 `app/src/test/kotlin/com/fivesec/app/util/TodoRecurrenceTest.kt`：判定表 1–8 行全覆盖 + N=2/365 边界 + 跨月/跨年日期差 + 回拨；日期字面量、中文反引号测试名（依赖 T003）
+- [x] T002 [P] 新建 `TodoRule` 值类型于 `app/src/main/kotlin/com/fivesec/app/domain/model/TodoRule.kt`：`(repeatType, repeatDays, intervalDays)` 三元组 + `DAILY` 缺省实例 + `weekly(Set<DayOfWeek>)` / `interval(Int)` 工厂；纯 Kotlin 零 Android import；中文 KDoc 说明位掩码口径（bit0=周一…bit6=周日）
+- [x] T003 [P] 新建轮到判定纯逻辑于 `app/src/main/kotlin/com/fivesec/app/util/TodoRecurrence.kt`：`isDue(repeatType, repeatDays, intervalDays, lastCompletedDate, today)` 按 contracts/todo-recurrence.md 判定表实现（含防御口径：today 解析失败→false、last 非法→视同从未完成）；常量 `REPEAT_DAILY/WEEKLY/INTERVAL`、`MIN/MAX_INTERVAL_DAYS`；零时钟读取
+- [x] T004 扩展 `Todo` 实体于 `app/src/main/kotlin/com/fivesec/app/domain/model/Todo.kt`（+repeatType/repeatDays/intervalDays，默认 0）并新增 `TodoDao.updateRecurrence` 定向 UPDATE 于 `app/src/main/kotlin/com/fivesec/app/data/db/TodoDao.kt`（不触碰 text/isEnabled/lastCompletedDate）
+- [x] T005 注册迁移：`app/src/main/kotlin/com/fivesec/app/data/db/AppDatabase.kt` version 5→6 + `MIGRATION_5_6`（3× ALTER TABLE ADD COLUMN ... INTEGER NOT NULL DEFAULT 0，逐字对齐 Room schema）；`app/src/main/kotlin/com/fivesec/app/di/AppModule.kt` 迁移数组追加
+- [x] T006 [P] 新建 `app/src/test/kotlin/com/fivesec/app/util/TodoRecurrenceTest.kt`：判定表 1–8 行全覆盖 + N=2/365 边界 + 跨月/跨年日期差 + 回拨；日期字面量、中文反引号测试名（依赖 T003）
 
 **Checkpoint**: 地基就绪——`assembleDebug` 编译通过、TodoRecurrenceTest 绿，可开始用户故事
 
@@ -44,12 +44,12 @@
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] `app/src/main/kotlin/com/fivesec/app/data/repository/TodoRepository.kt`：`todayTodos(today)` 过滤扩为 `isEnabled && TodoRecurrence.isDue(...)`；`add(text, rule = TodoRule.DAILY)`（兼容既有调用）；新增 `setRecurrence(id, rule): Result<Unit>`（兜底校验：周几空集→failure「每周至少选择一天」；间隔 coerceIn 2..365；经 `updateRecurrence` 定向写）
-- [ ] T008 [P] [US1] `app/src/test/kotlin/com/fivesec/app/data/repository/TodoRepositoryTest.kt`：周几命中/未命中的 todayTodos 过滤、setRecurrence 校验失败不落库、定向转发只写三列、add 带规则落库
-- [ ] T009 [US1] `app/src/main/kotlin/com/fivesec/app/settings/viewmodels/TodoViewModel.kt`：`TodoRow` +`dueToday`（rows combine 派生中按 today 计算，refreshToday 跨日自动重算）；暴露 `setRecurrence(id, rule)` 转发；`add` 透传 rule
-- [ ] T010 [P] [US1] `app/src/test/kotlin/com/fivesec/app/settings/TodoViewModelTest.kt`：dueToday 派生正确（周几命中/未命中）、refreshToday 跨日重算灰显态、setRecurrence 转发（advanceUntilIdleAndFlush 模式）
-- [ ] T011 [US1] `app/src/main/res/values/strings.xml` 新增规则文案（todos_rule_title/daily/weekly/interval、todos_rule_dow_1..7、todos_rule_weekly_required、todos_not_due_today 等，见 contracts/todo-ui.md 清单）+ `app/src/main/kotlin/com/fivesec/app/settings/ui/TodoScreen.kt` 行渲染三态表（启用轮到/启用不轮到灰显+标注/停用维持既有弱化；标注条件 `isEnabled && !dueToday`；点行看全文任何状态可用）
-- [ ] T012 [US1] `app/src/main/kotlin/com/fivesec/app/settings/ui/TodoScreen.kt` TodoEditDialog 规则区：三选一 SegmentedButton + 周几 7×FilterChip（周一首位）；周几全空 → 保存禁用 + 行内提示（FR-002 主拦截）；保存路径 = rename + 规则变化时 setRecurrence / add(text, rule)
+- [x] T007 [US1] `app/src/main/kotlin/com/fivesec/app/data/repository/TodoRepository.kt`：`todayTodos(today)` 过滤扩为 `isEnabled && TodoRecurrence.isDue(...)`；`add(text, rule = TodoRule.DAILY)`（兼容既有调用）；新增 `setRecurrence(id, rule): Result<Unit>`（兜底校验：周几空集→failure「每周至少选择一天」；间隔 coerceIn 2..365；经 `updateRecurrence` 定向写）
+- [x] T008 [P] [US1] `app/src/test/kotlin/com/fivesec/app/data/repository/TodoRepositoryTest.kt`：周几命中/未命中的 todayTodos 过滤、setRecurrence 校验失败不落库、定向转发只写三列、add 带规则落库
+- [x] T009 [US1] `app/src/main/kotlin/com/fivesec/app/settings/viewmodels/TodoViewModel.kt`：`TodoRow` +`dueToday`（rows combine 派生中按 today 计算，refreshToday 跨日自动重算）；暴露 `setRecurrence(id, rule)` 转发；`add` 透传 rule
+- [x] T010 [P] [US1] `app/src/test/kotlin/com/fivesec/app/settings/TodoViewModelTest.kt`：dueToday 派生正确（周几命中/未命中）、refreshToday 跨日重算灰显态、setRecurrence 转发（advanceUntilIdleAndFlush 模式）
+- [x] T011 [US1] `app/src/main/res/values/strings.xml` 新增规则文案（todos_rule_title/daily/weekly/interval、todos_rule_dow_1..7、todos_rule_weekly_required、todos_not_due_today 等，见 contracts/todo-ui.md 清单）+ `app/src/main/kotlin/com/fivesec/app/settings/ui/TodoScreen.kt` 行渲染三态表（启用轮到/启用不轮到灰显+标注/停用维持既有弱化；标注条件 `isEnabled && !dueToday`；点行看全文任何状态可用）
+- [x] T012 [US1] `app/src/main/kotlin/com/fivesec/app/settings/ui/TodoScreen.kt` TodoEditDialog 规则区：三选一 SegmentedButton + 周几 7×FilterChip（周一首位）；周几全空 → 保存禁用 + 行内提示（FR-002 主拦截）；保存路径 = rename + 规则变化时 setRecurrence / add(text, rule)
 
 **Checkpoint**: US1 端到端可用——周几规则从编辑到灰显到卡片过滤全部生效，测试绿
 
@@ -61,8 +61,8 @@
 
 **Independent Test**: 建间隔待办 → 首日即可勾；完成后灰显 N-1 天、第 N 天复活未完成；到期不完成长挂不消失。
 
-- [ ] T013 [US2] `app/src/main/kotlin/com/fivesec/app/settings/ui/TodoScreen.kt` 规则区追加间隔输入：OutlinedTextField 数字 + 越界 coerceIn(2..365) 收敛显示 + 辅助文案「完成后隔 N 天再次出现」（strings: todos_rule_interval_hint / todos_rule_interval_days）（依赖 T012）
-- [ ] T014 [P] [US2] `app/src/test/kotlin/com/fivesec/app/data/repository/TodoRepositoryTest.kt` 补间隔用例：interval 收敛（1→2、999→365）、完成当天不轮到、第 N 天复活（依赖 T007）
+- [x] T013 [US2] `app/src/main/kotlin/com/fivesec/app/settings/ui/TodoScreen.kt` 规则区追加间隔输入：OutlinedTextField 数字 + 越界 coerceIn(2..365) 收敛显示 + 辅助文案「完成后隔 N 天再次出现」（strings: todos_rule_interval_hint / todos_rule_interval_days）（依赖 T012）
+- [x] T014 [P] [US2] `app/src/test/kotlin/com/fivesec/app/data/repository/TodoRepositoryTest.kt` 补间隔用例：interval 收敛（1→2、999→365）、完成当天不轮到、第 N 天复活（依赖 T007）
 
 **Checkpoint**: US1+US2 均独立可用
 
@@ -74,8 +74,8 @@
 
 **Independent Test**: 手建 v5 库插三态行 → 全链迁移打开 → 行保留 + 三列默认 0（真机覆盖装走 quickstart 场景 A）。
 
-- [ ] T015 [US3] `app/src/test/kotlin/com/fivesec/app/data/db/AppDatabaseMigrationTest.kt` 新增 v5→v6 用例：手建 v5 四列 todos schema（启用已勾选/启用未勾选/停用三行）→ 注册 MIGRATION_1_2..5_6 打开 → 断言行零丢失、字段不变、三新列均 0、todoDao 可写
-- [ ] T016 [P] [US3] `app/src/test/kotlin/com/fivesec/app/data/repository/TodoRepositoryTest.kt` 补「add 缺省规则落库为每天（三列 0）」断言
+- [x] T015 [US3] `app/src/test/kotlin/com/fivesec/app/data/db/AppDatabaseMigrationTest.kt` 新增 v5→v6 用例：手建 v5 四列 todos schema（启用已勾选/启用未勾选/停用三行）→ 注册 MIGRATION_1_2..5_6 打开 → 断言行零丢失、字段不变、三新列均 0、todoDao 可写
+- [x] T016 [P] [US3] `app/src/test/kotlin/com/fivesec/app/data/repository/TodoRepositoryTest.kt` 补「add 缺省规则落库为每天（三列 0）」断言
 
 **Checkpoint**: 迁移回归有测试锚点，老用户路径受保护
 
@@ -87,8 +87,8 @@
 
 **Independent Test**: 切换三种规则 → 当日轮到即时重算、lastCompletedDate 不被触碰。
 
-- [ ] T017 [US4] `app/src/main/kotlin/com/fivesec/app/settings/ui/TodoScreen.kt` 编辑弹窗初始回填（按条目现有规则选中类型/周几/N）+ 仅规则变化时调 setRecurrence + 切换类型时保留各规则的弹窗内存勾选（落库只写当前规则，其余两列归零）（依赖 T012、T013）
-- [ ] T018 [P] [US4] `app/src/test/kotlin/com/fivesec/app/settings/TodoViewModelTest.kt` 补 rename+setRecurrence 并行转发、规则未变时不发 UPDATE 用例
+- [x] T017 [US4] `app/src/main/kotlin/com/fivesec/app/settings/ui/TodoScreen.kt` 编辑弹窗初始回填（按条目现有规则选中类型/周几/N）+ 仅规则变化时调 setRecurrence + 切换类型时保留各规则的弹窗内存勾选（落库只写当前规则，其余两列归零）（依赖 T012、T013）
+- [x] T018 [P] [US4] `app/src/test/kotlin/com/fivesec/app/settings/TodoViewModelTest.kt` 补 rename+setRecurrence 并行转发、规则未变时不发 UPDATE 用例（"规则未变不发"守卫在弹窗确认路径，UI 层职责；VM 层验证按三列转发与收敛）
 
 **Checkpoint**: 四个用户故事全部独立可用
 
@@ -96,7 +96,7 @@
 
 ## Phase 7: Polish & Cross-Cutting
 
-- [ ] T019 [P] 同步口径：`README.md` 待办段 + `AGENTS.md` 术语表「待办」词条补重复规则与灰显/卡片口径（对齐 005 修订记录风格）
+- [x] T019 [P] 同步口径：`README.md` 待办段 + `AGENTS.md` 术语表「待办」词条补重复规则与灰显/卡片口径（对齐 005 修订记录风格）
 - [ ] T020 全量验证：`gradle :app:assembleDebug :app:testDebugUnitTest` 全绿；涉及判定的测试跑 `--rerun-tasks` 抽验一次
 - [ ] T021 提交推送：Conventional Commits 中文主题（`feat(todos): 重复待办规则（按星期几/每 N 天）`）直推 master，确认 CI 绿
 - [ ] T022 quickstart.md 场景 A~G 真机手测（`adb install -r` 覆盖升级重点验场景 A 迁移留存）——**用户执行，交付时不勾选**
