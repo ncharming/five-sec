@@ -97,8 +97,8 @@
 ## Phase 7: Polish & Cross-Cutting
 
 - [x] T019 [P] 同步口径：`README.md` 待办段 + `AGENTS.md` 术语表「待办」词条补重复规则与灰显/卡片口径（对齐 005 修订记录风格）
-- [ ] T020 全量验证：`gradle :app:assembleDebug :app:testDebugUnitTest` 全绿；涉及判定的测试跑 `--rerun-tasks` 抽验一次
-- [ ] T021 提交推送：Conventional Commits 中文主题（`feat(todos): 重复待办规则（按星期几/每 N 天）`）直推 master，确认 CI 绿
+- [x] T020 全量验证：`gradle :app:assembleDebug :app:testDebugUnitTest` 全绿；涉及判定的测试跑 `--rerun-tasks` 抽验一次
+- [x] T021 提交推送：Conventional Commits 中文主题（`feat(todos): 重复待办规则（按星期几/每 N 天）`）直推 master，确认 CI 绿
 - [ ] T022 quickstart.md 场景 A~G 真机手测（`adb install -r` 覆盖升级重点验场景 A 迁移留存）——**用户执行，交付时不勾选**
 
 ---
