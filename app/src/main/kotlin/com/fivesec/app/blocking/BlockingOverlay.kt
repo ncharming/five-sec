@@ -15,6 +15,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.fivesec.app.R
+import com.fivesec.app.domain.model.Exercise
 import com.fivesec.app.domain.model.InterceptionOutcome
 import com.fivesec.app.domain.model.TodayTodo
 import kotlinx.coroutines.CoroutineScope
@@ -30,7 +31,9 @@ import kotlinx.coroutines.launch
  *
  * 提示语由服务侧经 HintRepository 循环游标决定（specs/005-daily-todos：内置+池单一序列轮转），经 [hint] 注入。
  * "今日待办"紧凑卡片（specs/005-daily-todos）在 [todos] 注入瞬间定格：标题「今日待办 D/T」+ 未完成条目
- * （○ 前缀，最多 3 行，超出折叠）；全部完成显示完成态整行；启用数为 0 整块隐藏。只读、不参与 render() 锁定。
+ * （○ 前缀，最多 5 行，超出折叠）；全部完成显示完成态整行；启用数为 0 整块隐藏。只读、不参与 render() 锁定。
+ * 布局优化（用户拍板）：72sp 大倒计时块已删，倒计时数字融进「请先思考 N 秒」行（22sp 品牌绿），
+ * 解锁后该行变「✓ 请选择」；腾出的垂直空间给待办卡（行数上限 3→5）。
  * 004 的"拦截页写提示语"输入行已整体移除（specs/005：栈式机制退役，池在提示语页维护）。
  *
  * 配色取自 res/values/colors.xml 的 brand_* token，与 Compose Color.kt 同源，保证品牌一致。
@@ -102,15 +105,13 @@ class BlockingOverlay(
         addView(todoItems, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
     }
 
-    private val countdownText = TextView(ctx).apply {
+    // ── 倒计时行（布局优化）：原 72sp 大数字块已删（腾 ~144dp 给待办卡），倒计时数字
+    //    融进本行升格为主视觉——「请先思考 N 秒」（22sp 加粗品牌绿）；解锁后变「✓ 请选择」
+    //    （✓ 语义从原大数字位迁移），按钮同步变绿表达可选。
+    private val countdownLine = TextView(ctx).apply {
         setTextColor(primaryColor)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 72f)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
         typeface = Typeface.DEFAULT_BOLD
-        gravity = Gravity.CENTER
-    }
-    private val waitText = TextView(ctx).apply {
-        setTextColor(onSurfaceVariantColor)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
         gravity = Gravity.CENTER
     }
     // 打开按钮：14dp 圆角实心（渲染时按解锁态在品牌绿/禁用灰间切换）
@@ -209,14 +210,9 @@ class BlockingOverlay(
             addView(hintText)
             addView(spacerBeforeTodos) // 待办卡片前导 spacer（类字段）：空清单时与卡片一起 GONE，布局回现状
             addView(todoBlock, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-            addView(spacer(dp(24)))
-            addView(
-                countdownText,
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(96)).apply { gravity = Gravity.CENTER },
-            )
-            addView(spacer(dp(24)))
-            addView(waitText)
-            addView(spacer(dp(24)))
+            addView(spacer(dp(28)))
+            addView(countdownLine)
+            addView(spacer(dp(28)))
             addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
 
@@ -253,12 +249,14 @@ class BlockingOverlay(
     private fun render(state: BlockingViewModel.UiState) {
         val unlocked = state is BlockingViewModel.UiState.ChoiceUnlocked ||
             state is BlockingViewModel.UiState.Finished
-        countdownText.text = when {
-            unlocked -> "✓"
-            state is BlockingViewModel.UiState.CountingDown -> state.remaining.coerceAtLeast(0).toString()
-            else -> "5"
+        // 倒计时融进行内文案：解锁前「请先思考 N 秒」（0 收敛为 1，避免闪现「0 秒」）；
+        // 解锁后「✓ 请选择」——大数字位的 ✓ 语义迁到本行
+        countdownLine.text = when {
+            unlocked -> ctx.getString(R.string.blocking_choose)
+            state is BlockingViewModel.UiState.CountingDown ->
+                ctx.getString(R.string.blocking_wait, state.remaining.coerceAtLeast(1))
+            else -> ctx.getString(R.string.blocking_wait, Exercise.DURATION_SECONDS)
         }
-        waitText.text = if (unlocked) "" else ctx.getString(R.string.blocking_wait)
 
         // 倒计时期间功能禁用；颜色按 M3 规范区分启用/禁用态（替代原先 alpha 写法）
         cancelBtn.isEnabled = unlocked
@@ -303,8 +301,9 @@ class BlockingOverlay(
     }
 
     companion object {
-        /** 待办条目最多展示行数：5 秒内可读的上限，超出折叠进 blocking_todos_more。 */
-        private const val TODO_MAX_LINES = 3
+        /** 待办条目最多展示行数：5 秒内可读的上限（布局优化：删大倒计时块后 3→5，腾出的空间给待办卡），
+         *  超出折叠进 blocking_todos_more。 */
+        private const val TODO_MAX_LINES = 5
 
         /** 卡片单条展示字符上限（specs/007：30→12，5 秒可读更克制）：完整内容在待办页看，超长加省略号。 */
         private const val TODO_DISPLAY_MAX = 12

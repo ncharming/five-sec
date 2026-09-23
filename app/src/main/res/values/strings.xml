@@ -27,7 +27,8 @@
     </string-array>
     <string name="blocking_open">打开</string>
     <string name="blocking_cancel">取消</string>
-    <string name="blocking_wait">请先完成 5 秒</string>
+    <string name="blocking_wait">请先思考 %1$d 秒</string>
+    <string name="blocking_choose">✓ 请选择</string>
 
     <!-- Blocking overlay 今日待办卡片（specs/005-daily-todos） -->
     <string name="blocking_todos_title">今日待办 %1$d/%2$d</string>
@@ -98,7 +99,7 @@
 
     <!-- Home bottom tabs（specs/005-daily-todos：[待办, 拦截, 提示语, 统计]，默认待办） -->
     <string name="tab_todos">待办</string>
-    <string name="tab_intercept">拦截</string>
+    <string name="tab_settings">设置</string>
     <string name="tab_tips">提示语</string>
     <string name="tab_stats">统计</string>
 

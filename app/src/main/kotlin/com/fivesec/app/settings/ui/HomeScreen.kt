@@ -5,14 +5,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -33,14 +33,15 @@ import androidx.compose.ui.res.stringResource
 import com.fivesec.app.R
 
 /**
- * 首页骨架（specs/005-daily-todos 起为 4 Tab：待办 / 拦截 / 提示语 / 统计，默认落待办）：
- * - 选中态品牌绿、未选中灰，无胶囊指示器；点击瞬时切换，无切换动画。
+ * 首页骨架（specs/005 起 4 Tab；布局优化后顺序：待办 / 提示语 / 统计 / 设置，默认落待办）：
+ * - 原「拦截」Tab 更名「设置」并右移到最右（内容仍是拦截总开关+目标应用管理，重构另立 spec），
+ *   图标换齿轮以贴「设置」语义；选中态品牌绿、未选中灰，无胶囊指示器；点击瞬时切换，无切换动画。
  * - SaveableStateHolder 按页保持滚动位置等 UI 状态；各页 ViewModel 挂在首页
  *   NavBackStackEntry 上，切 Tab 不销毁（统计页首次切入才创建并开始加载数据）。
  * - 本层统一消费系统栏 insets（consumeWindowInsets）：四个子页面各自持有 Scaffold，
  *   边到边下状态栏/导航栏高度若内外叠加会出现双重留白。
  * - Tab 不进返回栈：任意 Tab 按返回键直接退出应用，与微信一致。
- * - 演进：原「五秒」Tab 的总开关卡已并入「拦截」页顶部（InterceptScreen），
+ * - 演进：原「五秒」Tab 的总开关卡已并入「设置」页顶部（InterceptScreen），
  *   腾出的首页位给「待办」（TodoScreen）。本文件虽居 settings/ui 目录，声明为根包（历史布局）。
  */
 private enum class HomeTab(
@@ -49,9 +50,9 @@ private enum class HomeTab(
     val unselectedIcon: ImageVector,
 ) {
     TODOS(R.string.tab_todos, Icons.Filled.Checklist, Icons.Outlined.Checklist),
-    INTERCEPT(R.string.tab_intercept, Icons.Filled.Apps, Icons.Outlined.Apps),
     TIPS(R.string.tab_tips, Icons.Filled.Lightbulb, Icons.Outlined.Lightbulb),
     STATS(R.string.tab_stats, Icons.Filled.BarChart, Icons.Outlined.BarChart),
+    SETTINGS(R.string.tab_settings, Icons.Filled.Settings, Icons.Outlined.Settings),
 }
 
 @Composable
@@ -92,9 +93,9 @@ fun HomeScreen() {
             Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
                 when (selectedTab) {
                     HomeTab.TODOS -> TodoScreen()
-                    HomeTab.INTERCEPT -> InterceptScreen()
                     HomeTab.TIPS -> HintListScreen()
                     HomeTab.STATS -> StatsScreen()
+                    HomeTab.SETTINGS -> InterceptScreen()
                 }
             }
         }
