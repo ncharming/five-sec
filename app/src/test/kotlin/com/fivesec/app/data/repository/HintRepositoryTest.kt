@@ -138,9 +138,13 @@ class HintRepositoryTest {
         awaitUntil { repo.takeNextHint(listOf("A")) == "P" }
         assertEquals("A", repo.takeNextHint(listOf("A")))
 
-        // 关闭：快照经后台协程收集，轮询至序列只剩 P（循环语义下抽取完全确定，不再需要概率断言）
+        // 关闭：开关经后台协程收集落地。单次取到 P 不能证明已切换——[A,P] 交替序列同样会给出 P
+        // （取完 P 下一个恰是 A，后续断言就会偶发失败，CI 慢机上已复现）。交替序列不可能连续
+        // 出现两个 P，故「连续两次 P」是切换生效的确定性证明。
         setting.state.value = false
-        awaitUntil { repo.takeNextHint(listOf("A")) == "P" }
+        awaitUntil {
+            repo.takeNextHint(listOf("A")) == "P" && repo.takeNextHint(listOf("A")) == "P"
+        }
         assertEquals("P", repo.takeNextHint(listOf("A")))
         assertEquals("P", repo.takeNextHint(listOf("A")))
 
