@@ -175,7 +175,7 @@ class BlockingOverlay(
         todoTitle.setTextColor(onSurfaceColor)
         todoItems.visibility = View.VISIBLE
         val shown = pending.take(TODO_MAX_LINES)
-        val text = shown.joinToString("\n") { TODO_BULLET + it.text }
+        val text = shown.joinToString("\n") { TODO_BULLET + truncateForCard(it.text) }
         val overflow = pending.size - shown.size
         todoItems.text = if (overflow > 0) {
             text + "\n" + ctx.getString(R.string.blocking_todos_more, overflow)
@@ -183,6 +183,10 @@ class BlockingOverlay(
             text
         }
     }
+
+    /** 卡片单条展示截断：存储可到 200 字（待办页看全文），卡片是 5 秒阅读场景，只留前 30 字。 */
+    private fun truncateForCard(text: String): String =
+        if (text.length > TODO_DISPLAY_MAX) text.take(TODO_DISPLAY_MAX) + "…" else text
 
     private fun buildRoot(): View {
         val row = LinearLayout(ctx).apply {
@@ -299,6 +303,9 @@ class BlockingOverlay(
     companion object {
         /** 待办条目最多展示行数：5 秒内可读的上限，超出折叠进 blocking_todos_more。 */
         private const val TODO_MAX_LINES = 3
+
+        /** 卡片单条展示字符上限：完整内容在待办页看，卡片只截前 30 字（超长加省略号）。 */
+        private const val TODO_DISPLAY_MAX = 30
 
         /** 未完成条目前缀符号（与 "✓" 同属覆盖层符号常量，不入资源）。 */
         private const val TODO_BULLET = "○ "

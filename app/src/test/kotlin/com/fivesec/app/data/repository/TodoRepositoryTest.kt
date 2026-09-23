@@ -13,7 +13,7 @@ import org.junit.Test
 
 /**
  * TodoRepository 测试（specs/005-daily-todos）：
- * 快照过滤（只含启用项）、完成态按日期惰性求值、入口校验（空白/30 字）、上限 20、
+ * 快照过滤（只含启用项）、完成态按日期惰性求值、入口校验（空白/200 字）、上限 20、
  * 定向 UPDATE 转发（rename/setEnabled/setCompleted）。
  * 快照收集走真实后台协程，用轮询 await 观测就绪；DAO 用 StateFlow 手控 fake（写操作仅记录）。
  */
@@ -98,7 +98,20 @@ class TodoRepositoryTest {
     }
 
     @Test
-    fun `add超长截断30字`() = runTest {
+    fun `add超长截断200字`() = runTest {
+        val dao = FakeTodoDao()
+        val repo = TodoRepository(dao)
+        val overlong = "背".repeat(210) // 超过 200 字上限的输入
+
+        val result = repo.add("  $overlong  ")
+
+        assertTrue(result.isSuccess)
+        assertEquals(overlong.take(TodoRepository.MAX_TEXT_LENGTH), dao.inserted.single().text)
+        assertEquals(TodoRepository.MAX_TEXT_LENGTH, dao.inserted.single().text.length)
+    }
+
+    @Test
+    fun `add不超上限时trim后原文保留不截断`() = runTest {
         val dao = FakeTodoDao()
         val repo = TodoRepository(dao)
         val forty = "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四十"
@@ -106,7 +119,7 @@ class TodoRepositoryTest {
         val result = repo.add("  $forty  ")
 
         assertTrue(result.isSuccess)
-        assertEquals(forty.take(TodoRepository.MAX_TEXT_LENGTH), dao.inserted.single().text)
+        assertEquals(forty, dao.inserted.single().text) // 40 字在 200 上限内，trim 后原样入库
     }
 
     @Test

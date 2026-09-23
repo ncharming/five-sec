@@ -53,9 +53,9 @@
     <string name="todos_delete_confirm">删除这条待办？</string>
     <string name="todos_menu_rename">重命名</string>
     <string name="todos_menu_delete">删除待办</string>
-    <string name="todos_enabled_count">已建 %1$d 条待办</string>
-    <string name="todos_capacity">%1$d/%2$d</string>
     <string name="todos_full_hint">名额已满（上限 %1$d 条）· 删除后方可添加新待办</string>
+    <string name="todos_detail_title">待办内容</string>
+    <string name="todos_detail_close">关闭</string>
 
     <!-- Custom hint manager（specs/004 引入；specs/005 起循环展示） -->
     <string name="hints_title">自定义提示语</string>

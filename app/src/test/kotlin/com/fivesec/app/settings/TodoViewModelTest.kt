@@ -23,7 +23,7 @@ import org.junit.Test
 /**
  * TodoViewModel 测试（specs/005-daily-todos）：
  * 今日勾选按 VM 持有的 today 口径转发（与 rows 派生口径同源）、refreshToday 跨日重算、
- * add 空白忽略与 30 字截断。Repository 写操作 fire-and-forget，fake 记录后轮询断言（同 HintListViewModelTest 模式）。
+ * add 空白忽略与 200 字截断。Repository 写操作 fire-and-forget，fake 记录后轮询断言（同 HintListViewModelTest 模式）。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TodoViewModelTest {
@@ -114,11 +114,11 @@ class TodoViewModelTest {
 
 
     @Test
-    fun `add超长截断30字`() = runTest(dispatcher) {
-        val forty = "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四十"
-        viewModel.add(forty)
+    fun `add超长截断200字`() = runTest(dispatcher) {
+        val overlong = "背".repeat(210) // 超过 200 字上限的输入
+        viewModel.add(overlong)
         advanceUntilIdleAndFlush()
-        assertEquals(forty.take(30), dao.inserted.single().text)
+        assertEquals(overlong.take(TodoRepository.MAX_TEXT_LENGTH), dao.inserted.single().text)
     }
 
     private fun advanceUntilIdleAndFlush() {

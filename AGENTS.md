@@ -138,7 +138,7 @@ ui/theme/       Compose 主题 token（与 colors.xml 的 brand_* 同源）
 - **抑制（Suppression）**：选「打开」后临时放行该应用的重启，防止回到目标应用时二次拦截；`userOpenedPkg`（使用期间永久放行）与 `suppressedPkg`（立即生效）是服务内两个不同字段。
 - **去抖（Debounce）**：`TYPE_WINDOW_STATE_CHANGED` 连发防重复弹窗，窗口 `DEBOUNCE_MS=800`；两者都实现在纯类 `CooldownGate`，常量在 `InterceptionController`。
 - **覆盖层（Overlay）**：`TYPE_ACCESSIBILITY_OVERLAY` 全屏窗口，由无障碍服务绘制，始终浅色。
-- **待办（Todo）**：固定每日清单条目（标题 ≤30 字 + 启用开关 + `lastCompletedDate`），上限 20 条；完成判定 = `lastCompletedDate == 今天`（惰性重置，无清理任务）；v1 不进统计页、无通知；覆盖层只读展示，勾选仅在待办页。
+- **待办（Todo）**：固定每日清单条目（标题 ≤200 字 + 启用开关 + `lastCompletedDate`），上限 20 条；完成判定 = `lastCompletedDate == 今天`（惰性重置，无清理任务）；v1 不进统计页、无通知；覆盖层只读展示（每条截前 30 字），勾选仅在待办页（列表单行省略、点条目弹只读全文弹窗）。
 - **循环游标（HintCursor）**：提示语展示为「内置（资源数组顺序）+ 池（id 升序）」单一序列的循环，游标持久化在 DataStore（`hint_cycle_cursor`），进程重启续接；序列增删后取模继续，不承诺严格不重不漏。004 的栈式一次性提示已退役（存量行经 MIGRATION_4_5 改挂 pool）。
 - **档位/周期（StatsRange/StatsPeriod）**：统计页 日/周/月/年 自然周期（周一起算、不含未来周期；月=当年 1 月至今，年=最早事件年至今）；顶部四卡（今日拦截/取消/打开/连续天数）与档位无关。
 - **连击（Streak）**：连续完成 5 秒锻炼的天数；今天未完成但昨天连续则不断连。

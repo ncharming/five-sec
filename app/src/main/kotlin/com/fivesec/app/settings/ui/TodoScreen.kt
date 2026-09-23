@@ -1,6 +1,6 @@
 package com.fivesec.app.settings.ui
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -49,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -60,7 +60,6 @@ import com.fivesec.app.data.repository.TodoRepository
 import com.fivesec.app.settings.viewmodels.TodoRow
 import com.fivesec.app.settings.viewmodels.TodoViewModel
 import com.fivesec.app.ui.components.CardSurface
-import com.fivesec.app.ui.components.CapacitySegments
 import com.fivesec.app.ui.components.FiveSecDialog
 import com.fivesec.app.ui.components.FiveSecTextFieldShape
 import com.fivesec.app.ui.components.PageHeader
@@ -70,7 +69,8 @@ import com.fivesec.app.ui.theme.Spacing
 
 /**
  * 待办页（specs/005-daily-todos，首页默认 Tab）：固定每日清单的增删改/启停/今日勾选。
- * 视觉沿用四页统一语言（PageHeader + 名额行 + 白卡行骨架 + FiveSecDialog 弹窗）。
+ * 视觉沿用四页统一语言（PageHeader + 白卡行骨架 + FiveSecDialog 弹窗）；名额行已移除——
+ * 容量语义由「满员底部提示 + 添加兜底弹窗」承载。标题 ≤200 字：列表单行省略，点条目看只读全文弹窗。
  * 只读约定：拦截覆盖层上的待办卡片由本页数据派生（快照），勾选只发生在本页（FR-005）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,6 +84,7 @@ fun TodoScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var editTarget by remember { mutableStateOf<TodoRow?>(null) }
     var deleteTarget by remember { mutableStateOf<TodoRow?>(null) }
+    var detailTarget by remember { mutableStateOf<TodoRow?>(null) }
     var showLimitDialog by remember { mutableStateOf(false) }
 
     // 跨日重算：从后台回前台时刷新今日口径（昨天勾的今天自动回未完成）
@@ -126,28 +127,6 @@ fun TodoScreen(
                 }
             }
 
-            // ── 名额行：已建条数 + 进度段 + n/20（语义=已建（含停用），与拦截应用名额行同构） ──
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    stringResource(R.string.todos_enabled_count, rows.size),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
-                CapacitySegments(filled = rows.size, total = TodoRepository.MAX_TODOS)
-                Spacer(Modifier.width(Spacing.sm))
-                Text(
-                    stringResource(R.string.todos_capacity, rows.size, TodoRepository.MAX_TODOS),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
             // ── 待办卡片列表 ──
             if (rows.isEmpty()) {
                 Text(
@@ -168,6 +147,7 @@ fun TodoScreen(
                             row = row,
                             onToggleDone = { viewModel.setCompleted(row.todo.id, !row.doneToday) },
                             onToggleEnabled = { viewModel.setEnabled(row.todo.id, it) },
+                            onShowDetail = { detailTarget = row },
                             onRename = { editTarget = row },
                             onDelete = { deleteTarget = row },
                         )
@@ -226,6 +206,26 @@ fun TodoScreen(
         )
     }
 
+    // 全文只读弹窗（点条目行触发）：列表是单行省略的展示层截断，完整内容在这里看全
+    detailTarget?.let { target ->
+        FiveSecDialog(
+            visible = true,
+            onDismissRequest = { detailTarget = null },
+            title = stringResource(R.string.todos_detail_title),
+            confirmButton = {
+                Button(onClick = { detailTarget = null }) {
+                    Text(stringResource(R.string.todos_detail_close))
+                }
+            },
+        ) {
+            Text(
+                target.todo.text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+
     // 删除确认弹窗
     deleteTarget?.let { target ->
         FiveSecDialog(
@@ -273,12 +273,13 @@ fun TodoScreen(
     }
 }
 
-/** 卡片行：今日勾选框 + 标题（完成划线/停用弱化） + 启用开关 + ⋯菜单（重命名/删除）。 */
+/** 卡片行：今日勾选框 + 标题（完成划线/停用弱化，单行省略、点击看全文） + 启用开关 + ⋯菜单（重命名/删除）。 */
 @Composable
 private fun TodoItemRow(
     row: TodoRow,
     onToggleDone: () -> Unit,
     onToggleEnabled: (Boolean) -> Unit,
+    onShowDetail: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -300,7 +301,8 @@ private fun TodoItemRow(
             modifier = Modifier
                 .weight(1f)
                 .padding(start = Spacing.xs)
-                .alpha(if (enabled) 1f else 0.62f),
+                .alpha(if (enabled) 1f else 0.62f)
+                .clickable(onClick = onShowDetail), // 单行省略是展示层截断：点条目看全文
         ) {
             Text(
                 row.todo.text,
@@ -309,6 +311,8 @@ private fun TodoItemRow(
                 textDecoration = if (row.doneToday) TextDecoration.LineThrough else null,
                 color = if (row.doneToday) MaterialTheme.colorScheme.onSurfaceVariant
                 else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         Switch(
@@ -349,7 +353,7 @@ private fun TodoItemRow(
     }
 }
 
-/** 新建/重命名共用表单弹窗：单行输入，30 字硬截断（与提示语同一口径），空白不可确认。 */
+/** 新建/重命名共用表单弹窗：多行输入（只为长文本可见性，换行折叠为空格），200 字硬截断，空白不可确认。 */
 @Composable
 private fun TodoEditDialog(
     visible: Boolean,
@@ -380,9 +384,14 @@ private fun TodoEditDialog(
     ) {
         OutlinedTextField(
             value = text,
-            onValueChange = { if (it.length <= TodoRepository.MAX_TEXT_LENGTH) text = it },
+            onValueChange = { raw ->
+                // 多行输入只为编辑时长文本可见；换行折叠为空格，保持"单行标题"的存储与展示口径
+                val sanitized = raw.replace("\n", " ")
+                if (sanitized.length <= TodoRepository.MAX_TEXT_LENGTH) text = sanitized
+            },
             placeholder = { Text(stringResource(R.string.todos_input_hint)) },
-            singleLine = true,
+            minLines = 3,
+            maxLines = 6,
             shape = FiveSecTextFieldShape,
             colors = fiveSecTextFieldColors(),
             modifier = Modifier.fillMaxWidth(),

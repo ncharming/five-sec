@@ -44,7 +44,7 @@ class TodoRepository @Inject constructor(
     /** 待办页列表（id 升序，含停用条目；透传 DAO）。 */
     fun observeAll(): Flow<List<Todo>> = todoDao.observeAll()
 
-    /** 新增：校验（trim/空白拒/30 字截断）+ 上限 20；失败返回中文文案的 Result。 */
+    /** 新增：校验（trim/空白拒/200 字截断）+ 上限 20；失败返回中文文案的 Result。 */
     suspend fun add(text: String): Result<Unit> {
         val normalized = normalize(text)
             ?: return Result.failure(IllegalArgumentException("待办内容不能为空"))
@@ -70,7 +70,7 @@ class TodoRepository @Inject constructor(
         todoDao.setCompletedDate(id, if (completed) today else "")
     }
 
-    /** 与 HintRepository 同一口径：trim 非空白 + 30 字符硬截断；不合法返回 null（不落库）。 */
+    /** trim 非空白 + 200 字符硬截断（待办口径；提示语维持 30 字，两者不再同一口径）；不合法返回 null（不落库）。 */
     private fun normalize(text: String): String? {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return null
@@ -81,7 +81,7 @@ class TodoRepository @Inject constructor(
         /** 待办数量上限（添加校验与 UI 名额行共用单一来源）。 */
         const val MAX_TODOS = 20
 
-        /** 标题长度上限（与提示语同一口径）。 */
-        const val MAX_TEXT_LENGTH = 30
+        /** 标题长度上限：待办 200 字（提示语维持 30 字不变）。展示层另有两个更小的口径：待办页单行省略、拦截卡片截前 30 字。 */
+        const val MAX_TEXT_LENGTH = 200
     }
 }

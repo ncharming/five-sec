@@ -13,7 +13,7 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "todos")
 data class Todo(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val text: String, // 标题文本（≤30 字符、trim 后非空白，写入前由 Repository 统一校验）
+    val text: String, // 标题文本（≤200 字符、trim 后非空白，写入前由 Repository 统一校验；展示层：待办页单行省略、拦截卡片截前 30 字）
     val isEnabled: Boolean = true, // 停用条目不进覆盖层快照、不计入进度分母
     val lastCompletedDate: String = "", // 最近完成日；空串 = 从未完成
 )
