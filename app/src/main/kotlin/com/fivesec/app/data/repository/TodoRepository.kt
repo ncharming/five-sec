@@ -1,7 +1,10 @@
 package com.fivesec.app.data.repository
 
+import com.fivesec.app.data.db.TodoCompletionDao
 import com.fivesec.app.data.db.TodoDao
+import com.fivesec.app.data.db.TodoRangeCount
 import com.fivesec.app.domain.model.Todo
+import com.fivesec.app.domain.model.TodoCompletion
 import com.fivesec.app.domain.model.TodoRule
 import com.fivesec.app.domain.model.TodayTodo
 import com.fivesec.app.util.DateUtil
@@ -16,9 +19,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 /**
- * 待办聚合点（specs/005-daily-todos；006 重复规则；007 一次性/过期口径）：
+ * 待办聚合点（specs/005-daily-todos；006 重复规则；007 一次性/过期口径；008 完成事件）：
  *  - 无障碍服务在主线程同步调 [todayTodos] 取覆盖层"今日待办"快照（快照模式，对齐 HintRepository）；
- *  - 待办页经 [observeAll]/add/rename/remove/setEnabled/setCompleted/setRecurrence/revive 管理。
+ *  - 待办页经 [observeAll]/add/rename/remove/setEnabled/setCompleted/setRecurrence/revive 管理；
+ *  - 统计页经 [observeCompletionCountByTodoBetween]/[observeEarliestCompletionDate] 聚合完成历史
+ *    （todo_completions 事件表，勾选落一行/取消删当日，统计=流水实时聚合无预聚合表）。
  *
  * "每日重置"是惰性求值：完成判定 = lastCompletedDate == today（调用方经 DateUtil 产出 today，
  * 纯逻辑不读系统时钟），跨日自动失效，无任何清理任务。一次性规则（007）的日期列由本层按注入的
@@ -28,6 +33,7 @@ import kotlinx.coroutines.launch
 @Singleton
 class TodoRepository @Inject constructor(
     private val todoDao: TodoDao,
+    private val todoCompletionDao: TodoCompletionDao,
     private val timeProvider: TimeProvider,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -128,10 +134,27 @@ class TodoRepository @Inject constructor(
         else -> Result.success(rule)
     }
 
-    /** 勾选写 [today]、取消写空串；today 由调用方按当天口径传入（VM 持 TimeProvider）。 */
+    /** 勾选写 [today]、取消写空串；today 由调用方按当天口径传入（VM 持 TimeProvider）。
+     *  双写完成事件（008）：勾选 upsert 一行（todoId+当日+文本快照——快照取勾选当时的文本，
+     *  条目事后删除/改名历史不失联）；取消删当日行——(todoId, 当日) 唯一，重勾永不重复计数。
+     *  顺序为先 todos 行后事件行：当日 UI 判定以 lastCompletedDate 为准，事件行晚到不影响；
+     *  中途崩溃的窗口由下次勾选的 REPLACE 自愈，不引入跨 DAO 事务。 */
     suspend fun setCompleted(id: Long, today: String, completed: Boolean) {
         todoDao.setCompletedDate(id, if (completed) today else "")
+        if (completed) {
+            val text = todoDao.findById(id)?.text ?: return // 条目已被并发删除：无快照可写，跳过
+            todoCompletionDao.upsert(TodoCompletion(todoId = id, todoText = text, completedDate = today))
+        } else {
+            todoCompletionDao.deleteByTodoAndDate(id, today)
+        }
     }
+
+    /** 周期内按条目的完成次数（统计页任务历史二级页；区间 [startDate, endDate) 半开，yyyy-MM-dd 字典序）。 */
+    fun observeCompletionCountByTodoBetween(startDate: String, endDate: String): Flow<List<TodoRangeCount>> =
+        todoCompletionDao.observeCountByTodoBetween(startDate, endDate)
+
+    /** 最早完成日期（yyyy-MM-dd；无记录为 null）——统计页年档位可选范围与拦截最早事件取更早。 */
+    fun observeEarliestCompletionDate(): Flow<String?> = todoCompletionDao.observeEarliestDate()
 
     /** trim 非空白 + 200 字符硬截断（待办口径；提示语维持 30 字，两者不再同一口径）；不合法返回 null（不落库）。 */
     private fun normalize(text: String): String? {

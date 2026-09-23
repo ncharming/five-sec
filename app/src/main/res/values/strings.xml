@@ -145,4 +145,15 @@
     <string name="stats_metric_intercepted">拦截</string>
     <string name="stats_metric_opened">打开</string>
     <string name="stats_metric_canceled">取消</string>
+
+    <!-- Stats / 任务完成统计（specs/008-todo-stats） -->
+    <string name="stats_today_tasks">任务</string>
+    <string name="stats_today_tasks_done">完成</string>
+    <string name="stats_today_tasks_expired">过期</string>
+    <string name="stats_entry_intercept_history">应用拦截统计</string>
+    <string name="stats_entry_todo_history">任务完成统计</string>
+    <string name="stats_todo_period_total">本期完成</string>
+    <string name="stats_todo_item_count">完成 %1$d 次</string>
+    <string name="stats_todo_empty">本期暂无完成记录</string>
+    <string name="stats_back">返回</string>
 </resources>

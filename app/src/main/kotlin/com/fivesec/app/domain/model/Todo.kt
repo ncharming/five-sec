@@ -9,7 +9,8 @@ import com.fivesec.app.util.TodoRecurrence
  *
  * "每日重置"是惰性求值而非定时任务：完成判定 = [lastCompletedDate] == 今天（yyyy-MM-dd，
  * `DateUtil.todayString` 口径）——跨入新的一天后旧日期自然失配，无需任何清理逻辑。
- * v1 不留存完成历史（仅记最近完成日），待办不进统计页（产品共识）。
+ * 完成历史不留在本表（仅记最近完成日），统计页的任务历史经独立的 TodoCompletion
+ * 事件表聚合（specs/008-todo-stats：勾选落一行/取消删当日，文本快照防删除失联）。
  *
  * 重复规则三列（006）：`lastCompletedDate` 兼作间隔规则的滚动起算锚点（最近完成日为空 = 恒轮到，
  * 故无需创建日列）；切换规则绝不触碰该列（完成状态是既成事实）。

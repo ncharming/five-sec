@@ -70,4 +70,34 @@ class DateUtilTest {
             DateUtil.startOfDayMillis(now, ZoneId.of("UTC")),
         )
     }
+
+    // ── 日期串 ↔ 毫秒换算（specs/008-todo-stats：完成事件日期与周期毫秒统一量纲） ──
+
+    @Test
+    fun `日期串转毫秒取当日零点`() {
+        assertEquals(millis("2026-09-23", "00:00"), DateUtil.dateStringToMillis("2026-09-23", zone))
+    }
+
+    @Test
+    fun `毫秒转日期串按指定时区归日`() {
+        // 2026-09-23 01:00 +08:00 == 2026-09-22 17:00 UTC：两时区归到不同自然日
+        val now = millis("2026-09-23", "01:00")
+        assertEquals("2026-09-23", DateUtil.millisToDateString(now, zone))
+        assertEquals("2026-09-22", DateUtil.millisToDateString(now, ZoneId.of("UTC")))
+    }
+
+    @Test
+    fun `日界毫秒往返无损`() {
+        val dayStart = millis("2026-09-01", "00:00")
+        assertEquals("2026-09-01", DateUtil.millisToDateString(dayStart, zone))
+        assertEquals(dayStart, DateUtil.dateStringToMillis(DateUtil.millisToDateString(dayStart, zone), zone))
+    }
+
+    @Test
+    fun `日期串非法或空返回null不抛异常`() {
+        assertEquals(null, DateUtil.dateStringToMillis(null, zone))
+        assertEquals(null, DateUtil.dateStringToMillis("", zone))
+        assertEquals(null, DateUtil.dateStringToMillis("2026/09/23", zone))
+        assertEquals(null, DateUtil.dateStringToMillis("garbage", zone))
+    }
 }

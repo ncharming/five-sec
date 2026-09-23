@@ -32,6 +32,18 @@ object DateUtil {
         Instant.ofEpochMilli(now).atZone(zone).toLocalDate().toString()
 
     /**
+     * "yyyy-MM-dd" → 当日 00:00 的 epoch 毫秒（stats/008：完成事件最早日期与拦截最早事件统一量纲）。
+     * 非法/空串返回 null（无数据语义），不抛异常——调用方拿 null 走"无记录"分支。
+     */
+    fun dateStringToMillis(date: String?, zone: ZoneId = ZoneId.systemDefault()): Long? =
+        date?.let { runCatching { LocalDate.parse(it).atStartOfDay(zone).toInstant().toEpochMilli() }.getOrNull() }
+
+    /** epoch 毫秒 → "yyyy-MM-dd"（stats/008：StatsPeriod 的半开区间端点转日期串查完成事件表）。
+     *  输入是 LocalDate.atStartOfDay 生成的日界毫秒，往返无损。 */
+    fun millisToDateString(millis: Long, zone: ZoneId = ZoneId.systemDefault()): String =
+        Instant.ofEpochMilli(millis).atZone(zone).toLocalDate().toString()
+
+    /**
      * 连续完成锻炼的天数。[activeDaysDesc] 为按日期降序的 "yyyy-MM-dd" 列表。
      * 若今天未完成但此前连续，则从昨天起算（不因尚未完成今日而断连）。
      */

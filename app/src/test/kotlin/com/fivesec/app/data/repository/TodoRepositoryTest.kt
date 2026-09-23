@@ -1,7 +1,10 @@
 package com.fivesec.app.data.repository
 
+import com.fivesec.app.data.db.TodoCompletionDao
 import com.fivesec.app.data.db.TodoDao
+import com.fivesec.app.data.db.TodoRangeCount
 import com.fivesec.app.domain.model.Todo
+import com.fivesec.app.domain.model.TodoCompletion
 import com.fivesec.app.domain.model.TodoRule
 import com.fivesec.app.util.TimeProvider
 import com.fivesec.app.util.TodoRecurrence
@@ -10,6 +13,7 @@ import java.time.Instant
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -17,10 +21,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * TodoRepository 测试（specs/005；006 重复规则；007 一次性/过期）：
+ * TodoRepository 测试（specs/005；006 重复规则；007 一次性/过期；008 完成事件双写）：
  * 快照过滤（只含启用且今天轮到；一次性当天计入、过期排除）、完成态按日期惰性求值、
  * 入口校验（空白/200 字/周几空集/间隔收敛）、上限 20、定向 UPDATE 转发、dueDate/createdAt 写入口径、
- * revive、惰性清理（已完成一次性跨日物理删除）。
+ * revive、惰性清理（已完成一次性跨日物理删除）、完成事件（勾选 upsert 含文本快照/取消删当日/重勾不重复）。
  * 快照收集与惰性清理走真实后台协程，用轮询 await 观测就绪；DAO 用 StateFlow 手控 fake
  * （写操作模拟 Room 重发，DELETE 同步作用于 state 以复现自稳定回路）。
  * 时钟：固定 2026-09-23T12:00:00Z（正午锚点，±12 时区内日期不变，CI UTC 可跑）。
@@ -40,6 +44,8 @@ class TodoRepositoryTest {
         val purgeCalls = CopyOnWriteArrayList<String>()
 
         override fun observeAll(): Flow<List<Todo>> = state
+
+        override suspend fun findById(id: Long): Todo? = state.value.firstOrNull { it.id == id }
 
         override suspend fun insert(todo: Todo): Long {
             inserted += todo
@@ -111,6 +117,31 @@ class TodoRepositoryTest {
         val dueDate: String,
     )
 
+    /** 完成事件 fake：upsert 复现唯一索引语义（同 (todoId, 日期) 先删后插）；观察流按当前行快照发射。 */
+    private class FakeTodoCompletionDao : TodoCompletionDao {
+        val rows = CopyOnWriteArrayList<TodoCompletion>()
+
+        override suspend fun upsert(completion: TodoCompletion) {
+            rows.removeAll { it.todoId == completion.todoId && it.completedDate == completion.completedDate }
+            rows += completion
+        }
+
+        override suspend fun deleteByTodoAndDate(todoId: Long, date: String) {
+            rows.removeAll { it.todoId == todoId && it.completedDate == date }
+        }
+
+        override fun observeCountByTodoBetween(startDate: String, endDate: String): Flow<List<TodoRangeCount>> = flow {
+            emit(
+                rows.filter { it.completedDate >= startDate && it.completedDate < endDate }
+                    .groupBy { it.todoId }
+                    .map { (todoId, group) -> TodoRangeCount(todoId, group.first().todoText, group.size) }
+                    .sortedWith(compareByDescending<TodoRangeCount> { it.completions }.thenBy { it.todoText }),
+            )
+        }
+
+        override fun observeEarliestDate(): Flow<String?> = flow { emit(rows.minOfOrNull { it.completedDate }) }
+    }
+
     private fun awaitUntil(timeoutMs: Long = 5_000, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (!condition()) {
@@ -134,7 +165,7 @@ class TodoRepositoryTest {
             Todo(id = 3, text = "昨日完成", isEnabled = true, lastCompletedDate = "2026-09-22"),
             Todo(id = 4, text = "已停用", isEnabled = false, lastCompletedDate = today),
         )
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         awaitUntil { repo.todayTodos(today).size == 3 } // 快照就绪（含停用前的 3 条启用项）
 
@@ -146,7 +177,7 @@ class TodoRepositoryTest {
     @Test
     fun `add空白拒绝且不落库`() = runTest {
         val dao = FakeTodoDao()
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         assertTrue(repo.add("   ").isFailure)
         assertTrue(repo.add("").isFailure)
@@ -156,7 +187,7 @@ class TodoRepositoryTest {
     @Test
     fun `add超长截断200字`() = runTest {
         val dao = FakeTodoDao()
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
         val overlong = "背".repeat(210) // 超过 200 字上限的输入
 
         val result = repo.add("  $overlong  ")
@@ -169,7 +200,7 @@ class TodoRepositoryTest {
     @Test
     fun `add不超上限时trim后原文保留不截断`() = runTest {
         val dao = FakeTodoDao()
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
         val forty = "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四十"
 
         val result = repo.add("  $forty  ")
@@ -182,7 +213,7 @@ class TodoRepositoryTest {
     fun `add达上限20后拒绝`() = runTest {
         val dao = FakeTodoDao()
         dao.state.value = (1..TodoRepository.MAX_TODOS).map { Todo(id = it.toLong(), text = "条目$it") }
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         val result = repo.add("第 21 条")
 
@@ -193,7 +224,7 @@ class TodoRepositoryTest {
     @Test
     fun `setCompleted勾选写当日日期取消清空`() = runTest {
         val dao = FakeTodoDao()
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         repo.setCompleted(id = 1, today = today, completed = true)
         repo.setCompleted(id = 1, today = today, completed = false)
@@ -208,7 +239,7 @@ class TodoRepositoryTest {
     fun `rename与remove与setEnabled按定向更新转发`() = runTest {
         val dao = FakeTodoDao()
         dao.state.value = listOf(Todo(id = 7, text = "旧文案"))
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         assertTrue(repo.rename(7, "  新文案  ").isSuccess)
         assertTrue(repo.rename(7, "   ").isFailure) // 同一校验口径
@@ -233,7 +264,7 @@ class TodoRepositoryTest {
             Todo(id = 1, text = "周一三五", repeatType = TodoRecurrence.REPEAT_WEEKLY, repeatDays = mask),
             Todo(id = 2, text = "每天", repeatType = TodoRecurrence.REPEAT_DAILY),
         )
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         awaitUntil { repo.todayTodos("2026-09-23").isNotEmpty() } // 快照就绪（每天条恒可见）
 
@@ -253,7 +284,7 @@ class TodoRepositoryTest {
                 lastCompletedDate = "2026-09-23",
             ),
         )
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         awaitUntil { repo.todayTodos("2026-09-26").isNotEmpty() } // 快照就绪
 
@@ -266,7 +297,7 @@ class TodoRepositoryTest {
     fun `setRecurrence周几空集拒绝且不落库`() = runTest {
         val dao = FakeTodoDao()
         dao.state.value = listOf(Todo(id = 7, text = "旧文案"))
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         val result = repo.setRecurrence(7, TodoRule(TodoRecurrence.REPEAT_WEEKLY, 0, 0))
 
@@ -278,7 +309,7 @@ class TodoRepositoryTest {
     fun `setRecurrence间隔越界收敛并定向转发不触碰锚点`() = runTest {
         val dao = FakeTodoDao()
         dao.state.value = listOf(Todo(id = 7, text = "旧文案", lastCompletedDate = "2026-09-23"))
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         assertTrue(repo.setRecurrence(7, TodoRule(TodoRecurrence.REPEAT_INTERVAL, 0, 999)).isSuccess)
 
@@ -294,7 +325,7 @@ class TodoRepositoryTest {
     fun `setRecurrence周几规则落位掩码`() = runTest {
         val dao = FakeTodoDao()
         dao.state.value = listOf(Todo(id = 7, text = "旧文案"))
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
         val mask = TodoRecurrence.bitOf(DayOfWeek.MONDAY) or TodoRecurrence.bitOf(DayOfWeek.FRIDAY)
 
         assertTrue(repo.setRecurrence(7, TodoRule(TodoRecurrence.REPEAT_WEEKLY, mask, 0)).isSuccess)
@@ -308,7 +339,7 @@ class TodoRepositoryTest {
     @Test
     fun `add带周几规则落库`() = runTest {
         val dao = FakeTodoDao()
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         val result = repo.add("锻炼", TodoRule.weekly(setOf(DayOfWeek.WEDNESDAY)))
 
@@ -322,7 +353,7 @@ class TodoRepositoryTest {
     @Test
     fun `add缺省规则落库为每天`() = runTest {
         val dao = FakeTodoDao()
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         assertTrue(repo.add("普通每日").isSuccess)
 
@@ -337,7 +368,7 @@ class TodoRepositoryTest {
     @Test
     fun `add仅今天_创建日与有效期日都是当天`() = runTest {
         val dao = FakeTodoDao()
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         assertTrue(repo.add("今天寄快递", TodoRule.ONCE).isSuccess)
 
@@ -350,7 +381,7 @@ class TodoRepositoryTest {
     @Test
     fun `add重复类_dueDate空串`() = runTest {
         val dao = FakeTodoDao()
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         assertTrue(repo.add("每天读书").isSuccess)
 
@@ -363,7 +394,7 @@ class TodoRepositoryTest {
     fun `setRecurrence转仅今天_dueDate写当天_转回重复类清空`() = runTest {
         val dao = FakeTodoDao()
         dao.state.value = listOf(Todo(id = 7, text = "旧文案", createdAt = "2026-01-01"))
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         assertTrue(repo.setRecurrence(7, TodoRule.ONCE).isSuccess)
         assertEquals(
@@ -391,7 +422,7 @@ class TodoRepositoryTest {
                 dueDate = "2026-09-20",
             ),
         )
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         repo.revive(9)
         awaitUntil { dao.state.value.single().dueDate == today }
@@ -410,7 +441,7 @@ class TodoRepositoryTest {
             Todo(id = 3, text = "明天才轮到", repeatType = TodoRecurrence.REPEAT_ONCE, dueDate = "2026-09-24"),
             Todo(id = 4, text = "今天已完成", repeatType = TodoRecurrence.REPEAT_ONCE, dueDate = today, lastCompletedDate = today),
         )
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         awaitUntil { repo.todayTodos(today).isNotEmpty() }
 
@@ -428,7 +459,7 @@ class TodoRepositoryTest {
             Todo(id = 3, text = "昨天没完成的一次性", repeatType = TodoRecurrence.REPEAT_ONCE, dueDate = "2026-09-22"),
             Todo(id = 4, text = "昨天完成的每天", repeatType = TodoRecurrence.REPEAT_DAILY, lastCompletedDate = "2026-09-22"),
         )
-        val repo = TodoRepository(dao, timeProvider)
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         // 收集器首次发射后顺手 purge：僵尸行（id=1）消失，其余三条保留
         awaitUntil { dao.purgeCalls.isNotEmpty() }
@@ -436,5 +467,66 @@ class TodoRepositoryTest {
 
         val texts = dao.state.value.map { it.text }
         assertEquals(listOf("今天完成的一次性", "昨天没完成的一次性", "昨天完成的每天"), texts)
+    }
+
+    // ── 完成事件双写（specs/008） ──
+
+    @Test
+    fun `setCompleted勾选写完成事件_快照取勾选当时文本`() = runTest {
+        val dao = FakeTodoDao()
+        dao.state.value = listOf(Todo(id = 7, text = "背单词"))
+        val completions = FakeTodoCompletionDao()
+        val repo = TodoRepository(dao, completions, timeProvider)
+
+        repo.setCompleted(7, today, completed = true)
+
+        assertEquals(listOf(TodoCompletion(todoId = 7, todoText = "背单词", completedDate = today)), completions.rows)
+    }
+
+    @Test
+    fun `setCompleted取消删当日事件_重勾不重复`() = runTest {
+        val dao = FakeTodoDao()
+        dao.state.value = listOf(Todo(id = 7, text = "背单词"))
+        val completions = FakeTodoCompletionDao()
+        val repo = TodoRepository(dao, completions, timeProvider)
+
+        repo.setCompleted(7, today, completed = true)
+        repo.setCompleted(7, today, completed = false)
+        assertTrue(completions.rows.isEmpty()) // 取消即撤回当日计数
+
+        repo.setCompleted(7, today, completed = true)
+        assertEquals(1, completions.rows.size) // 同一天同条最多一行
+        assertEquals(today, completions.rows.single().completedDate)
+    }
+
+    @Test
+    fun `setCompleted改名后勾选_事件行按勾选当时的名字`() = runTest {
+        val dao = FakeTodoDao()
+        dao.state.value = listOf(Todo(id = 7, text = "旧名"))
+        val completions = FakeTodoCompletionDao()
+        val repo = TodoRepository(dao, completions, timeProvider)
+
+        repo.setCompleted(7, "2026-09-22", completed = true) // 昨天以旧名勾选
+        repo.rename(7, "新名")
+        repo.setCompleted(7, today, completed = true) // 今天以新名勾选
+
+        // 两天两行，各自是勾选当时的文本快照——历史不因改名失联
+        assertEquals(
+            listOf("旧名" to "2026-09-22", "新名" to today),
+            completions.rows.sortedBy { it.completedDate }.map { it.todoText to it.completedDate },
+        )
+    }
+
+    @Test
+    fun `setCompleted条目已被删除_跳过事件写入不抛异常`() = runTest {
+        val dao = FakeTodoDao()
+        dao.state.value = emptyList() // id=7 不存在（并发删除后的残留勾选调用）
+        val completions = FakeTodoCompletionDao()
+        val repo = TodoRepository(dao, completions, timeProvider)
+
+        repo.setCompleted(7, today, completed = true)
+
+        assertEquals(1, dao.completionChanges.size) // todos 行照常转发（Room 侧无匹配行为 no-op）
+        assertTrue(completions.rows.isEmpty()) // 无快照可写，静默跳过
     }
 }

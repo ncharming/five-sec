@@ -19,6 +19,10 @@ interface TodoDao {
     @Query("SELECT * FROM todos ORDER BY id ASC")
     fun observeAll(): Flow<List<Todo>>
 
+    /** 按 id 取单条（完成事件写文本快照用）；不存在返回 null。 */
+    @Query("SELECT * FROM todos WHERE id = :id")
+    suspend fun findById(id: Long): Todo?
+
     @Insert
     suspend fun insert(todo: Todo): Long
 

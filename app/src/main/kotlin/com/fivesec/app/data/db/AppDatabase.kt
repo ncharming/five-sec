@@ -11,10 +11,11 @@ import com.fivesec.app.domain.model.InterceptionEvent
 import com.fivesec.app.domain.model.InterceptionOutcome
 import com.fivesec.app.domain.model.TargetApp
 import com.fivesec.app.domain.model.Todo
+import com.fivesec.app.domain.model.TodoCompletion
 
 @Database(
-    entities = [TargetApp::class, InterceptionEvent::class, Hint::class, Todo::class],
-    version = 7, // v7：todos 新增 createdAt/dueDate 两列（specs/007-oneoff-todos，老数据空串零感知）
+    entities = [TargetApp::class, InterceptionEvent::class, Hint::class, Todo::class, TodoCompletion::class],
+    version = 8, // v8：新增 todo_completions 完成事件表（specs/008-todo-stats，统计页任务历史数据源）
     exportSchema = false,
 )
 @TypeConverters(InterceptionOutcomeConverter::class)
@@ -23,6 +24,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun interceptionEventDao(): InterceptionEventDao
     abstract fun hintDao(): HintDao
     abstract fun todoDao(): TodoDao
+    abstract fun todoCompletionDao(): TodoCompletionDao
 }
 
 // 从版本1迁移到版本2：添加 appName 字段和 AppStatistics 表
@@ -109,6 +111,26 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("ALTER TABLE todos ADD COLUMN createdAt TEXT NOT NULL DEFAULT ''")
         database.execSQL("ALTER TABLE todos ADD COLUMN dueDate TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+// 从版本7迁移到版本8：新增 todo_completions 完成事件表（specs/008-todo-stats，任务历史统计数据源）。
+// 纯 CREATE TABLE + UNIQUE INDEX：既有四表零触碰（interception_events 红线）；无回填——部署前的
+// 完成历史不存在，统计从升级日起积累（0 值是有效数据，不伪造）；列与索引定义必须与 Room 为
+// TodoCompletion 生成的 schema 逐字一致（AppDatabaseMigrationTest 手建 v7 库守住）。
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS `todo_completions` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`todoId` INTEGER NOT NULL, " +
+                "`todoText` TEXT NOT NULL, " +
+                "`completedDate` TEXT NOT NULL)"
+        )
+        database.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_todo_completions_todoId_completedDate` " +
+                "ON `todo_completions` (`todoId`, `completedDate`)"
+        )
     }
 }
 

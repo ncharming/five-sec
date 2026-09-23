@@ -78,20 +78,40 @@ fun PageHeader(
     }
 }
 
-/** 统一卡片容器：白底、22dp 圆角、hairline 描边、轻投影。 */
+/**
+ * 统一卡片容器：白底、22dp 圆角、hairline 描边、轻投影。
+ * [onClick] 非空时用可点 Surface 重载（涟漪按圆角裁剪、带按钮语义）——统计页入口卡（specs/008）。
+ */
 @Composable
 fun CardSurface(
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-        shadowElevation = 1.dp,
-    ) {
-        Column(content = content)
+    val shape = RoundedCornerShape(22.dp)
+    val color = MaterialTheme.colorScheme.surface
+    val border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    if (onClick != null) {
+        Surface(
+            onClick = onClick,
+            modifier = modifier.fillMaxWidth(),
+            shape = shape,
+            color = color,
+            border = border,
+            shadowElevation = 1.dp,
+        ) {
+            Column(content = content)
+        }
+    } else {
+        Surface(
+            modifier = modifier.fillMaxWidth(),
+            shape = shape,
+            color = color,
+            border = border,
+            shadowElevation = 1.dp,
+        ) {
+            Column(content = content)
+        }
     }
 }
 

@@ -1,8 +1,11 @@
 package com.fivesec.app.settings
 
+import com.fivesec.app.data.db.TodoCompletionDao
 import com.fivesec.app.data.db.TodoDao
+import com.fivesec.app.data.db.TodoRangeCount
 import com.fivesec.app.data.repository.TodoRepository
 import com.fivesec.app.domain.model.Todo
+import com.fivesec.app.domain.model.TodoCompletion
 import com.fivesec.app.domain.model.TodoRule
 import com.fivesec.app.settings.viewmodels.TodoViewModel
 import com.fivesec.app.util.DateUtil
@@ -15,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -43,6 +47,8 @@ class TodoViewModelTest {
         val dueDateCalls = CopyOnWriteArrayList<Pair<Long, String>>()
 
         override fun observeAll(): Flow<List<Todo>> = state
+
+        override suspend fun findById(id: Long): Todo? = state.value.firstOrNull { it.id == id }
 
         override suspend fun insert(todo: Todo): Long {
             inserted += todo
@@ -81,6 +87,14 @@ class TodoViewModelTest {
     /** setRecurrence 定向 UPDATE 的转发记录。 */
     private data class RecurrenceCall(val id: Long, val type: Int, val days: Int, val interval: Int, val dueDate: String)
 
+    /** 完成事件 fake（specs/008）：VM 测试不关心事件内容，空实现即可满足构造签名。 */
+    private class NoopCompletionDao : TodoCompletionDao {
+        override suspend fun upsert(completion: TodoCompletion) = Unit
+        override suspend fun deleteByTodoAndDate(todoId: Long, date: String) = Unit
+        override fun observeCountByTodoBetween(startDate: String, endDate: String): Flow<List<TodoRangeCount>> = flow { emit(emptyList()) }
+        override fun observeEarliestDate(): Flow<String?> = flow { emit(null) }
+    }
+
     private val dispatcher = StandardTestDispatcher()
     private lateinit var dao: RecordingDao
     private lateinit var viewModel: TodoViewModel
@@ -93,7 +107,7 @@ class TodoViewModelTest {
     fun setUp() {
         Dispatchers.setMain(dispatcher)
         dao = RecordingDao()
-        viewModel = TodoViewModel(TodoRepository(dao, timeProvider), timeProvider)
+        viewModel = TodoViewModel(TodoRepository(dao, NoopCompletionDao(), timeProvider), timeProvider)
     }
 
     @After
