@@ -91,9 +91,9 @@
 
 - [x] T020 [P] 更新 `README.md`：工作原理（覆盖层而非 BlockingActivity、抑制窗口 5s 口径纠偏）、待办模块、提示语循环、Tab 结构、specs/005 链接
 - [x] T021 [P] 更新 `AGENTS.md`：包结构树（TodoScreen/InterceptScreen/DataStoreHintCursorStore）、术语表补「待办/循环游标」、拦截页描述同步
-- [ ] T022 全量 `./gradlew :app:assembleDebug` + `:app:testDebugUnitTest` 本地全绿（本机 JDK17 + D:/Android/Sdk + Gradle 8.9 发行版）
+- [x] T022 全量 `./gradlew :app:assembleDebug` + `:app:testDebugUnitTest` 本地全绿（本机 JDK17 + D:/Android/Sdk + Gradle 8.9 发行版）
 - [ ] T023 按 `specs/005-daily-todos/quickstart.md` 场景 A~F 完成端到端手测并记录结果（真机）
-- [ ] T024 提交并推送 master（Conventional Commits 中文主题），CI 绿为交付前提
+- [x] T024 提交并推送 master（Conventional Commits 中文主题），CI 绿为交付前提
 
 ---
 
