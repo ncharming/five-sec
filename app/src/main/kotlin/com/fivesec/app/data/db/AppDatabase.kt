@@ -14,7 +14,7 @@ import com.fivesec.app.domain.model.Todo
 
 @Database(
     entities = [TargetApp::class, InterceptionEvent::class, Hint::class, Todo::class],
-    version = 6, // v6：todos 新增重复规则三列（specs/006-recurring-todos，老数据默认=每天零感知）
+    version = 7, // v7：todos 新增 createdAt/dueDate 两列（specs/007-oneoff-todos，老数据空串零感知）
     exportSchema = false,
 )
 @TypeConverters(InterceptionOutcomeConverter::class)
@@ -98,6 +98,17 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
         database.execSQL("ALTER TABLE todos ADD COLUMN repeatType INTEGER NOT NULL DEFAULT 0")
         database.execSQL("ALTER TABLE todos ADD COLUMN repeatDays INTEGER NOT NULL DEFAULT 0")
         database.execSQL("ALTER TABLE todos ADD COLUMN intervalDays INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+// 从版本6迁移到版本7：todos 新增 createdAt（创建日，展示用）/ dueDate（一次性有效期日）两列
+// （specs/007-oneoff-todos）。纯 ADD COLUMN + DEFAULT ''：存量行空串——创建时间显示「—」不伪造，
+// 且存量全是重复类规则，空 dueDate 零语义影响；零数据迁移语句、零丢失；
+// 列定义必须与 Room 为 Todo 实体生成的 schema 逐字一致（AppDatabaseMigrationTest 守住）。
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE todos ADD COLUMN createdAt TEXT NOT NULL DEFAULT ''")
+        database.execSQL("ALTER TABLE todos ADD COLUMN dueDate TEXT NOT NULL DEFAULT ''")
     }
 }
 

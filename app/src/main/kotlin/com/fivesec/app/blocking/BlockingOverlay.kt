@@ -82,16 +82,17 @@ class BlockingOverlay(
     }
 
     // ── 今日待办紧凑卡片（specs/005-daily-todos）：标题行 + 条目行，内容在构造时一次定格 ──
+    // 左对齐（specs/007）：卡片内标题与条目整体靠左（更像一张清单）；卡片外提示语/倒计时/按钮维持居中
     private val todoTitle = TextView(ctx).apply {
         setTextColor(onSurfaceColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
         typeface = Typeface.DEFAULT_BOLD
-        gravity = Gravity.CENTER
+        gravity = Gravity.START
     }
     private val todoItems = TextView(ctx).apply {
         setTextColor(onSurfaceVariantColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-        gravity = Gravity.CENTER
+        gravity = Gravity.START
         setLineSpacing(dp(4).toFloat(), 1f)
     }
     private val todoBlock = LinearLayout(ctx).apply {
@@ -184,7 +185,8 @@ class BlockingOverlay(
         }
     }
 
-    /** 卡片单条展示截断：存储可到 200 字（待办页看全文），卡片是 5 秒阅读场景，只留前 30 字。 */
+    /** 卡片单条展示截断（specs/007 收紧为 12 字）：存储可到 200 字（待办页看全文），卡片是 5 秒
+     *  阅读场景，只留前 12 字（超长加省略号，省略号不计入 12）。 */
     private fun truncateForCard(text: String): String =
         if (text.length > TODO_DISPLAY_MAX) text.take(TODO_DISPLAY_MAX) + "…" else text
 
@@ -304,8 +306,8 @@ class BlockingOverlay(
         /** 待办条目最多展示行数：5 秒内可读的上限，超出折叠进 blocking_todos_more。 */
         private const val TODO_MAX_LINES = 3
 
-        /** 卡片单条展示字符上限：完整内容在待办页看，卡片只截前 30 字（超长加省略号）。 */
-        private const val TODO_DISPLAY_MAX = 30
+        /** 卡片单条展示字符上限（specs/007：30→12，5 秒可读更克制）：完整内容在待办页看，超长加省略号。 */
+        private const val TODO_DISPLAY_MAX = 12
 
         /** 未完成条目前缀符号（与 "✓" 同属覆盖层符号常量，不入资源）。 */
         private const val TODO_BULLET = "○ "

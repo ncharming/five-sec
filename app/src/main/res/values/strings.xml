@@ -74,6 +74,14 @@
     <string name="todos_rule_weekly_required">至少选择一天</string>
     <string name="todos_not_due_today">今天不用做</string>
 
+    <!-- Todos 一次性与过期（specs/007-oneoff-todos） -->
+    <string name="todos_rule_once">仅今天</string>
+    <string name="todos_rule_once_hint">只在今天生效，未完成将进入过期待办</string>
+    <string name="todos_section_today">今日待办</string>
+    <string name="todos_section_expired">过期待办（%1$d）</string>
+    <string name="todos_date_unknown">—</string>
+    <string name="todos_menu_revive">改为今天</string>
+
     <!-- Custom hint manager（specs/004 引入；specs/005 起循环展示） -->
     <string name="hints_title">自定义提示语</string>
     <string name="hints_subtitle">拦截时按顺序循环展示一条</string>

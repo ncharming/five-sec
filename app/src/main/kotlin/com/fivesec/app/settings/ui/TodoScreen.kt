@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -51,7 +50,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -65,7 +63,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fivesec.app.R
 import com.fivesec.app.data.repository.TodoRepository
-import com.fivesec.app.domain.model.Todo
 import com.fivesec.app.domain.model.TodoRule
 import com.fivesec.app.settings.viewmodels.TodoRow
 import com.fivesec.app.settings.viewmodels.TodoViewModel
@@ -80,10 +77,13 @@ import com.fivesec.app.util.TodoRecurrence
 import java.time.DayOfWeek
 
 /**
- * 待办页（specs/005-daily-todos；006 增重复规则，首页默认 Tab）：固定每日清单的增删改/启停/今日勾选/规则编辑。
+ * 待办页（specs/005-daily-todos；006 增重复规则；007 两区分区，首页默认 Tab）。
+ * 分区（specs/007）：「今日待办」卡（一切未过期条目，维持 id 升序与灰显/停用机制）+
+ * 「过期待办 (n)」卡（一次性失败存量，有效期日升序；无过期整卡不显示）。
+ * 每行标题下副行纯日期（今日区=创建日「—」兜底、过期区=有效期日）；过期行无勾选框/开关，
+ * 仅「改为今天 / 删除待办」——失败可重试，但无迟到补勾（用户拍板口径）。
  * 视觉沿用四页统一语言（PageHeader + 白卡行骨架 + FiveSecDialog 弹窗）；名额行已移除——
  * 容量语义由「满员底部提示 + 添加兜底弹窗」承载。标题 ≤200 字：列表单行省略，点条目看只读全文弹窗。
- * 不轮到的日子（specs/006）：行灰显 +「今天不用做」+ 禁勾，条目不消失；规则在编辑弹窗三选一配置。
  * 只读约定：拦截覆盖层上的待办卡片由本页数据派生（快照只含轮到条目），勾选只发生在本页（FR-005）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,8 +91,8 @@ import java.time.DayOfWeek
 fun TodoScreen(
     viewModel: TodoViewModel = hiltViewModel(),
 ) {
-    val rows by viewModel.rows.collectAsStateWithLifecycle()
-    val isFull = rows.size >= TodoRepository.MAX_TODOS
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isFull = uiState.todayRows.size + uiState.expiredRows.size >= TodoRepository.MAX_TODOS
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editTarget by remember { mutableStateOf<TodoRow?>(null) }
@@ -100,7 +100,7 @@ fun TodoScreen(
     var detailTarget by remember { mutableStateOf<TodoRow?>(null) }
     var showLimitDialog by remember { mutableStateOf(false) }
 
-    // 跨日重算：从后台回前台时刷新今日口径（昨天勾的今天自动回未完成）
+    // 跨日重算：从后台回前台时刷新今日口径（昨天勾的今天自动回未完成、一次性跨日进过期区）
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -140,8 +140,8 @@ fun TodoScreen(
                 }
             }
 
-            // ── 待办卡片列表 ──
-            if (rows.isEmpty()) {
+            val allEmpty = uiState.todayRows.isEmpty() && uiState.expiredRows.isEmpty()
+            if (allEmpty) {
                 Text(
                     stringResource(R.string.todos_empty),
                     style = MaterialTheme.typography.bodyMedium,
@@ -149,8 +149,10 @@ fun TodoScreen(
                     modifier = Modifier.padding(Spacing.xl),
                 )
             } else {
+                // ── 今日待办卡：一切未过期条目（含停用/不轮到/今日一次性） ──
+                SectionLabel(stringResource(R.string.todos_section_today))
                 CardSurface(Modifier.padding(horizontal = Spacing.lg)) {
-                    rows.forEachIndexed { index, row ->
+                    uiState.todayRows.forEachIndexed { index, row ->
                         if (index > 0) {
                             HorizontalDivider(
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
@@ -164,6 +166,28 @@ fun TodoScreen(
                             onRename = { editTarget = row },
                             onDelete = { deleteTarget = row },
                         )
+                    }
+                }
+
+                // ── 过期待办卡：一次性失败存量（specs/007；无过期整卡不显示） ──
+                if (uiState.expiredRows.isNotEmpty()) {
+                    SectionLabel(
+                        stringResource(R.string.todos_section_expired, uiState.expiredRows.size),
+                    )
+                    CardSurface(Modifier.padding(horizontal = Spacing.lg)) {
+                        uiState.expiredRows.forEachIndexed { index, row ->
+                            if (index > 0) {
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                )
+                            }
+                            TodoExpiredRow(
+                                row = row,
+                                onShowDetail = { detailTarget = row },
+                                onRevive = { viewModel.revive(row.todo.id) },
+                                onDelete = { deleteTarget = row },
+                            )
+                        }
                     }
                 }
             }
@@ -206,7 +230,7 @@ fun TodoScreen(
         },
     )
 
-    // 重命名弹窗（specs/006：同时承载规则编辑；规则变了才发定向 UPDATE，文本照旧独立走 rename）
+    // 重命名弹窗（specs/006 起承载规则编辑；规则变了才发定向 UPDATE，文本照旧独立走 rename）
     editTarget?.let { target ->
         val existingRule = TodoRule(target.todo.repeatType, target.todo.repeatDays, target.todo.intervalDays)
         TodoEditDialog(
@@ -225,7 +249,7 @@ fun TodoScreen(
         )
     }
 
-    // 全文只读弹窗（点条目行触发）：列表是单行省略的展示层截断，完整内容在这里看全
+    // 全文只读弹窗（点条目行触发）：列表是单行省略的展示层截断，完整内容 + 日期在这里看全
     detailTarget?.let { target ->
         FiveSecDialog(
             visible = true,
@@ -242,10 +266,16 @@ fun TodoScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
+            Text(
+                target.dateLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = Spacing.xs),
+            )
         }
     }
 
-    // 删除确认弹窗
+    // 删除确认弹窗（今日/过期两区共用）
     deleteTarget?.let { target ->
         FiveSecDialog(
             visible = true,
@@ -292,7 +322,23 @@ fun TodoScreen(
     }
 }
 
-/** 卡片行：今日勾选框 + 标题（完成划线/停用弱化，单行省略、点击看全文） + 启用开关 + ⋯菜单（重命名/删除）。 */
+/** 分区小节标题（specs/007 两卡分区）：统一左对齐 labelMedium 弱化色。 */
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(
+            start = Spacing.lg,
+            end = Spacing.lg,
+            top = Spacing.md,
+            bottom = Spacing.xs,
+        ),
+    )
+}
+
+/** 今日区行：今日勾选框 + 标题（完成划线/停用弱化，单行省略、点击看全文）+ 副行日期 + 启用开关 + ⋯（重命名/删除）。 */
 @Composable
 private fun TodoItemRow(
     row: TodoRow,
@@ -339,15 +385,19 @@ private fun TodoItemRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (enabled && !row.dueToday) {
-                // 「今天不用做」标注：仅"启用但不轮到"显示——停用行的不可勾原因由开关表达，避免双重误导
-                Text(
-                    stringResource(R.string.todos_not_due_today),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
+            // 副行（specs/007）：创建日（老条目「—」）；"启用但不轮到"追加「今天不用做」——
+            // 停用行的不可勾原因由开关表达，避免双重误导
+            val notDueLabel = if (enabled && !row.dueToday) {
+                " · " + stringResource(R.string.todos_not_due_today)
+            } else {
+                ""
             }
+            Text(
+                row.dateLabel + notDueLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
         Switch(
             checked = enabled,
@@ -387,9 +437,81 @@ private fun TodoItemRow(
     }
 }
 
+/** 过期区行（specs/007）：标题 + 副行有效期日（哪天失败的）+ ⋯（改为今天/删除）。
+ *  无勾选框（迟到补勾=自欺，用户拍板否决）、无启用开关（过期无"明天"语义，开关只剩误导）。 */
+@Composable
+private fun TodoExpiredRow(
+    row: TodoRow,
+    onShowDetail: () -> Unit,
+    onRevive: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.md, vertical = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .alpha(0.75f) // 失败存量弱化一档，但保持可读（要点开看全文/操作）
+                .clickable(onClick = onShowDetail),
+        ) {
+            Text(
+                row.todo.text,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                row.dateLabel, // 有效期日（specs/007：过期归因看"哪天失败的"）
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Box {
+            IconButton(onClick = { menuOpen = true }) {
+                Icon(
+                    Icons.Default.MoreVert,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                )
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.todos_menu_revive)) },
+                    onClick = {
+                        menuOpen = false
+                        onRevive()
+                    },
+                )
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(R.string.todos_menu_delete),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    onClick = {
+                        menuOpen = false
+                        onDelete()
+                    },
+                )
+            }
+        }
+    }
+}
+
 /**
- * 新建/重命名共用表单弹窗：多行输入（换行折叠为空格）+ 重复规则区（specs/006），200 字硬截断，空白不可确认。
- * 规则区三选一：每天 / 按星期几（多选周几，全空禁存并提示）/ 每 N 天（越界即时收敛显示 2..365）。
+ * 新建/重命名共用表单弹窗：多行输入（换行折叠为空格）+ 重复规则区（specs/006 三选一；
+ * specs/007 扩为四选一，新增「仅今天」），200 字硬截断，空白不可确认。
+ * 规则区：每天 / 按星期几（多选周几，全空禁存并提示）/ 每 N 天（越界即时收敛显示 2..365）/
+ * 仅今天（只在有效期日当天轮到，跨日未完成进过期分类）。
  * 弹窗内存态保留用户切走的规则勾选（体验细节），保存只落当前选中规则、其余两列归零（见 data-model 不变式）。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -402,11 +524,14 @@ private fun TodoEditDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, TodoRule) -> Unit,
 ) {
-    // rememberSaveable：退场动画期间弹窗仍持内容；重开时由调用方以新 key 重建重置（initialText/initialRule 参与 key）
-    var text by rememberSaveable(visible, initialText) { mutableStateOf(initialText) }
-    var ruleType by rememberSaveable(visible, initialText) { mutableStateOf(initialRule.repeatType) }
-    var repeatDays by rememberSaveable(visible, initialText) { mutableStateOf(initialRule.repeatDays) }
-    var intervalText by rememberSaveable(visible, initialText) {
+    // rememberSaveable：退场动画期间弹窗仍持内容；重开时由调用方以新 key 重建重置。
+    // 注意 key 必须可存 Bundle（rememberSaveable 会持久化 inputs）：initialRule 是数据类，
+    // 以其 toString（三个 Int 字段、确定性）作 key 参与变化检测，而非对象本身
+    val ruleKey = initialRule.toString()
+    var text by rememberSaveable(visible, initialText, ruleKey) { mutableStateOf(initialText) }
+    var ruleType by rememberSaveable(visible, initialText, ruleKey) { mutableStateOf(initialRule.repeatType) }
+    var repeatDays by rememberSaveable(visible, initialText, ruleKey) { mutableStateOf(initialRule.repeatDays) }
+    var intervalText by rememberSaveable(visible, initialText, ruleKey) {
         mutableStateOf(
             initialRule.intervalDays
                 .takeIf { initialRule.repeatType == TodoRecurrence.REPEAT_INTERVAL }
@@ -436,6 +561,7 @@ private fun TodoEditDialog(
                         }
 
                         TodoRecurrence.REPEAT_INTERVAL -> TodoRule.interval(intervalDays)
+                        TodoRecurrence.REPEAT_ONCE -> TodoRule.ONCE
                         else -> TodoRule.DAILY
                     }
                     onConfirm(text.trim(), rule)
@@ -474,7 +600,7 @@ private fun TodoEditDialog(
                 .padding(top = Spacing.xs),
         )
 
-        // ── 重复规则区（specs/006） ──
+        // ── 重复规则区（specs/006；007 扩四选一） ──
         Text(
             stringResource(R.string.todos_rule_title),
             style = MaterialTheme.typography.labelLarge,
@@ -491,23 +617,30 @@ private fun TodoEditDialog(
             SegmentedButton(
                 selected = ruleType == TodoRecurrence.REPEAT_DAILY,
                 onClick = { ruleType = TodoRecurrence.REPEAT_DAILY },
-                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
+                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 4),
             ) {
                 Text(stringResource(R.string.todos_rule_daily))
             }
             SegmentedButton(
                 selected = ruleType == TodoRecurrence.REPEAT_WEEKLY,
                 onClick = { ruleType = TodoRecurrence.REPEAT_WEEKLY },
-                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 4),
             ) {
                 Text(stringResource(R.string.todos_rule_weekly))
             }
             SegmentedButton(
                 selected = ruleType == TodoRecurrence.REPEAT_INTERVAL,
                 onClick = { ruleType = TodoRecurrence.REPEAT_INTERVAL },
-                shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                shape = SegmentedButtonDefaults.itemShape(index = 2, count = 4),
             ) {
                 Text(stringResource(R.string.todos_rule_interval))
+            }
+            SegmentedButton(
+                selected = ruleType == TodoRecurrence.REPEAT_ONCE,
+                onClick = { ruleType = TodoRecurrence.REPEAT_ONCE },
+                shape = SegmentedButtonDefaults.itemShape(index = 3, count = 4),
+            ) {
+                Text(stringResource(R.string.todos_rule_once))
             }
         }
 
@@ -570,6 +703,15 @@ private fun TodoEditDialog(
                 }
                 Text(
                     stringResource(R.string.todos_rule_interval_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = Spacing.xs),
+                )
+            }
+
+            TodoRecurrence.REPEAT_ONCE -> {
+                Text(
+                    stringResource(R.string.todos_rule_once_hint),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = Spacing.xs),

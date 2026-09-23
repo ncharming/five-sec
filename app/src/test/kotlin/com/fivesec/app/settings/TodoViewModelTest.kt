@@ -25,9 +25,10 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * TodoViewModel 测试（specs/005-daily-todos；006 增重复规则）：
- * 今日勾选按 VM 持有的 today 口径转发（与 rows 派生口径同源）、refreshToday 跨日重算（完成态+灰显态）、
- * add 空白忽略与 200 字截断、dueToday 按规则派生、setRecurrence/add 规则转发。
+ * TodoViewModel 测试（specs/005；006 重复规则；007 两区分区）：
+ * 今日勾选按 VM 持有的 today 口径转发（与 uiState 派生口径同源）、refreshToday 跨日重算
+ * （完成态+灰显态+过期分区）、add 空白忽略与 200 字截断、dueToday 按规则派生、setRecurrence/add/revive
+ * 规则转发、两区分组（过期按有效期日升序）、僵尸行过滤（已完成一次性跨日不进任何区）、副行日期口径。
  * Repository 写操作 fire-and-forget，fake 记录后轮询断言（同 HintListViewModelTest 模式）。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -39,6 +40,7 @@ class TodoViewModelTest {
         val inserted = CopyOnWriteArrayList<Todo>()
         val completionChanges = CopyOnWriteArrayList<Pair<Long, String>>()
         val recurrenceCalls = CopyOnWriteArrayList<RecurrenceCall>()
+        val dueDateCalls = CopyOnWriteArrayList<Pair<Long, String>>()
 
         override fun observeAll(): Flow<List<Todo>> = state
 
@@ -55,9 +57,21 @@ class TodoViewModelTest {
             completionChanges += id to date
         }
 
-        override suspend fun updateRecurrence(id: Long, repeatType: Int, repeatDays: Int, intervalDays: Int) {
-            recurrenceCalls += RecurrenceCall(id, repeatType, repeatDays, intervalDays)
+        override suspend fun updateRecurrence(
+            id: Long,
+            repeatType: Int,
+            repeatDays: Int,
+            intervalDays: Int,
+            dueDate: String,
+        ) {
+            recurrenceCalls += RecurrenceCall(id, repeatType, repeatDays, intervalDays, dueDate)
         }
+
+        override suspend fun setDueDate(id: Long, date: String) {
+            dueDateCalls += id to date
+        }
+
+        override suspend fun purgeCompletedOneOffs(today: String) = Unit
 
         override suspend fun deleteById(id: Long) = Unit
 
@@ -65,7 +79,7 @@ class TodoViewModelTest {
     }
 
     /** setRecurrence 定向 UPDATE 的转发记录。 */
-    private data class RecurrenceCall(val id: Long, val type: Int, val days: Int, val interval: Int)
+    private data class RecurrenceCall(val id: Long, val type: Int, val days: Int, val interval: Int, val dueDate: String)
 
     private val dispatcher = StandardTestDispatcher()
     private lateinit var dao: RecordingDao
@@ -79,7 +93,7 @@ class TodoViewModelTest {
     fun setUp() {
         Dispatchers.setMain(dispatcher)
         dao = RecordingDao()
-        viewModel = TodoViewModel(TodoRepository(dao), timeProvider)
+        viewModel = TodoViewModel(TodoRepository(dao, timeProvider), timeProvider)
     }
 
     @After
@@ -156,7 +170,7 @@ class TodoViewModelTest {
         )
         advanceUntilIdleAndFlush()
 
-        val due = viewModel.rows.value.associate { it.todo.id to it.dueToday }
+        val due = viewModel.uiState.value.todayRows.associate { it.todo.id to it.dueToday }
         assertEquals(true, due[1L])
         assertEquals(false, due[2L])
         assertEquals(true, due[3L])
@@ -176,21 +190,21 @@ class TodoViewModelTest {
             ),
         )
         advanceUntilIdleAndFlush()
-        assertEquals(true, viewModel.rows.value.single().dueToday)
+        assertEquals(true, viewModel.uiState.value.todayRows.single().dueToday)
 
         // 次日同一时刻：跨日重算后不再轮到（灰显）
         nowMillis += 24 * 60 * 60 * 1000L
         viewModel.refreshToday()
         advanceUntilIdleAndFlush()
-        assertEquals(false, viewModel.rows.value.single().dueToday)
+        assertEquals(false, viewModel.uiState.value.todayRows.single().dueToday)
     }
 
     @Test
-    fun `setRecurrence间隔越界收敛并按三列转发`() = runTest(dispatcher) {
+    fun `setRecurrence间隔越界收敛并按规则列转发`() = runTest(dispatcher) {
         viewModel.setRecurrence(1, TodoRule(TodoRecurrence.REPEAT_INTERVAL, 0, 999))
         advanceUntilIdleAndFlush()
         assertEquals(
-            listOf(RecurrenceCall(1L, TodoRecurrence.REPEAT_INTERVAL, 0, 365)),
+            listOf(RecurrenceCall(1L, TodoRecurrence.REPEAT_INTERVAL, 0, 365, "")),
             dao.recurrenceCalls.toList(),
         )
     }
@@ -200,6 +214,96 @@ class TodoViewModelTest {
         viewModel.add("锻炼", TodoRule.weekly(setOf(DayOfWeek.WEDNESDAY)))
         advanceUntilIdleAndFlush()
         assertEquals(TodoRecurrence.REPEAT_WEEKLY, dao.inserted.single().repeatType)
+    }
+
+    // ── 两区分组与一次性（specs/007） ──
+
+    @Test
+    fun `两区分组_过期一次性归过期区并按有效期日升序`() = runTest(dispatcher) {
+        nowMillis = 1_789_000_000_000L
+        viewModel.refreshToday() // VM 的 today 构造时按 nowMillis=0 定格，拨钟后必须刷新口径
+        val todayStr = DateUtil.todayString(nowMillis)
+        dao.state.value = listOf(
+            Todo(id = 1, text = "每天条目", repeatType = TodoRecurrence.REPEAT_DAILY),
+            Todo(id = 2, text = "昨天失败", repeatType = TodoRecurrence.REPEAT_ONCE, createdAt = "2026-01-02", dueDate = "2026-01-02"),
+            Todo(id = 3, text = "前天失败", repeatType = TodoRecurrence.REPEAT_ONCE, createdAt = "2026-01-01", dueDate = "2026-01-01"),
+            Todo(id = 4, text = "今天的一次性", repeatType = TodoRecurrence.REPEAT_ONCE, createdAt = todayStr, dueDate = todayStr),
+        )
+        advanceUntilIdleAndFlush()
+
+        val ui = viewModel.uiState.value
+        assertEquals(listOf(1L, 4L), ui.todayRows.map { it.todo.id }) // 今日区：重复类 + 当天一次性，id 升序
+        assertEquals(listOf(3L, 2L), ui.expiredRows.map { it.todo.id }) // 过期区：有效期日升序（最早失败在前）
+    }
+
+    @Test
+    fun `僵尸行过滤_已完成一次性跨日不进任何区`() = runTest(dispatcher) {
+        nowMillis = 1_789_000_000_000L
+        viewModel.refreshToday() // 同上：拨钟后刷新 VM 的 today 口径
+        val todayStr = DateUtil.todayString(nowMillis)
+        dao.state.value = listOf(
+            Todo(
+                id = 1,
+                text = "昨天完成的一次性",
+                repeatType = TodoRecurrence.REPEAT_ONCE,
+                lastCompletedDate = "2026-01-01",
+                createdAt = "2026-01-01",
+                dueDate = "2026-01-01",
+            ),
+            Todo(id = 2, text = "今天完成的一次性", repeatType = TodoRecurrence.REPEAT_ONCE, lastCompletedDate = todayStr, createdAt = todayStr, dueDate = todayStr),
+            Todo(id = 3, text = "每天条目", repeatType = TodoRecurrence.REPEAT_DAILY),
+        )
+        advanceUntilIdleAndFlush()
+
+        val ui = viewModel.uiState.value
+        assertEquals(listOf(2L, 3L), ui.todayRows.map { it.todo.id }) // 今天完成的照常展示（划线态）
+        assertEquals(0, ui.expiredRows.size) // 完成的不是失败，不进过期区；僵尸行（id=1）两区都不进
+    }
+
+    @Test
+    fun `副行日期_今日区创建日老条目占位_过期区有效期日`() = runTest(dispatcher) {
+        nowMillis = 1_789_000_000_000L
+        viewModel.refreshToday() // 同上：拨钟后刷新 VM 的 today 口径
+        val todayStr = DateUtil.todayString(nowMillis)
+        dao.state.value = listOf(
+            Todo(id = 1, text = "新条目", createdAt = todayStr),
+            Todo(id = 2, text = "老条目", createdAt = ""), // v7 迁移回填空串
+            Todo(id = 3, text = "过期条目", repeatType = TodoRecurrence.REPEAT_ONCE, createdAt = "2026-01-02", dueDate = "2026-01-02"),
+        )
+        advanceUntilIdleAndFlush()
+
+        val ui = viewModel.uiState.value
+        val labels = ui.todayRows.associate { it.todo.id to it.dateLabel }
+        assertEquals(todayStr, labels[1L])
+        assertEquals(TodoViewModel.UNKNOWN_DATE, labels[2L])
+        assertEquals("2026-01-02", ui.expiredRows.single().dateLabel) // 过期区看"哪天失败的"
+    }
+
+    @Test
+    fun `revive转发到仓库`() = runTest(dispatcher) {
+        nowMillis = 1_789_000_000_000L
+        viewModel.revive(5)
+        advanceUntilIdleAndFlush()
+
+        assertEquals(listOf(5L to DateUtil.todayString(nowMillis)), dao.dueDateCalls.toList())
+    }
+
+    @Test
+    fun `refreshToday跨日后一次性从今日区流转到过期区`() = runTest(dispatcher) {
+        nowMillis = 1_789_000_000_000L
+        val day1 = DateUtil.todayString(nowMillis)
+        dao.state.value = listOf(
+            Todo(id = 1, text = "当天没做完", repeatType = TodoRecurrence.REPEAT_ONCE, createdAt = day1, dueDate = day1),
+        )
+        advanceUntilIdleAndFlush()
+        assertEquals(listOf(1L), viewModel.uiState.value.todayRows.map { it.todo.id })
+
+        // 次日同一时刻：一次性跨日 → 过期区
+        nowMillis += 24 * 60 * 60 * 1000L
+        viewModel.refreshToday()
+        advanceUntilIdleAndFlush()
+        assertEquals(0, viewModel.uiState.value.todayRows.size)
+        assertEquals(listOf(1L), viewModel.uiState.value.expiredRows.map { it.todo.id })
     }
 
     private fun advanceUntilIdleAndFlush() {

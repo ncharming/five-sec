@@ -5,22 +5,26 @@ import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
 /**
- * 待办"轮到"判定纯逻辑（specs/006-recurring-todos）。
+ * 待办"轮到/过期"判定纯逻辑（specs/006-recurring-todos；007 增「仅今天」与过期判定）。
  *
- * 为什么在 util 且零时钟读取：与 DateUtil 同层的叶子，被三方消费同一实现——VM（待办页灰显派生）、
+ * 为什么在 util 且零时钟读取：与 DateUtil 同层的叶子，被三方消费同一实现——VM（待办页灰显/分区派生）、
  * Repository（覆盖层快照过滤）、单测（判定表）。进出均为 `DateUtil.todayString` 口径的 yyyy-MM-dd
  * 字符串，时区责任在 today 的产出方（TimeProvider + ZoneId），本文件不读系统时钟 → CI（UTC）与
  * 真机行为逐位一致（005 已验证的同模式）。
  *
- * 滚动间隔语义（用户拍板口径）：从未完成恒轮到（锚点不参与，故无需 createdAt/anchor 列）；完成后以
- * 最近完成日整日起算，第 N 天复活；到期后持续轮到直到完成——拖延只顺延、不"错过就没"。
+ * 滚动间隔语义（006 用户拍板口径）：从未完成恒轮到（锚点不参与）；完成后以最近完成日整日起算，
+ * 第 N 天复活；到期后持续轮到直到完成——拖延只顺延、不"错过就没"。
+ *
+ * 一次性语义（007 用户拍板口径）：只在有效期日（dueDate）当天轮到；跨日未完成 = 过期（进过期分类，
+ * 不可补勾）；已完成的一次性不算过期（那是"完成待清理"，由仓库惰性物理删除收尾）。
  */
 object TodoRecurrence {
 
-    /** 规则类型：0=每天（默认，specs/005 存量即此形态）/ 1=按星期几 / 2=每 N 天。 */
+    /** 规则类型：0=每天（默认，specs/005 存量即此形态）/ 1=按星期几 / 2=每 N 天 / 3=仅今天（specs/007）。 */
     const val REPEAT_DAILY = 0
     const val REPEAT_WEEKLY = 1
     const val REPEAT_INTERVAL = 2
+    const val REPEAT_ONCE = 3
 
     /** 间隔 N 有效域：N=1 等价"每天"，由每天规则表达不重复提供；上限一年。 */
     const val MIN_INTERVAL_DAYS = 2
@@ -39,13 +43,16 @@ object TodoRecurrence {
      * 今天是否轮到（惰性求值、无状态、纯内存）。
      *
      * 防御口径：today 非法 → false（宁可不提醒不崩溃）；lastCompletedDate 非空但非法 → 视同从未完成
-     * （宁可多提醒）。正常路径两个日期都由 DateUtil 产出，格式恒合法——防御分支只是给脏数据兜底。
+     * （宁可多提醒）；仅今天的 dueDate 空/非法 → 不轮到（脏数据兜底，正常路径由仓库写入恒合法）。
+     *
+     * @param dueDate 一次性有效期日，仅 [REPEAT_ONCE] 有语义（重复类传空串即可）
      */
     fun isDue(
         repeatType: Int,
         repeatDays: Int,
         intervalDays: Int,
         lastCompletedDate: String,
+        dueDate: String,
         today: String,
     ): Boolean {
         val todayDate = today.toLocalDateOrNull() ?: return false
@@ -61,8 +68,30 @@ object TodoRecurrence {
                 ChronoUnit.DAYS.between(last, todayDate) >= intervalDays.coerceAtLeast(1)
             }
 
+            REPEAT_ONCE -> dueDate.toLocalDateOrNull() == todayDate // 有效期日=今天才轮到
+
             else -> true // 每天（未知类型兜底为每天，避免脏值让条目从清单里"消失"）
         }
+    }
+
+    /**
+     * 是否已过期（specs/007）：仅一次性条目可过期——有效期日已过且未完成。
+     *
+     * 重复类恒 false（「拖延只顺延」，错过就等下次轮到，不进过期分类）；已完成的一次性恒 false
+     * （完成待清理由仓库惰性删除收尾，过期分类只收"失败"）。防御：dueDate 空/非法按未过期处理
+     * （脏数据不让条目凭空消失，暂由今日区兜底展示）。
+     */
+    fun isExpired(
+        repeatType: Int,
+        dueDate: String,
+        lastCompletedDate: String,
+        today: String,
+    ): Boolean {
+        if (repeatType != REPEAT_ONCE) return false
+        if (lastCompletedDate.isNotEmpty()) return false
+        val due = dueDate.toLocalDateOrNull() ?: return false
+        val todayDate = today.toLocalDateOrNull() ?: return false
+        return due < todayDate
     }
 
     private fun String.toLocalDateOrNull(): LocalDate? = runCatching { LocalDate.parse(this) }.getOrNull()

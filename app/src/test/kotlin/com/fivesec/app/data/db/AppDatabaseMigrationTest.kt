@@ -73,9 +73,9 @@ class AppDatabaseMigrationTest {
         }
         helper.close()
 
-        // 以 Room v6 打开：v2 库依次触发 MIGRATION_2_3/3_4/4_5/5_6（缺任一会抛迁移缺失异常）
+        // 以 Room v7 打开：v2 库依次触发 MIGRATION_2_3/3_4/4_5/5_6/6_7（缺任一会抛迁移缺失异常）
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
 
@@ -139,9 +139,9 @@ class AppDatabaseMigrationTest {
         }
         helper.close()
 
-        // 以 Room v6 打开：触发 MIGRATION_3_4/4_5/5_6（完整迁移链）
+        // 以 Room v7 打开：触发 MIGRATION_3_4/4_5/5_6/6_7（完整迁移链）
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
 
@@ -212,9 +212,9 @@ class AppDatabaseMigrationTest {
         }
         helper.close()
 
-        // 以 Room v6 打开：触发 MIGRATION_4_5 与 MIGRATION_5_6
+        // 以 Room v7 打开：触发 MIGRATION_4_5/5_6/6_7
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
 
@@ -301,9 +301,9 @@ class AppDatabaseMigrationTest {
         }
         helper.close()
 
-        // 以 Room v6 打开：触发 MIGRATION_5_6（注册完整链，缺迁移即抛异常的既有守卫模式）
+        // 以 Room v7 打开：触发 MIGRATION_5_6/6_7（注册完整链，缺迁移即抛异常的既有守卫模式）
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
 
@@ -328,6 +328,105 @@ class AppDatabaseMigrationTest {
         val inserted = db.todoDao().observeAll().first().single { it.text == "升级后新增" }
         assertEquals(TodoRecurrence.REPEAT_INTERVAL, inserted.repeatType)
         assertEquals(3, inserted.intervalDays)
+
+        db.close()
+        context.deleteDatabase(dbName)
+    }
+
+    /** v6 → v7 迁移：老待办零丢失，createdAt/dueDate 回填空串（specs/007-oneoff-todos，展示「—」不伪造）。 */
+    @Test
+    fun `v7迁移后老待办保留且两列回填空串`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val dbName = "migration-test-v7.db"
+        context.deleteDatabase(dbName)
+
+        // 以 v6 结构手工建库（四表；todos 为 006 的七列 schema，无 createdAt/dueDate）
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(dbName)
+                .callback(object : SupportSQLiteOpenHelper.Callback(6) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        db.execSQL(
+                            "CREATE TABLE target_apps (" +
+                                "packageName TEXT NOT NULL PRIMARY KEY, " +
+                                "appName TEXT NOT NULL, " +
+                                "isEnabled INTEGER NOT NULL, " +
+                                "isDefault INTEGER NOT NULL, " +
+                                "addedAt INTEGER NOT NULL)"
+                        )
+                        db.execSQL(
+                            "CREATE TABLE interception_events (" +
+                                "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                                "packageName TEXT NOT NULL, " +
+                                "timestamp INTEGER NOT NULL, " +
+                                "exerciseCompleted INTEGER NOT NULL, " +
+                                "outcome TEXT NOT NULL)"
+                        )
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS hints (" +
+                                "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                                "text TEXT NOT NULL, " +
+                                "kind TEXT NOT NULL)"
+                        )
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS `todos` (" +
+                                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                                "`text` TEXT NOT NULL, " +
+                                "`isEnabled` INTEGER NOT NULL, " +
+                                "`lastCompletedDate` TEXT NOT NULL, " +
+                                "`repeatType` INTEGER NOT NULL, " +
+                                "`repeatDays` INTEGER NOT NULL, " +
+                                "`intervalDays` INTEGER NOT NULL)"
+                        )
+                    }
+
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                })
+                .build()
+        )
+        helper.writableDatabase.use { db ->
+            // 三种 v6 形态：每天默认 / 周几规则 / 间隔规则（含启用与完成态差异）
+            db.execSQL("INSERT INTO todos (text, isEnabled, lastCompletedDate, repeatType, repeatDays, intervalDays) VALUES ('每天条目', 1, '2026-09-23', 0, 0, 0)")
+            db.execSQL("INSERT INTO todos (text, isEnabled, lastCompletedDate, repeatType, repeatDays, intervalDays) VALUES ('周一三五', 1, '', 1, 21, 0)")
+            db.execSQL("INSERT INTO todos (text, isEnabled, lastCompletedDate, repeatType, repeatDays, intervalDays) VALUES ('每3天', 0, '2026-09-20', 2, 0, 3)")
+        }
+        helper.close()
+
+        // 以 Room v7 打开：触发 MIGRATION_6_7（列定义与实体 schema 逐字一致，否则打开即抛校验异常）
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .allowMainThreadQueries()
+            .build()
+
+        // 行零丢失、既有六列逐位不变、新两列回填空串（老条目创建时间显示「—」的口径来源）
+        val rows = db.todoDao().observeAll().first()
+        assertEquals(3, rows.size)
+        val byText = rows.associateBy { it.text }
+        assertEquals(TodoRecurrence.REPEAT_DAILY, byText.getValue("每天条目").repeatType)
+        assertEquals("2026-09-23", byText.getValue("每天条目").lastCompletedDate)
+        assertEquals(TodoRecurrence.REPEAT_WEEKLY, byText.getValue("周一三五").repeatType)
+        assertEquals(21, byText.getValue("周一三五").repeatDays)
+        assertEquals(TodoRecurrence.REPEAT_INTERVAL, byText.getValue("每3天").repeatType)
+        assertEquals(3, byText.getValue("每3天").intervalDays)
+        assertEquals(false, byText.getValue("每3天").isEnabled)
+        rows.forEach {
+            assertEquals("", it.createdAt)
+            assertEquals("", it.dueDate)
+        }
+
+        // v7 打开后新列可正常读写（一次性规则写入并读回）
+        db.todoDao().insert(
+            Todo(
+                text = "升级后新增一次性",
+                repeatType = TodoRecurrence.REPEAT_ONCE,
+                createdAt = "2026-09-23",
+                dueDate = "2026-09-23",
+            ),
+        )
+        val inserted = db.todoDao().observeAll().first().single { it.text == "升级后新增一次性" }
+        assertEquals(TodoRecurrence.REPEAT_ONCE, inserted.repeatType)
+        assertEquals("2026-09-23", inserted.createdAt)
+        assertEquals("2026-09-23", inserted.dueDate)
 
         db.close()
         context.deleteDatabase(dbName)
