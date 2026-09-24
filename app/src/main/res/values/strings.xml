@@ -39,8 +39,11 @@
     <string name="intercept_title">拦截</string>
     <string name="intercept_subtitle">给无意识的刷手机加一道减速带</string>
     <string name="settings_global_switch">拦截总开关</string>
-    <string name="settings_accessibility_status_off">无障碍服务未开启（点击开启）</string>
-    <string name="settings_accessibility_status_on">无障碍服务：已开启</string>
+    <!-- 无障碍置顶状态卡（用户拍板布局：OFF 淡红警示 / ON 白卡绿勾） -->
+    <string name="settings_a11y_title_on">无障碍服务已开启</string>
+    <string name="settings_a11y_hint_on">拦截正常生效中</string>
+    <string name="settings_a11y_title_off">无障碍服务未开启</string>
+    <string name="settings_a11y_hint_off">点击一键开启 · 开启后拦截才会生效</string>
 
     <!-- Todos（specs/005-daily-todos，首页默认 Tab） -->
     <string name="todos_title">待办</string>

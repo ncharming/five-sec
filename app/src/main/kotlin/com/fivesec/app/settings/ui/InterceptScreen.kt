@@ -1,5 +1,6 @@
 package com.fivesec.app.settings.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,8 +20,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -33,9 +37,9 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -74,8 +78,11 @@ import com.fivesec.app.util.SystemTimeProvider
 import com.fivesec.app.util.TimeProvider
 
 /**
- * 拦截页（specs/005-daily-todos 信息架构重构）：原「五秒」首页与「拦截源」页的合并体。
- * 自上而下：页头（+ 添加应用）→ 拦截总开关卡（含无障碍状态行）→ 名额行 → 应用卡片列表 → 名额满提示。
+ * 拦截页（specs/005-daily-todos 信息架构重构；2026-09 用户拍板布局重排）：
+ * 自上而下：页头（+ 添加应用）→ <b>无障碍置顶状态卡</b>（唯一需用户手动开启的前置条件，必须最显眼：
+ * OFF=errorContainer 淡红警示整卡可点，ON=白卡绿勾安静表态）→ 名额行 → <b>应用清单卡</b>
+ * （拦截总开关为卡头——同卡表达"统一拦截清单内应用"；总开关关闭时应用行降透明度作视觉联动，
+ * 行内开关照旧可用；清单空也保留卡与开关）→ 名额满提示。
  *
  * 两个既有 ViewModel 并挂本页、职责不合并：[SettingsViewModel] 管 DataStore 总开关，
  * [AppListViewModel] 管目标应用清单——开关与清单语义不同，合并只会制造胖 VM。
@@ -142,53 +149,15 @@ fun InterceptScreen(
                 }
             }
 
-            // ── 拦截总开关卡（原五秒页主体，行为零改动） ──
-            CardSurface(Modifier.padding(horizontal = Spacing.lg)) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = Spacing.lg, vertical = Spacing.lg),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        stringResource(R.string.settings_global_switch),
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Switch(
-                        checked = globalEnabled,
-                        onCheckedChange = settingsViewModel::setGlobalEnabled,
-                        colors = fiveSecSwitchColors(),
-                    )
-                }
-
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                )
-
-                // 无障碍服务状态：已开启绿色只读；未开启点击一键开启（失败跳系统设置）
-                // 注：TextButtonDefaults 已在 material3 1.3.0 移除，内容色直接由 Text.color 控制
-                TextButton(
-                    onClick = {
-                        if (serviceEnabled) return@TextButton
-                        // 已授权 WRITE_SECURE_SETTINGS 时直接一键开启，失败再跳系统设置
-                        serviceEnabled = AccessibilityPermissionHelper.enableService(context)
-                        if (!serviceEnabled) AccessibilityPermissionHelper.openAccessibilitySettings(context)
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = Spacing.xs),
-                ) {
-                    Text(
-                        if (serviceEnabled) stringResource(R.string.settings_accessibility_status_on)
-                        else stringResource(R.string.settings_accessibility_status_off),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (serviceEnabled) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
+            // ── 无障碍置顶状态卡（用户拍板：前置条件必须最显眼；开启链路沿用原逻辑） ──
+            AccessibilityCard(
+                serviceEnabled = serviceEnabled,
+                onEnable = {
+                    // 已授权 WRITE_SECURE_SETTINGS 时直接一键开启，失败再跳系统设置
+                    serviceEnabled = AccessibilityPermissionHelper.enableService(context)
+                    if (!serviceEnabled) AccessibilityPermissionHelper.openAccessibilitySettings(context)
+                },
+            )
 
             // ── 名额行：已启用数 + 进度段 + n/3 ──
             Row(
@@ -212,16 +181,39 @@ fun InterceptScreen(
                 )
             }
 
-            // ── 应用卡片列表 ──
-            if (apps.isEmpty()) {
-                Text(
-                    stringResource(R.string.app_list_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(Spacing.xl),
+            // ── 应用清单卡：拦截总开关为卡头（同卡表达从属——统一拦截清单内应用） ──
+            CardSurface(Modifier.padding(horizontal = Spacing.lg)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.lg, vertical = Spacing.lg),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(R.string.settings_global_switch),
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = globalEnabled,
+                        onCheckedChange = settingsViewModel::setGlobalEnabled,
+                        colors = fiveSecSwitchColors(),
+                    )
+                }
+
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                 )
-            } else {
-                CardSurface(Modifier.padding(horizontal = Spacing.lg)) {
+
+                if (apps.isEmpty()) {
+                    // 清单空也保留卡与总开关（提示文案沿用；右上角 + 添加）
+                    Text(
+                        stringResource(R.string.app_list_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.lg),
+                    )
+                } else {
                     apps.forEachIndexed { index, app ->
                         if (index > 0) {
                             HorizontalDivider(
@@ -230,6 +222,7 @@ fun InterceptScreen(
                         }
                         AppRow(
                             app = app,
+                            interceptionPaused = !globalEnabled, // 总开关关闭：整行降透明度（仅视觉联动）
                             onToggle = { appListViewModel.setEnabled(app.packageName, it) },
                             onRemove = { appListViewModel.remove(app.packageName) },
                         )
@@ -350,10 +343,120 @@ fun InterceptScreen(
     }
 }
 
-/** 卡片行：图标 + 名称/状态 + ⋯ 菜单（包名/移除） + 启用开关。 */
+/**
+ * 无障碍置顶状态卡（用户拍板布局）：唯一需用户手动开启的前置条件，故置顶且状态分明——
+ * OFF = errorContainer 淡红警示 + 副文案 + ›，整卡可点（[onEnable] 沿用原 TextButton 链路：
+ * 授权则一键开启，失败跳系统设置）；ON = 安静白卡 + 绿色圆底勾，不可点。
+ * 警示卡与 CardSurface 同圆角/投影/描边语言，仅容器色换 errorContainer（一次性行为，不入通用组件）。
+ */
+@Composable
+private fun AccessibilityCard(serviceEnabled: Boolean, onEnable: () -> Unit) {
+    if (serviceEnabled) {
+        CardSurface(Modifier.padding(horizontal = Spacing.lg)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.lg, vertical = Spacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                Column(Modifier.padding(start = Spacing.md)) {
+                    Text(
+                        stringResource(R.string.settings_a11y_title_on),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        stringResource(R.string.settings_a11y_hint_on),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
+        }
+    } else {
+        Surface(
+            onClick = onEnable,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.lg),
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.errorContainer,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.18f)),
+            shadowElevation = 1.dp,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.lg, vertical = Spacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .padding(start = Spacing.md),
+                ) {
+                    Text(
+                        stringResource(R.string.settings_a11y_title_off),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                    Text(
+                        stringResource(R.string.settings_a11y_hint_off),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.72f),
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+                Icon(
+                    Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 卡片行：图标 + 名称/状态 + ⋯ 菜单（包名/移除） + 启用开关。
+ * [interceptionPaused] = 拦截总开关关闭：整行（含图标）降透明度作视觉联动——仅视觉表达，
+ * 行内开关与菜单照旧可用（总开关语义由 CooldownGate 在判定侧兜底，不在此重复禁用）。
+ */
 @Composable
 private fun AppRow(
     app: TargetApp,
+    interceptionPaused: Boolean,
     onToggle: (Boolean) -> Unit,
     onRemove: () -> Unit,
 ) {
@@ -361,13 +464,14 @@ private fun AppRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .alpha(if (interceptionPaused) 0.45f else 1f)
             .padding(horizontal = Spacing.lg, vertical = Spacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AppIcon(
             packageName = app.packageName,
             appName = app.appName,
-            dimmed = !app.isEnabled,
+            dimmed = !app.isEnabled || interceptionPaused,
         )
         Column(
             modifier = Modifier
