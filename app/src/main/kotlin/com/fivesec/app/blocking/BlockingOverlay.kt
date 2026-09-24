@@ -86,17 +86,18 @@ class BlockingOverlay(
     }
 
     // ── 今日待办紧凑卡片（specs/005-daily-todos）：标题行 + 条目行，内容在构造时一次定格 ──
-    // 左对齐（specs/007）：卡片内标题与条目整体靠左（更像一张清单）；卡片外提示语/倒计时/按钮维持居中
+    // 居中（2026-09 用户拍板）：卡片内标题与条目改为与卡片外提示语/倒计时/按钮统一居中
+    // （原 specs/007 左对齐口径废止——覆盖层整体只有一个对齐语言）
     private val todoTitle = TextView(ctx).apply {
         setTextColor(onSurfaceColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
         typeface = Typeface.DEFAULT_BOLD
-        gravity = Gravity.START
+        gravity = Gravity.CENTER
     }
     private val todoItems = TextView(ctx).apply {
         setTextColor(onSurfaceVariantColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-        gravity = Gravity.START
+        gravity = Gravity.CENTER
         setLineSpacing(dp(4).toFloat(), 1f)
     }
     private val todoBlock = LinearLayout(ctx).apply {
