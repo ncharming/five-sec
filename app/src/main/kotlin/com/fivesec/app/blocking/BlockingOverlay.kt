@@ -31,9 +31,10 @@ import kotlinx.coroutines.launch
  *
  * 提示语由服务侧经 HintRepository 循环游标决定（specs/005-daily-todos：内置+池单一序列轮转），经 [hint] 注入。
  * "今日待办"紧凑卡片（specs/005-daily-todos）在 [todos] 注入瞬间定格：标题「今日待办 D/T」+ 未完成条目
- * （○ 前缀，最多 5 行，超出折叠）；全部完成显示完成态整行；启用数为 0 整块隐藏。只读、不参与 render() 锁定。
+ * （○ 前缀，最多 3 行，超出折叠）；全部完成显示完成态整行；启用数为 0 整块隐藏。只读、不参与 render() 锁定。
  * 布局优化（用户拍板）：72sp 大倒计时块已删，倒计时数字融进「请先思考 N 秒」行（22sp 品牌绿），
- * 解锁后该行变「✓ 请选择」；腾出的垂直空间给待办卡（行数上限 3→5）。
+ * 解锁后该行变「✓ 请选择」。条目顺序由 TodoRepository.todayTodos 预排（仅今天→每N天→每周几→每天、
+ * 同类型创建日倒序），本层只取头部 3 行——排序规则不在视图层。
  * 004 的"拦截页写提示语"输入行已整体移除（specs/005：栈式机制退役，池在提示语页维护）。
  *
  * 配色取自 res/values/colors.xml 的 brand_* token，与 Compose Color.kt 同源，保证品牌一致。
@@ -301,9 +302,9 @@ class BlockingOverlay(
     }
 
     companion object {
-        /** 待办条目最多展示行数：5 秒内可读的上限（布局优化：删大倒计时块后 3→5，腾出的空间给待办卡），
-         *  超出折叠进 blocking_todos_more。 */
-        private const val TODO_MAX_LINES = 5
+        /** 待办条目最多展示行数（用户拍板：排序后只展示前 3 条——一次性/间隔类优先露出，
+         *  剩余折叠进 blocking_todos_more），超出折叠。 */
+        private const val TODO_MAX_LINES = 3
 
         /** 卡片单条展示字符上限（specs/007：30→12，5 秒可读更克制）：完整内容在待办页看，超长加省略号。 */
         private const val TODO_DISPLAY_MAX = 12

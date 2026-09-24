@@ -117,6 +117,30 @@ class TodoRecurrenceTest {
         assertEquals(30, TodoRecurrence.coerceIntervalDays(30))
     }
 
+    // ── 覆盖层展示优先级（用户拍板：仅今天→每N天→每周几→每天） ──
+
+    @Test
+    fun `覆盖层优先级_仅今天最高每天最低逐级递增`() {
+        assertTrue(
+            TodoRecurrence.overlayPriority(TodoRecurrence.REPEAT_ONCE) <
+                TodoRecurrence.overlayPriority(TodoRecurrence.REPEAT_INTERVAL),
+        )
+        assertTrue(
+            TodoRecurrence.overlayPriority(TodoRecurrence.REPEAT_INTERVAL) <
+                TodoRecurrence.overlayPriority(TodoRecurrence.REPEAT_WEEKLY),
+        )
+        assertTrue(
+            TodoRecurrence.overlayPriority(TodoRecurrence.REPEAT_WEEKLY) <
+                TodoRecurrence.overlayPriority(TodoRecurrence.REPEAT_DAILY),
+        )
+    }
+
+    @Test
+    fun `覆盖层优先级_未知脏值与每天同档垫底不消失`() {
+        // 脏值兜底与 isDue 同思路：不让条目凭空消失，只是排最后
+        assertEquals(TodoRecurrence.overlayPriority(TodoRecurrence.REPEAT_DAILY), TodoRecurrence.overlayPriority(99))
+    }
+
     // ── 下次轮到日（编辑弹窗「下次执行」展示；与 isDue 判定表互为对偶） ──
 
     @Test

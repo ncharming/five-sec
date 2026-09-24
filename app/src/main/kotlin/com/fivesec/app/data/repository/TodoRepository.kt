@@ -57,18 +57,21 @@ class TodoRepository @Inject constructor(
     /** 覆盖层创建时调用（主线程安全：锁内纯内存映射）；只含「启用且今天轮到」条目，
      *  isDone 按 today 口径映射——覆盖层卡片的 D/T 分母、○ 未完成列表、空块隐藏因此自动
      *  只看轮到条目（FR-006/FR-007），服务与 BlockingOverlay 零改动。一次性条目当天计入、
-     *  过期/非有效期日天然排除（isDue 口径）。 */
+     *  过期/非有效期日天然排除（isDue 口径）。条目按 [overlayOrder] 排序：卡片只取头部，
+     *  谁「排在前面」由这里定。 */
     fun todayTodos(today: String): List<TodayTodo> = synchronized(lock) {
-        snapshot.filter {
-            it.isEnabled && TodoRecurrence.isDue(
-                it.repeatType,
-                it.repeatDays,
-                it.intervalDays,
-                it.lastCompletedDate,
-                it.dueDate,
-                today,
-            )
-        }.map { TodayTodo(it.text, it.lastCompletedDate == today) }
+        overlayOrder(
+            snapshot.filter {
+                it.isEnabled && TodoRecurrence.isDue(
+                    it.repeatType,
+                    it.repeatDays,
+                    it.intervalDays,
+                    it.lastCompletedDate,
+                    it.dueDate,
+                    today,
+                )
+            },
+        ).map { TodayTodo(it.text, it.lastCompletedDate == today) }
     }
 
     /** 待办页列表（id 升序，含停用与过期条目，分区由 VM 派生；透传 DAO）。 */
@@ -169,5 +172,15 @@ class TodoRepository @Inject constructor(
 
         /** 标题长度上限：待办 200 字（提示语维持 30 字不变）。展示层另有两个更小的口径：待办页单行省略、拦截卡片截前 12 字。 */
         const val MAX_TEXT_LENGTH = 200
+
+        /** 覆盖层卡片排序（用户拍板口径）：第一层类型优先级 仅今天→每N天→每周几→每天
+         *  （[TodoRecurrence.overlayPriority]）；第二层同类型内创建日倒序（最新在前）——
+         *  createdAt 只有日粒度，同日以 id 倒序补足真实插入顺序（id=自增=创建顺序）；
+         *  v7 前老条目 createdAt 空串在同类型内垫底。纯函数零 IO：todayTodos 接线、单测直测。 */
+        fun overlayOrder(todos: List<Todo>): List<Todo> = todos.sortedWith(
+            compareBy<Todo> { TodoRecurrence.overlayPriority(it.repeatType) }
+                .thenByDescending { it.createdAt }
+                .thenByDescending { it.id },
+        )
     }
 }

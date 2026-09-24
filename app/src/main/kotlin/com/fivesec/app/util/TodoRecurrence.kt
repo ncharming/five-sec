@@ -39,6 +39,16 @@ object TodoRecurrence {
     /** 间隔天数越界收敛（表单与 Repository 双层共用同一口径）。 */
     fun coerceIntervalDays(days: Int): Int = days.coerceIn(MIN_INTERVAL_DAYS, MAX_INTERVAL_DAYS)
 
+    /** 覆盖层卡片展示优先级（用户拍板口径）：仅今天 → 每N天 → 每周几 → 每天；返回值小者在前。
+     *  不直接复用 repeatType 数值倒序——那只是常量巧合，规则显式化后将来加类型不踩隐式依赖。
+     *  未知类型兜底与每天同档（脏值不让条目凭空消失，只是排最后，与 isDue 的兜底思路一致）。 */
+    fun overlayPriority(repeatType: Int): Int = when (repeatType) {
+        REPEAT_ONCE -> 0
+        REPEAT_INTERVAL -> 1
+        REPEAT_WEEKLY -> 2
+        else -> 3
+    }
+
     /**
      * 今天是否轮到（惰性求值、无状态、纯内存）。
      *
