@@ -75,6 +75,26 @@ object TodoRecurrence {
     }
 
     /**
+     * 「每 N 天」规则的下一次轮到日（编辑弹窗「下次执行」展示用，yyyy-MM-dd 口径）。
+     *
+     * 为什么与 [isDue] 严格同源：展示口径必须与灰显/卡片过滤口径一致，否则弹窗说"今天轮到"
+     * 列表却灰显。从未完成（锚点空/非法）恒到期 → 今天；已完成则自锚点日整日起算第 N 天复活，
+     * 已到期（拖延顺延）收敛为今天——答的是"下一次轮到"，不是理论锚点日。
+     * 防御：today 非法返回 null（调用方隐藏该行，宁可不展示不崩溃）；N 由调用方先收敛
+     * （表单/仓库双层 2..365），此处 coerceAtLeast(1) 仅防死值。
+     */
+    fun nextIntervalDueDate(lastCompletedDate: String, intervalDays: Int, today: String): String? {
+        val todayDate = today.toLocalDateOrNull() ?: return null
+        val last = lastCompletedDate.toLocalDateOrNull() ?: return todayDate.toString()
+        val days = intervalDays.coerceAtLeast(1)
+        return if (ChronoUnit.DAYS.between(last, todayDate) >= days) {
+            todayDate.toString()
+        } else {
+            last.plusDays(days.toLong()).toString()
+        }
+    }
+
+    /**
      * 是否已过期（specs/007）：仅一次性条目可过期——有效期日已过且未完成。
      *
      * 重复类恒 false（「拖延只顺延」，错过就等下次轮到，不进过期分类）；已完成的一次性恒 false

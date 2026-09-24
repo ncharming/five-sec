@@ -4,6 +4,7 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -114,6 +115,49 @@ class TodoRecurrenceTest {
         assertEquals(2, TodoRecurrence.coerceIntervalDays(1))
         assertEquals(365, TodoRecurrence.coerceIntervalDays(999))
         assertEquals(30, TodoRecurrence.coerceIntervalDays(30))
+    }
+
+    // ── 下次轮到日（编辑弹窗「下次执行」展示；与 isDue 判定表互为对偶） ──
+
+    @Test
+    fun `下次轮到日_从未完成为今天`() {
+        // 滚动语义：从未完成恒到期，下一次就是今天（与 isDue 空锚点分支同口径）
+        assertEquals("2026-09-23", TodoRecurrence.nextIntervalDueDate("", 3, "2026-09-23"))
+    }
+
+    @Test
+    fun `下次轮到日_完成后自完成日加N天`() {
+        // 「每 3 天」：09-23 完成 → 09-26 复活；灰显期内查看展示同一复活日
+        assertEquals("2026-09-26", TodoRecurrence.nextIntervalDueDate("2026-09-23", 3, "2026-09-23"))
+        assertEquals("2026-09-26", TodoRecurrence.nextIntervalDueDate("2026-09-23", 3, "2026-09-25"))
+    }
+
+    @Test
+    fun `下次轮到日_已到期顺延场景收敛为今天`() {
+        // 拖延只顺延：早已过了复活日仍没做 → 下一次是今天，不回显历史复活日
+        assertEquals("2026-09-30", TodoRecurrence.nextIntervalDueDate("2026-09-23", 3, "2026-09-30"))
+    }
+
+    @Test
+    fun `下次轮到日_时钟回拨仍按锚点加N天不崩溃`() {
+        // last > today（用户回拨时钟）：不轮到，展示锚点 + N 的未来日
+        assertEquals("2026-09-29", TodoRecurrence.nextIntervalDueDate("2026-09-26", 3, "2026-09-23"))
+    }
+
+    @Test
+    fun `下次轮到日_锚点非法视同从未完成为今天`() {
+        assertEquals("2026-09-23", TodoRecurrence.nextIntervalDueDate("garbage", 3, "2026-09-23"))
+    }
+
+    @Test
+    fun `下次轮到日_today非法返回null由UI隐藏`() {
+        assertNull(TodoRecurrence.nextIntervalDueDate("2026-09-23", 3, "not-a-date"))
+    }
+
+    @Test
+    fun `下次轮到日_N死值防御按1天起算`() {
+        // 正常路径 N 恒为 2..365（表单与仓库双层收敛）；此处仅证死值不炸不倒退
+        assertEquals("2026-09-24", TodoRecurrence.nextIntervalDueDate("2026-09-23", 0, "2026-09-23"))
     }
 
     // ── 仅今天（specs/007-oneoff-todos） ──

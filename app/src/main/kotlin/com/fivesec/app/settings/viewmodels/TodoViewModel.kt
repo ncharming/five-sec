@@ -13,6 +13,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -28,8 +29,9 @@ data class TodoUiState(val todayRows: List<TodoRow>, val expiredRows: List<TodoR
  * 待办页状态（specs/005；006 重复规则；007 一次性/两区分区）：
  * 列表观察 + 增删改/启停/今日勾选/规则转发/过期复活。
  *
- * `today` 是私有 StateFlow 而非每次现取：完成态、"轮到"、过期分区都在 combine 里按它求值，
- * ON_RESUME 调 [refreshToday] 覆盖"应用常驻后台跨日"的场景——不引入任何定时器。
+ * `today` 是 VM 持有的 StateFlow（私有可写 + [today] 只读暴露）而非每次现取：完成态、"轮到"、
+ * 过期分区都在 combine 里按它求值，ON_RESUME 调 [refreshToday] 覆盖"应用常驻后台跨日"的场景——
+ * 不引入任何定时器。
  * 僵尸行（一次性已完成且完成日≠今天）在此过滤兜底：物理删除由仓库惰性清理收尾，两道防线。
  * 可测试性：时间一律经注入的 [TimeProvider]（仓库约定，禁在纯逻辑直接取系统时钟）。
  */
@@ -39,10 +41,13 @@ class TodoViewModel @Inject constructor(
     private val timeProvider: TimeProvider,
 ) : ViewModel() {
 
-    private val today = MutableStateFlow(DateUtil.todayString(timeProvider.now()))
+    private val _today = MutableStateFlow(DateUtil.todayString(timeProvider.now()))
+
+    /** 今日口径（yyyy-MM-dd）只读暴露：编辑弹窗「每N天 → 下次执行」展示消费，与灰显派发严格同源。 */
+    val today: StateFlow<String> = _today.asStateFlow()
 
     val uiState: StateFlow<TodoUiState> =
-        combine(todoRepository.observeAll(), today) { list, todayString ->
+        combine(todoRepository.observeAll(), _today) { list, todayString ->
             val todayRows = mutableListOf<TodoRow>()
             val expiredRows = mutableListOf<TodoRow>()
             list.forEach { todo ->
@@ -83,7 +88,7 @@ class TodoViewModel @Inject constructor(
 
     /** 页面 ON_RESUME 调用：跨日后重算今日口径（完成态、灰显态与过期分区随之联动）。 */
     fun refreshToday() {
-        today.value = DateUtil.todayString(timeProvider.now())
+        _today.value = DateUtil.todayString(timeProvider.now())
     }
 
     fun add(text: String, rule: TodoRule = TodoRule.DAILY) {
@@ -124,7 +129,7 @@ class TodoViewModel @Inject constructor(
 
     /** 今日勾选/取消：以 VM 持有的 today 口径写入（与 uiState 派生口径严格同源）。 */
     fun setCompleted(id: Long, completed: Boolean) {
-        viewModelScope.launch { todoRepository.setCompleted(id, today.value, completed) }
+        viewModelScope.launch { todoRepository.setCompleted(id, _today.value, completed) }
     }
 
     companion object {

@@ -81,7 +81,7 @@ import java.time.DayOfWeek
  * 分区（specs/007）：「今日待办」卡（一切未过期条目，维持 id 升序与灰显/停用机制）+
  * 「过期待办 (n)」卡（一次性失败存量，有效期日升序；无过期整卡不显示）。
  * 每行标题下副行纯日期（今日区=创建日「—」兜底、过期区=有效期日）；过期行无勾选框/开关，
- * 仅「改为今天 / 删除待办」——失败可重试，但无迟到补勾（用户拍板口径）。
+ * 仅「改为今天 / 删除」——失败可重试，但无迟到补勾（用户拍板口径）。
  * 视觉沿用四页统一语言（PageHeader + 白卡行骨架 + FiveSecDialog 弹窗）；名额行已移除——
  * 容量语义由「满员底部提示 + 添加兜底弹窗」承载。标题 ≤200 字：列表单行省略，点条目看只读全文弹窗。
  * 只读约定：拦截覆盖层上的待办卡片由本页数据派生（快照只含轮到条目），勾选只发生在本页（FR-005）。
@@ -92,6 +92,7 @@ fun TodoScreen(
     viewModel: TodoViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val today by viewModel.today.collectAsStateWithLifecycle()
     val isFull = uiState.todayRows.size + uiState.expiredRows.size >= TodoRepository.MAX_TODOS
 
     var showAddDialog by remember { mutableStateOf(false) }
@@ -217,12 +218,13 @@ fun TodoScreen(
         }
     }
 
-    // 新建待办弹窗
+    // 新建待办弹窗（无完成锚点：下次执行恒为「今天」）
     TodoEditDialog(
         visible = showAddDialog,
         title = stringResource(R.string.todos_add_title),
         initialText = "",
         initialRule = TodoRule.DAILY,
+        today = today,
         onDismiss = { showAddDialog = false },
         onConfirm = { text, rule ->
             if (showAddDialog) viewModel.add(text, rule) // 退场动画期间防重复提交（外壳约定）
@@ -230,7 +232,7 @@ fun TodoScreen(
         },
     )
 
-    // 重命名弹窗（specs/006 起承载规则编辑；规则变了才发定向 UPDATE，文本照旧独立走 rename）
+    // 编辑弹窗（菜单「修改」进；specs/006 起承载规则编辑，规则变了才发定向 UPDATE，文本照旧独立走 rename）
     editTarget?.let { target ->
         val existingRule = TodoRule(target.todo.repeatType, target.todo.repeatDays, target.todo.intervalDays)
         TodoEditDialog(
@@ -238,6 +240,8 @@ fun TodoScreen(
             title = stringResource(R.string.todos_edit_title),
             initialText = target.todo.text,
             initialRule = existingRule,
+            today = today,
+            lastCompletedDate = target.todo.lastCompletedDate,
             onDismiss = { editTarget = null },
             onConfirm = { text, rule ->
                 if (editTarget != null) {
@@ -338,7 +342,7 @@ private fun SectionLabel(text: String) {
     )
 }
 
-/** 今日区行：今日勾选框 + 标题（完成划线/停用弱化，单行省略、点击看全文）+ 副行日期 + 启用开关 + ⋯（重命名/删除）。 */
+/** 今日区行：今日勾选框 + 标题（完成划线/停用弱化，单行省略、点击看全文）+ 副行日期 + 启用开关 + ⋯（修改/删除）。 */
 @Composable
 private fun TodoItemRow(
     row: TodoRow,
@@ -508,10 +512,11 @@ private fun TodoExpiredRow(
 }
 
 /**
- * 新建/重命名共用表单弹窗：多行输入（换行折叠为空格）+ 重复规则区（specs/006 三选一；
- * specs/007 扩为四选一，新增「仅今天」），200 字硬截断，空白不可确认。
- * 规则区：每天 / 按星期几（多选周几，全空禁存并提示）/ 每 N 天（越界即时收敛显示 2..365）/
- * 仅今天（只在有效期日当天轮到，跨日未完成进过期分类）。
+ * 新建/编辑共用表单弹窗：多行输入（换行折叠为空格）+ 重复规则区（specs/006 三选一；
+ * specs/007 扩为四选一，新增「单次」），200 字硬截断，空白不可确认。
+ * 规则区：每天 / 每周几（多选周几，全空禁存并提示）/ 每N天（越界即时收敛显示 2..365，
+ * 下方展示下次执行日——锚点=最近完成日，从未完成=今天）/ 单次（原「仅今天」，只在有效期日
+ * 当天轮到，跨日未完成进过期分类）。分段按钮不显示选中 ✓（四段等宽排版 + 选中态已由底色表达）。
  * 弹窗内存态保留用户切走的规则勾选（体验细节），保存只落当前选中规则、其余两列归零（见 data-model 不变式）。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -521,8 +526,10 @@ private fun TodoEditDialog(
     title: String,
     initialText: String,
     initialRule: TodoRule,
+    today: String,
     onDismiss: () -> Unit,
     onConfirm: (String, TodoRule) -> Unit,
+    lastCompletedDate: String = "", // 新建传缺省（从未完成）；编辑传最近完成日（下次执行日的锚点）
 ) {
     // rememberSaveable：退场动画期间弹窗仍持内容；重开时由调用方以新 key 重建重置。
     // 注意 key 必须可存 Bundle（rememberSaveable 会持久化 inputs）：initialRule 是数据类，
@@ -618,6 +625,7 @@ private fun TodoEditDialog(
                 selected = ruleType == TodoRecurrence.REPEAT_DAILY,
                 onClick = { ruleType = TodoRecurrence.REPEAT_DAILY },
                 shape = SegmentedButtonDefaults.itemShape(index = 0, count = 4),
+                icon = {}, // 选中态由底色表达，不再画 ✓——省宽度，四段文案不再换行重叠
             ) {
                 Text(stringResource(R.string.todos_rule_daily))
             }
@@ -625,6 +633,7 @@ private fun TodoEditDialog(
                 selected = ruleType == TodoRecurrence.REPEAT_WEEKLY,
                 onClick = { ruleType = TodoRecurrence.REPEAT_WEEKLY },
                 shape = SegmentedButtonDefaults.itemShape(index = 1, count = 4),
+                icon = {},
             ) {
                 Text(stringResource(R.string.todos_rule_weekly))
             }
@@ -632,6 +641,7 @@ private fun TodoEditDialog(
                 selected = ruleType == TodoRecurrence.REPEAT_INTERVAL,
                 onClick = { ruleType = TodoRecurrence.REPEAT_INTERVAL },
                 shape = SegmentedButtonDefaults.itemShape(index = 2, count = 4),
+                icon = {},
             ) {
                 Text(stringResource(R.string.todos_rule_interval))
             }
@@ -639,6 +649,7 @@ private fun TodoEditDialog(
                 selected = ruleType == TodoRecurrence.REPEAT_ONCE,
                 onClick = { ruleType = TodoRecurrence.REPEAT_ONCE },
                 shape = SegmentedButtonDefaults.itemShape(index = 3, count = 4),
+                icon = {},
             ) {
                 Text(stringResource(R.string.todos_rule_once))
             }
@@ -700,6 +711,24 @@ private fun TodoEditDialog(
                         modifier = Modifier.width(120.dp),
                     )
                     Text(stringResource(R.string.todos_rule_interval_days))
+                }
+                // 下次执行日（用户要求：选中每N天时展示）：与灰显判定同源的纯函数算出，随 N 输入即时联动；
+                // 已到期/从未完成收敛为「今天」，today 非法（防御不可达）返回 null 整行隐藏
+                val nextDue = TodoRecurrence.nextIntervalDueDate(lastCompletedDate, intervalDays, today)
+                if (nextDue != null) {
+                    Text(
+                        stringResource(
+                            R.string.todos_rule_interval_next,
+                            if (nextDue == today) {
+                                stringResource(R.string.todos_rule_interval_next_today)
+                            } else {
+                                nextDue
+                            },
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = Spacing.xs),
+                    )
                 }
                 Text(
                     stringResource(R.string.todos_rule_interval_hint),

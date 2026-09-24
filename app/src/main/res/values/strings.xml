@@ -52,8 +52,8 @@
     <string name="todos_edit_title">编辑待办</string>
     <string name="todos_save">保存</string>
     <string name="todos_delete_confirm">删除这条待办？</string>
-    <string name="todos_menu_rename">重命名</string>
-    <string name="todos_menu_delete">删除待办</string>
+    <string name="todos_menu_rename">修改</string>
+    <string name="todos_menu_delete">删除</string>
     <string name="todos_full_hint">名额已满（上限 %1$d 条）· 删除后方可添加新待办</string>
     <string name="todos_detail_title">待办内容</string>
     <string name="todos_detail_close">关闭</string>
@@ -61,8 +61,8 @@
     <!-- Todos 重复规则（specs/006-recurring-todos） -->
     <string name="todos_rule_title">重复</string>
     <string name="todos_rule_daily">每天</string>
-    <string name="todos_rule_weekly">按星期几</string>
-    <string name="todos_rule_interval">每 N 天</string>
+    <string name="todos_rule_weekly">每周几</string>
+    <string name="todos_rule_interval">每N天</string>
     <string name="todos_rule_dow_1">周一</string>
     <string name="todos_rule_dow_2">周二</string>
     <string name="todos_rule_dow_3">周三</string>
@@ -72,11 +72,13 @@
     <string name="todos_rule_dow_7">周日</string>
     <string name="todos_rule_interval_days">天</string>
     <string name="todos_rule_interval_hint">完成后隔 N 天再次出现（2–365 天）</string>
+    <string name="todos_rule_interval_next">下次执行：%1$s</string>
+    <string name="todos_rule_interval_next_today">今天</string>
     <string name="todos_rule_weekly_required">至少选择一天</string>
     <string name="todos_not_due_today">今天不用做</string>
 
     <!-- Todos 一次性与过期（specs/007-oneoff-todos） -->
-    <string name="todos_rule_once">仅今天</string>
+    <string name="todos_rule_once">单次</string>
     <string name="todos_rule_once_hint">只在今天生效，未完成将进入过期待办</string>
     <string name="todos_section_today">今日待办</string>
     <string name="todos_section_expired">过期待办（%1$d）</string>

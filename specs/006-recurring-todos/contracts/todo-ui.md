@@ -22,7 +22,7 @@ data class TodoRow(val todo: Todo, val doneToday: Boolean, val dueToday: Boolean
 
 ## 编辑弹窗规则区（TodoEditDialog 扩展，新建/重命名共用）
 
-- 「重复」段：三选一 SegmentedButton——每天 / 按星期几 / 每 N 天。
+- 「重复」段：三选一 SegmentedButton——每天 / 按星期几 / 每 N 天（现行文案缩短为 每天/每周几/每N天，分段按钮不显示选中 ✓——四段等宽防换行）。
 - 选「按星期几」：展开 7×FilterChip（周一…周日，ISO 周一首位，多选）；**全不选时保存按钮禁用 + 行内提示「至少选择一天」**（FR-002 主拦截）。
 - 选「每 N 天」：展开数字输入（OutlinedTextField number），越界 `coerceIn(2..365)` 收敛显示；辅助文案说明"完成后隔 N 天再次出现"。
 - 切换规则类型时弹窗内存态保留各规则的上次勾选（体验细节），但**保存时只落当前选中规则**，其余两列归零（见 data-model 不变式）。
@@ -41,8 +41,8 @@ data class TodoRow(val todo: Todo, val doneToday: Boolean, val dueToday: Boolean
 |---|---|
 | `todos_rule_title` | 重复 |
 | `todos_rule_daily` | 每天 |
-| `todos_rule_weekly` | 按星期几 |
-| `todos_rule_interval` | 每 N 天 |
+| `todos_rule_weekly` | 每周几（原「按星期几」，后缩短） |
+| `todos_rule_interval` | 每N天（原「每 N 天」，后缩短；选中时下方另有 `todos_rule_interval_next`「下次执行：%s」实时联动） |
 | `todos_rule_dow_1..7` | 周一 … 周日 |
 | `todos_rule_interval_days` | 天 |
 | `todos_rule_interval_hint` | 完成后隔 N 天再次出现 |
