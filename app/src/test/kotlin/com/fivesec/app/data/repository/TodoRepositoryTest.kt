@@ -21,8 +21,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * TodoRepository 测试（specs/005；006 重复规则；007 一次性/过期；008 完成事件双写）：
- * 快照过滤（只含启用且今天轮到；一次性当天计入、过期排除）、覆盖层排序（类型优先级 仅今天→每N天→
+ * TodoRepository 测试（specs/005；006 重复规则；007 一次性/过期；008 完成事件双写；009 快照类型化与空态二分）：
+ * 快照过滤（只含启用且今天轮到；一次性当天计入、过期排除）、空态二分（无启用条目 vs 有启用今日不轮到，
+ * 009 覆盖层空态文案的判定源）、覆盖层排序（类型优先级 仅今天→每N天→
  * 每周几→每天，同类型创建日倒序、同日按 id 倒序、老空串垫底）、完成态按日期惰性求值、
  * 入口校验（空白/200 字/周几空集/间隔收敛）、上限 20、定向 UPDATE 转发、dueDate/createdAt 写入口径、
  * revive、惰性清理（已完成一次性跨日物理删除）、完成事件（勾选 upsert 含文本快照/取消删当日/重勾不重复）。
@@ -168,12 +169,40 @@ class TodoRepositoryTest {
         )
         val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
-        awaitUntil { repo.todayTodos(today).size == 3 } // 快照就绪（含停用前的 3 条启用项）
+        awaitUntil { repo.todayTodos(today).items.size == 3 } // 快照就绪（含停用前的 3 条启用项）
 
-        val rows = repo.todayTodos(today)
+        val snapshot = repo.todayTodos(today)
         // 同类型（每天）且同日粒度（createdAt 均空）→ 覆盖层排序按 id 倒序：最新创建在前
-        assertEquals(listOf("昨日完成", "未完成", "今日已完成"), rows.map { it.text })
-        assertEquals(listOf(false, false, true), rows.map { it.isDone }) // 昨日完成跨日自动失效
+        assertEquals(listOf("昨日完成", "未完成", "今日已完成"), snapshot.items.map { it.text })
+        assertEquals(listOf(false, false, true), snapshot.items.map { it.isDone }) // 昨日完成跨日自动失效
+        assertTrue(snapshot.anyEnabled) // 存在启用条目（空态判定不为"引导添加"）
+    }
+
+    @Test
+    fun `todayTodos空态二分_无启用条目与有启用今日不轮到`() = runTest {
+        val dao = FakeTodoDao()
+        // 2026-09-23 是周三：周五条目今日不轮到
+        val fridayMask = TodoRecurrence.bitOf(DayOfWeek.FRIDAY)
+        dao.state.value = listOf(
+            Todo(id = 1, text = "每周五", repeatType = TodoRecurrence.REPEAT_WEEKLY, repeatDays = fridayMask),
+        )
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
+
+        awaitUntil { repo.todayTodos(today).anyEnabled } // 快照就绪
+
+        // 有启用条目但今日无一轮到：items 空、anyEnabled=true → 覆盖层「今天没有轮到的待办」
+        val noneDue = repo.todayTodos(today)
+        assertTrue(noneDue.items.isEmpty())
+        assertTrue(noneDue.anyEnabled)
+
+        // 停用全部条目：items 空、anyEnabled=false → 覆盖层「还没有今日待办 · 去添加」
+        dao.state.value = listOf(
+            Todo(id = 1, text = "每周五", isEnabled = false, repeatType = TodoRecurrence.REPEAT_WEEKLY, repeatDays = fridayMask),
+        )
+        awaitUntil { !repo.todayTodos(today).anyEnabled }
+        val noneEnabled = repo.todayTodos(today)
+        assertTrue(noneEnabled.items.isEmpty())
+        assertFalse(noneEnabled.anyEnabled)
     }
 
     @Test
@@ -268,10 +297,10 @@ class TodoRepositoryTest {
         )
         val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
-        awaitUntil { repo.todayTodos("2026-09-23").isNotEmpty() } // 快照就绪（每天条恒可见）
+        awaitUntil { repo.todayTodos("2026-09-23").items.isNotEmpty() } // 快照就绪（每天条恒可见）
 
-        assertEquals(listOf("周一三五", "每天"), repo.todayTodos("2026-09-23").map { it.text })
-        assertEquals(listOf("每天"), repo.todayTodos("2026-09-24").map { it.text }) // 周四未命中
+        assertEquals(listOf("周一三五", "每天"), repo.todayTodos("2026-09-23").items.map { it.text })
+        assertEquals(listOf("每天"), repo.todayTodos("2026-09-24").items.map { it.text }) // 周四未命中
     }
 
     @Test
@@ -288,11 +317,11 @@ class TodoRepositoryTest {
         )
         val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
-        awaitUntil { repo.todayTodos("2026-09-26").isNotEmpty() } // 快照就绪
+        awaitUntil { repo.todayTodos("2026-09-26").items.isNotEmpty() } // 快照就绪
 
-        assertTrue(repo.todayTodos("2026-09-23").isEmpty()) // 完成当天
-        assertTrue(repo.todayTodos("2026-09-25").isEmpty()) // 灰显期
-        assertEquals("每3天", repo.todayTodos("2026-09-26").single().text) // 第 3 天复活
+        assertTrue(repo.todayTodos("2026-09-23").items.isEmpty()) // 完成当天
+        assertTrue(repo.todayTodos("2026-09-25").items.isEmpty()) // 灰显期
+        assertEquals("每3天", repo.todayTodos("2026-09-26").items.single().text) // 第 3 天复活
     }
 
     // ── 覆盖层排序（用户拍板：类型优先级 仅今天→每N天→每周几→每天，同类型创建日倒序） ──
@@ -312,12 +341,12 @@ class TodoRepositoryTest {
         )
         val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
-        awaitUntil { repo.todayTodos(today).size == 7 } // 快照就绪
+        awaitUntil { repo.todayTodos(today).items.size == 7 } // 快照就绪
 
         // 单次 → 每N天 → 周几（同日 id 倒序、昨日条目次之、老空串垫底）→ 每天
         assertEquals(
             listOf("单次", "每N天", "周几-今天建更晚", "周几-今天建", "周几-前天建", "周几-老条目无创建日", "每天"),
-            repo.todayTodos(today).map { it.text },
+            repo.todayTodos(today).items.map { it.text },
         )
     }
 
@@ -486,9 +515,9 @@ class TodoRepositoryTest {
         )
         val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
-        awaitUntil { repo.todayTodos(today).isNotEmpty() }
+        awaitUntil { repo.todayTodos(today).items.isNotEmpty() }
 
-        val rows = repo.todayTodos(today)
+        val rows = repo.todayTodos(today).items
         // 只有当天的两条进快照；同为一次性且同日粒度 → id 倒序（今天已完成 id=4 在前）
         assertEquals(listOf("今天已完成", "今天寄快递"), rows.map { it.text })
         assertEquals(listOf(true, false), rows.map { it.isDone })

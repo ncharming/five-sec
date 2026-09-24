@@ -6,8 +6,6 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
-import com.fivesec.app.domain.model.Hint
-import com.fivesec.app.domain.model.HintKind
 import com.fivesec.app.domain.model.Todo
 import com.fivesec.app.domain.model.TodoCompletion
 import com.fivesec.app.util.TodoRecurrence
@@ -74,9 +72,9 @@ class AppDatabaseMigrationTest {
         }
         helper.close()
 
-        // 以 Room v8 打开：v2 库依次触发 MIGRATION_2_3/3_4/4_5/5_6/6_7/7_8（缺任一会抛迁移缺失异常）
+        // 以 Room v9 打开：v2 库依次触发 MIGRATION_2_3/3_4/4_5/5_6/6_7/7_8/8_9（缺任一会抛迁移缺失异常）
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .allowMainThreadQueries()
             .build()
 
@@ -140,9 +138,9 @@ class AppDatabaseMigrationTest {
         }
         helper.close()
 
-        // 以 Room v8 打开：触发 MIGRATION_3_4/4_5/5_6/6_7/7_8（完整迁移链）
+        // 以 Room v9 打开：触发 MIGRATION_3_4/4_5/5_6/6_7/7_8/8_9（完整迁移链）
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .allowMainThreadQueries()
             .build()
 
@@ -155,10 +153,15 @@ class AppDatabaseMigrationTest {
                 .first().single().total,
         )
 
-        // hints 表可读写（005 去栈化：只剩 pool 口径）
-        db.hintDao().insert(Hint(text = "池条目", kind = HintKind.POOL))
-        db.hintDao().insert(Hint(text = "迁移后新增", kind = HintKind.POOL))
-        assertEquals(listOf("池条目", "迁移后新增"), db.hintDao().observeByKind(HintKind.POOL).first().map { it.text })
+        // hints 表迁移链路上可用（005 去栈化后只剩 pool 口径）；009 起实体退役无 DAO，
+        // 以 raw SQL 验证物理表仍可读写（数据墓碑：表保留、应用零声明）
+        db.openHelper.writableDatabase.execSQL("INSERT INTO hints (text, kind) VALUES ('池条目', 'pool')")
+        db.openHelper.writableDatabase.execSQL("INSERT INTO hints (text, kind) VALUES ('迁移后新增', 'pool')")
+        db.openHelper.readableDatabase.query("SELECT text FROM hints WHERE kind = 'pool' ORDER BY id ASC").use { cursor ->
+            val texts = mutableListOf<String>()
+            while (cursor.moveToNext()) texts += cursor.getString(0)
+            assertEquals(listOf("池条目", "迁移后新增"), texts)
+        }
 
         db.close()
         context.deleteDatabase(dbName)
@@ -213,9 +216,9 @@ class AppDatabaseMigrationTest {
         }
         helper.close()
 
-        // 以 Room v8 打开：触发 MIGRATION_4_5/5_6/6_7/7_8
+        // 以 Room v9 打开：触发 MIGRATION_4_5/5_6/6_7/7_8/8_9
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .allowMainThreadQueries()
             .build()
 
@@ -229,8 +232,12 @@ class AppDatabaseMigrationTest {
         )
 
         // stack 全部改挂 pool：用户留的话并入池，零丢失；库中不再有 stack 行
-        val poolTexts = db.hintDao().observeByKind(HintKind.POOL).first().map { it.text }
-        assertEquals(listOf("别刷了，去写作业", "池条目"), poolTexts)
+        // （009 起 hints 无 DAO，raw SQL 直查物理表）
+        db.openHelper.readableDatabase.query("SELECT text FROM hints WHERE kind = 'pool' ORDER BY id ASC").use { cursor ->
+            val poolTexts = mutableListOf<String>()
+            while (cursor.moveToNext()) poolTexts += cursor.getString(0)
+            assertEquals(listOf("别刷了，去写作业", "池条目"), poolTexts)
+        }
         db.openHelper.readableDatabase
             .query("SELECT COUNT(*) FROM hints WHERE kind = 'stack'")
             .use { cursor ->
@@ -302,9 +309,9 @@ class AppDatabaseMigrationTest {
         }
         helper.close()
 
-        // 以 Room v8 打开：触发 MIGRATION_5_6/6_7/7_8（注册完整链，缺迁移即抛异常的既有守卫模式）
+        // 以 Room v9 打开：触发 MIGRATION_5_6/6_7/7_8/8_9（注册完整链，缺迁移即抛异常的既有守卫模式）
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .allowMainThreadQueries()
             .build()
 
@@ -393,9 +400,9 @@ class AppDatabaseMigrationTest {
         }
         helper.close()
 
-        // 以 Room v8 打开：触发 MIGRATION_6_7/7_8（列定义与实体 schema 逐字一致，否则打开即抛校验异常）
+        // 以 Room v9 打开：触发 MIGRATION_6_7/7_8/8_9（列定义与实体 schema 逐字一致，否则打开即抛校验异常）
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .allowMainThreadQueries()
             .build()
 
@@ -494,9 +501,9 @@ class AppDatabaseMigrationTest {
         }
         helper.close()
 
-        // 以 Room v8 打开：触发 MIGRATION_7_8（建表+建唯一索引，列定义逐字一致否则打开即抛校验异常）
+        // 以 Room v9 打开：触发 MIGRATION_7_8/8_9（建表+建唯一索引，列定义逐字一致否则打开即抛校验异常）
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .allowMainThreadQueries()
             .build()
 
@@ -522,6 +529,110 @@ class AppDatabaseMigrationTest {
                 .map { it.todoText to it.completions },
         )
         assertEquals("2026-09-22", completionDao.observeEarliestDate().first())
+
+        db.close()
+        context.deleteDatabase(dbName)
+    }
+
+    /** v8 → v9 迁移：提示语退役的空迁移——hints 物理表与存量行原样保留，其余表零触碰（specs/009-retire-hints）。 */
+    @Test
+    fun `v9迁移后hints表存量保留且其余表零丢失`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val dbName = "migration-test-v9.db"
+        context.deleteDatabase(dbName)
+
+        // 以 v8 结构手工建库（五表齐：target_apps / interception_events / hints / todos / todo_completions）
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(dbName)
+                .callback(object : SupportSQLiteOpenHelper.Callback(8) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        db.execSQL(
+                            "CREATE TABLE target_apps (" +
+                                "packageName TEXT NOT NULL PRIMARY KEY, " +
+                                "appName TEXT NOT NULL, " +
+                                "isEnabled INTEGER NOT NULL, " +
+                                "isDefault INTEGER NOT NULL, " +
+                                "addedAt INTEGER NOT NULL)"
+                        )
+                        db.execSQL(
+                            "CREATE TABLE interception_events (" +
+                                "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                                "packageName TEXT NOT NULL, " +
+                                "timestamp INTEGER NOT NULL, " +
+                                "exerciseCompleted INTEGER NOT NULL, " +
+                                "outcome TEXT NOT NULL)"
+                        )
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS hints (" +
+                                "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                                "text TEXT NOT NULL, " +
+                                "kind TEXT NOT NULL)"
+                        )
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS `todos` (" +
+                                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                                "`text` TEXT NOT NULL, " +
+                                "`isEnabled` INTEGER NOT NULL, " +
+                                "`lastCompletedDate` TEXT NOT NULL, " +
+                                "`repeatType` INTEGER NOT NULL, " +
+                                "`repeatDays` INTEGER NOT NULL, " +
+                                "`intervalDays` INTEGER NOT NULL, " +
+                                "`createdAt` TEXT NOT NULL, " +
+                                "`dueDate` TEXT NOT NULL)"
+                        )
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS `todo_completions` (" +
+                                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                                "`todoId` INTEGER NOT NULL, " +
+                                "`todoText` TEXT NOT NULL, " +
+                                "`completedDate` TEXT NOT NULL)"
+                        )
+                        db.execSQL(
+                            "CREATE UNIQUE INDEX IF NOT EXISTS `index_todo_completions_todoId_completedDate` " +
+                                "ON `todo_completions` (`todoId`, `completedDate`)"
+                        )
+                    }
+
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                })
+                .build()
+        )
+        helper.writableDatabase.use { db ->
+            db.execSQL("INSERT INTO hints (text, kind) VALUES ('自定义A', 'pool')")
+            db.execSQL("INSERT INTO hints (text, kind) VALUES ('自定义B', 'pool')")
+            db.execSQL("INSERT INTO hints (text, kind) VALUES ('自定义C', 'pool')")
+            db.execSQL(
+                "INSERT INTO todos (text, isEnabled, lastCompletedDate, repeatType, repeatDays, intervalDays, createdAt, dueDate) " +
+                    "VALUES ('每天条目', 1, '', 0, 0, 0, '2026-09-23', '')"
+            )
+            db.execSQL("INSERT INTO todo_completions (todoId, todoText, completedDate) VALUES (1, '每天条目', '2026-09-23')")
+            db.execSQL("INSERT INTO interception_events (packageName, timestamp, exerciseCompleted, outcome) VALUES ('com.ss.android.ugc.aweme', 111, 1, 'CANCELED')")
+        }
+        helper.close()
+
+        // 以 Room v9 打开：触发 MIGRATION_8_9（空迁移——仅重写 identity hash，物理表一行不动）
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+            .allowMainThreadQueries()
+            .build()
+
+        // hints 物理表与 3 行存量原样保留（raw query——009 起无 DAO，可追溯不可用）
+        db.openHelper.readableDatabase.query("SELECT text FROM hints ORDER BY id ASC").use { cursor ->
+            val texts = mutableListOf<String>()
+            while (cursor.moveToNext()) texts += cursor.getString(0)
+            assertEquals(listOf("自定义A", "自定义B", "自定义C"), texts)
+        }
+
+        // 其余表零丢失：待办、完成事件、拦截事件照常可读
+        assertEquals(listOf("每天条目"), db.todoDao().observeAll().first().map { it.text })
+        assertEquals("2026-09-23", db.todoCompletionDao().observeEarliestDate().first())
+        assertEquals(
+            1,
+            db.interceptionEventDao()
+                .observeCountsByPackageBetween(rangeStart = 0, rangeEnd = Long.MAX_VALUE)
+                .first().single().total,
+        )
 
         db.close()
         context.deleteDatabase(dbName)

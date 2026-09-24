@@ -17,7 +17,7 @@ import androidx.core.content.ContextCompat
 import com.fivesec.app.R
 import com.fivesec.app.domain.model.Exercise
 import com.fivesec.app.domain.model.InterceptionOutcome
-import com.fivesec.app.domain.model.TodayTodo
+import com.fivesec.app.domain.model.TodayTodosSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,13 +29,14 @@ import kotlinx.coroutines.launch
  * [WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY]。
  * 非 Activity → 不受 OEM（如 ColorOS）"后台 startActivity"静默拦截；复用 [BlockingViewModel] 的 5 秒减速带状态机。
  *
- * 提示语由服务侧经 HintRepository 循环游标决定（specs/005-daily-todos：内置+池单一序列轮转），经 [hint] 注入。
- * "今日待办"紧凑卡片（specs/005-daily-todos）在 [todos] 注入瞬间定格：标题「今日待办 D/T」+ 未完成条目
- * （○ 前缀，最多 3 行，超出折叠）；全部完成显示完成态整行；启用数为 0 整块隐藏。只读、不参与 render() 锁定。
+ * 提示语链路已退役（specs/009-retire-hints，经用户拍板"方案A"整体移除）："今日待办"紧凑卡片是覆盖层
+ * **唯一**缓冲内容——[todos] 快照（[TodayTodosSnapshot]）注入瞬间定格，四态渲染见
+ * specs/009 contracts/todo-card-overlay.md §B：部分完成（「今日待办 D/T」+ ○ 未完成条目，最多 3 行，
+ * 超出折叠）/ 全部完成（✓ 整行）/ 无启用条目（引导添加）/ 有启用但今日不轮到（告知）。
+ * 卡片常驻：空态不再整块隐藏（009 空态二分）。只读、不参与 render() 锁定。
  * 布局优化（用户拍板）：72sp 大倒计时块已删，倒计时数字融进「请先思考 N 秒」行（22sp 品牌绿），
  * 解锁后该行变「✓ 请选择」。条目顺序由 TodoRepository.todayTodos 预排（仅今天→每N天→每周几→每天、
- * 同类型创建日倒序），本层只取头部 3 行——排序规则不在视图层。
- * 004 的"拦截页写提示语"输入行已整体移除（specs/005：栈式机制退役，池在提示语页维护）。
+ * 同类型创建日倒序），本层只取头部 3 行——排序与空态判定都不在视图层。
  *
  * 配色取自 res/values/colors.xml 的 brand_* token，与 Compose Color.kt 同源，保证品牌一致。
  * 始终浅色：覆盖层弹出在第三方 app 之上，非本 app 主题上下文。
@@ -43,8 +44,7 @@ import kotlinx.coroutines.launch
 class BlockingOverlay(
     context: Context,
     appLabel: String,
-    hint: String,
-    todos: List<TodayTodo>,
+    todos: TodayTodosSnapshot,
     private val onFinished: (InterceptionOutcome) -> Unit,
 ) {
     private val ctx: Context = context
@@ -76,12 +76,6 @@ class BlockingOverlay(
         setTextColor(onSurfaceColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f) // 对齐 Compose headlineMedium
         typeface = Typeface.DEFAULT_BOLD
-        gravity = Gravity.CENTER
-    }
-    private val hintText = TextView(ctx).apply {
-        text = hint
-        setTextColor(onSurfaceVariantColor)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
         gravity = Gravity.CENTER
     }
 
@@ -135,7 +129,7 @@ class BlockingOverlay(
         typeface = Typeface.DEFAULT_BOLD
     }
 
-    private val spacerBeforeTodos = spacer(dp(12)) // 待办卡片前导 spacer：空清单时与卡片一起 GONE，布局回现状
+    private val spacerBeforeTodos = spacer(dp(12)) // 待办卡片前导 spacer（009 起常驻：卡片不再隐藏，四态间距恒定）
 
     private val root: View = buildRoot()
 
@@ -158,24 +152,30 @@ class BlockingOverlay(
     private fun spacer(h: Int): View =
         View(ctx).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, h) }
 
-    /** 待办卡片内容填充（contracts/todo-ui.md 渲染规则表）：空清单整块 GONE（含前导 spacer），全完成仅标题行。 */
-    private fun applyTodos(todos: List<TodayTodo>) {
-        if (todos.isEmpty()) {
-            todoBlock.visibility = View.GONE
-            spacerBeforeTodos.visibility = View.GONE
+    /** 待办卡片内容填充（specs/009 contracts/todo-card-overlay.md §B 四态渲染表）：
+     *  卡片常驻——空态不再整块隐藏（009 起待办是覆盖层唯一缓冲内容）；空态二分由快照 anyEnabled 驱动，
+     *  判定不进视图层。 */
+    private fun applyTodos(todos: TodayTodosSnapshot) {
+        val items = todos.items
+        if (items.isEmpty()) {
+            todoTitle.text = if (todos.anyEnabled) {
+                ctx.getString(R.string.blocking_todos_empty_none_due) // 有启用条目但今日无一轮到
+            } else {
+                ctx.getString(R.string.blocking_todos_empty_none) // 一条启用的都没有：引导去添加
+            }
+            todoTitle.setTextColor(onSurfaceVariantColor)
+            todoItems.visibility = View.GONE
             return
         }
-        spacerBeforeTodos.visibility = View.VISIBLE
-        todoBlock.visibility = View.VISIBLE
-        val done = todos.count { it.isDone }
-        val pending = todos.filterNot { it.isDone }
+        val done = items.count { it.isDone }
+        val pending = items.filterNot { it.isDone }
         if (pending.isEmpty()) {
             todoTitle.text = ctx.getString(R.string.blocking_todos_all_done)
             todoTitle.setTextColor(primaryColor)
             todoItems.visibility = View.GONE
             return
         }
-        todoTitle.text = ctx.getString(R.string.blocking_todos_title, done, todos.size)
+        todoTitle.text = ctx.getString(R.string.blocking_todos_title, done, items.size)
         todoTitle.setTextColor(onSurfaceColor)
         todoItems.visibility = View.VISIBLE
         val shown = pending.take(TODO_MAX_LINES)
@@ -208,9 +208,7 @@ class BlockingOverlay(
             gravity = Gravity.CENTER
             setPadding(dp(24), dp(24), dp(24), dp(24))
             addView(titleText)
-            addView(spacer(dp(12)))
-            addView(hintText)
-            addView(spacerBeforeTodos) // 待办卡片前导 spacer（类字段）：空清单时与卡片一起 GONE，布局回现状
+            addView(spacerBeforeTodos) // 待办卡片前导 spacer（常驻）：标题与待办卡之间 12dp，四态恒定
             addView(todoBlock, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(spacer(dp(28)))
             addView(countdownLine)

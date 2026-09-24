@@ -2,11 +2,8 @@ package com.fivesec.app.di
 
 import android.content.Context
 import androidx.room.Room
-import com.fivesec.app.data.datastore.BuiltinHintsSetting
-import com.fivesec.app.data.datastore.DataStoreHintCursorStore
 import com.fivesec.app.data.datastore.SettingsDataStore
 import com.fivesec.app.data.db.AppDatabase
-import com.fivesec.app.data.db.HintDao
 import com.fivesec.app.data.db.InterceptionEventDao
 import com.fivesec.app.data.db.MIGRATION_1_2
 import com.fivesec.app.data.db.MIGRATION_2_3
@@ -15,10 +12,10 @@ import com.fivesec.app.data.db.MIGRATION_4_5
 import com.fivesec.app.data.db.MIGRATION_5_6
 import com.fivesec.app.data.db.MIGRATION_6_7
 import com.fivesec.app.data.db.MIGRATION_7_8
+import com.fivesec.app.data.db.MIGRATION_8_9
 import com.fivesec.app.data.db.TargetAppDao
 import com.fivesec.app.data.db.TodoCompletionDao
 import com.fivesec.app.data.db.TodoDao
-import com.fivesec.app.data.repository.HintCursorStore
 import com.fivesec.app.util.SystemTimeProvider
 import com.fivesec.app.util.TimeProvider
 import dagger.Module
@@ -39,7 +36,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "five_sec.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .build()
 
     @Provides
@@ -50,22 +47,10 @@ object AppModule {
         db.interceptionEventDao()
 
     @Provides
-    fun provideHintDao(db: AppDatabase): HintDao = db.hintDao()
-
-    /** 内置提示语开关的持久化口：DataStore 单例实现（HintRepository 与提示语页共用，单测注入 fake）。 */
-    @Provides
-    @Singleton
-    fun provideBuiltinHintsSetting(impl: SettingsDataStore): BuiltinHintsSetting = impl
-
-    @Provides
     fun provideTodoDao(db: AppDatabase): TodoDao = db.todoDao()
 
     @Provides
     fun provideTodoCompletionDao(db: AppDatabase): TodoCompletionDao = db.todoCompletionDao()
-
-    @Provides
-    @Singleton
-    fun provideHintCursorStore(impl: DataStoreHintCursorStore): HintCursorStore = impl
 
     @Provides
     fun provideTimeProvider(): TimeProvider = SystemTimeProvider()

@@ -40,3 +40,14 @@ data class TodayTodo(
     val text: String,
     val isDone: Boolean,
 )
+
+/**
+ * 覆盖层"今日待办"整体快照（specs/009-retire-hints）：[items] 与 [anyEnabled] 在仓库同一把锁内
+ * 产出、时点一致。anyEnabled = 快照时点是否存在**任何**启用条目（含今日不轮到者）——空态二分的
+ * 判定源：items 空 + anyEnabled=false → 引导添加；items 空 + anyEnabled=true → 告知今天没有
+ * 轮到的待办。覆盖层只读快照渲染，判定不进视图层。
+ */
+data class TodayTodosSnapshot(
+    val items: List<TodayTodo>,
+    val anyEnabled: Boolean,
+)

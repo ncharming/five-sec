@@ -23,7 +23,6 @@ class SettingsViewModel @Inject constructor(
             globalInterceptionEnabled = true,
             onboardingCompleted = false,
             statsRetentionDays = 90,
-            builtinHintsEnabled = true,
         ),
     )
 

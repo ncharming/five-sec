@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-五秒（five-sec）是纯离线的 Android 自律工具：无障碍服务检测到目标应用（默认抖音/小红书/B站）进入前台时，弹全屏 `TYPE_ACCESSIBILITY_OVERLAY` 覆盖层强制 5 秒提肛倒计时，结束后用户选「打开」（写抑制窗口放行）或「取消」（回桌面），每次拦截写入本地事件流水供统计页实时聚合；拦截页的核心提醒位是**今日待办卡片**（specs/009 起为唯一缓冲内容，把减速带时机变成每日任务的提醒位；提示语已规划退役——落地前仍并行展示一条内置+自定义循环轮换的提示语，该链路冻结不再扩展）；无账号、无网络、无后端，数据全在设备本地。
+五秒（five-sec）是纯离线的 Android 自律工具：无障碍服务检测到目标应用（默认抖音/小红书/B站）进入前台时，弹全屏 `TYPE_ACCESSIBILITY_OVERLAY` 覆盖层强制 5 秒提肛倒计时，结束后用户选「打开」（写抑制窗口放行）或「取消」（回桌面），每次拦截写入本地事件流水供统计页实时聚合；拦截页的核心提醒位是**今日待办卡片**（specs/009 起为唯一缓冲内容，把减速带时机变成每日任务的提醒位；提示语功能已整体退役落地——覆盖层不再展示提示语行、「提示语」Tab 已移除，空态由待办卡常驻补位：无启用条目=引导添加、有启用但今日不轮到=告知）；无账号、无网络、无后端，数据全在设备本地。
 
 ## 常用命令
 
@@ -43,11 +43,11 @@ adb shell pm grant com.fivesec.app android.permission.WRITE_SECURE_SETTINGS
 
 ```
 interception/   拦截决策与无障碍服务（AppBlockerAccessibilityService → InterceptionController → CooldownGate）
-blocking/       拦截覆盖层 UI + 5 秒状态机 + 今日待办卡片（BlockingOverlay → BlockingViewModel）
-settings/       用户界面：ui/（Home 4-Tab 骨架 待办/提示语/统计/设置 → Todo/HintList/Stats/Intercept Screen，另有 Onboarding）+ viewmodels/
-data/           db/（Room：AppDatabase v8 + DAO）、datastore/（SettingsDataStore、DataStoreHintCursorStore）、repository/、seed/
-domain/model/   纯 Kotlin 领域模型（TargetApp、InterceptionEvent、InterceptionOutcome、Exercise、Hint、Todo、AppSettings）
-di/             AppModule：唯一的 Hilt @Module（DB、DAO、TimeProvider、HintCursorStore、应用级 CoroutineScope）
+blocking/       拦截覆盖层 UI + 5 秒状态机 + 今日待办卡片（BlockingOverlay → BlockingViewModel；009 起卡片四态常驻=唯一缓冲内容）
+settings/       用户界面：ui/（Home 3-Tab 骨架 待办/统计/设置 → Todo/Stats/Intercept Screen，另有 Onboarding；009 移除提示语 Tab 与 HintList）+ viewmodels/
+data/           db/（Room：AppDatabase v9 + DAO，hints 物理表保留不声明）、datastore/（SettingsDataStore）、repository/、seed/
+domain/model/   纯 Kotlin 领域模型（TargetApp、InterceptionEvent、InterceptionOutcome、Exercise、Todo、TodayTodo/TodayTodosSnapshot、AppSettings）
+di/             AppModule：唯一的 Hilt @Module（DB、DAO、迁移链 1→9、TimeProvider、应用级 CoroutineScope）
 util/           叶子工具：TimeProvider、DateUtil、PackageUtil、AppBrandColorExtractor、AccessibilityPermissionHelper
 ui/theme/       Compose 主题 token（与 colors.xml 的 brand_* 同源）
 ```
@@ -122,7 +122,7 @@ ui/theme/       Compose 主题 token（与 colors.xml 的 brand_* 同源）
 工具无关的行为约束（无论用哪个 agent/IDE/命令行都适用）：
 
 - **代码优先于文档**：`specs/001` 的 data-model/状态机已落后于实现（现为 overlay 而非 `BlockingActivity`——`BlockingActivity` 已不存在；抑制窗口是 5s（`SUPPRESSION_MS=5_000`）而非文档写的 3s）——行为以代码为准，改完顺手同步文档。
-- **提示语链路冻结（specs/009）**：待办是拦截缓冲层的唯一内容，提示语相关代码（HintListScreen/HintListViewModel/HintRepository/DataStoreHintCursorStore/内置开关）只删不增；改拦截页内容层时以待办卡为核心，空态区分「无启用条目=引导添加」与「今日不轮到=告知」，完整口径读 specs/009-retire-hints/spec.md。
+- **提示语功能已退役（specs/009，已落地）**：待办是拦截缓冲层的唯一内容，提示语相关代码（HintListScreen/HintListViewModel/HintRepository/DataStoreHintCursorStore/内置开关）已删除——不要为「找回功能」重建，也不要为「清理数据」复活读写：`hints` 物理表只读保留（Room v9 空迁移，无 DAO、不声明），DataStore 的 `hint_cycle_cursor`/`builtin_hints_enabled` 键停用残留不清理；改拦截页内容层时以待办卡为核心，空态区分「无启用条目=引导添加」与「今日不轮到=告知」，完整口径读 specs/009-retire-hints/spec.md。
 - 动无障碍服务事件逻辑前，先读 `AppBlockerAccessibilityService` 的事件处理注释并跑 `InterceptionControllerTest`；三个放行标记有优先级语义：`userOpenedPkg` > `suppressedPkg` > 去抖冷却，切到别的目标应用会清除 `userOpenedPkg`。
 - 带注释的防御性写法不要「简化」掉：如 `StatsRange.availablePeriods` 生成月份周期必须先 `withDayOfMonth(1)` 再 `withMonth(m)`——31 号直接换月会在短月抛异常。
 - 拦截流程时序是固定契约：「取消/打断」先 `GLOBAL_ACTION_HOME` 再延迟 250ms 撤 overlay，顺序反了目标应用会闪现；「打开」时目标一直在 overlay 后面运行，撤掉即见，不重复发 LaunchIntent。
@@ -139,8 +139,8 @@ ui/theme/       Compose 主题 token（与 colors.xml 的 brand_* 同源）
 - **抑制（Suppression）**：选「打开」后临时放行该应用的重启，防止回到目标应用时二次拦截；`userOpenedPkg`（使用期间永久放行）与 `suppressedPkg`（立即生效）是服务内两个不同字段。
 - **去抖（Debounce）**：`TYPE_WINDOW_STATE_CHANGED` 连发防重复弹窗，窗口 `DEBOUNCE_MS=800`；两者都实现在纯类 `CooldownGate`，常量在 `InterceptionController`。
 - **覆盖层（Overlay）**：`TYPE_ACCESSIBILITY_OVERLAY` 全屏窗口，由无障碍服务绘制，始终浅色。
-- **待办（Todo）**：**核心功能、拦截缓冲层的唯一内容**（009 起提示语退役）。清单条目 = 标题 ≤200 字 + 启用开关 + `lastCompletedDate` + 重复规则三列 + `createdAt`/`dueDate`（007），上限 20 条（今日区+过期区共享）；完成判定 = `lastCompletedDate == 今天`（惰性重置，无清理任务）；重复规则四选一：每天（默认）/ 按星期几（位掩码 bit0=周一…bit6=周日）/ 每 N 天（2–365 滚动，锚点=`lastCompletedDate`，切换规则不清锚点）/ 单次（007：只在有效期日轮到，当天完成跨日清理、未完成跨日进过期区、无迟到补勾）——判定纯逻辑在 `util/TodoRecurrence`；不轮到的日子待办页灰显禁勾、覆盖层卡片与 D/T 分母只含「轮到且启用」条目（`todayTodos` 快照过滤兑现）；每次勾选写 `todo_completions` 完成事件（008：当天同条唯一、取消即删），统计页有任务完成统计；无通知；覆盖层只读展示（前 3 条、每条截前 12 字、全完成显 ✓ 行、今日无「轮到且启用」条目整卡隐藏——009 规划改为空态：无启用=引导添加、有启用但今日不轮到=告知），勾选仅在待办页（列表单行省略、点条目弹只读全文弹窗）。
-- **循环游标（HintCursor）**：提示语展示为「内置（资源数组顺序）+ 池（id 升序）」单一序列的循环，游标持久化在 DataStore（`hint_cycle_cursor`），进程重启续接；序列增删后取模继续，不承诺严格不重不漏。004 的栈式一次性提示已退役（存量行经 MIGRATION_4_5 改挂 pool）；009 拍板整条提示语链路退役——待办为唯一缓冲内容、`hints` 表只读保留不迁移、游标与内置开关停用（残留不清理），落地前维持现状。
+- **待办（Todo）**：**核心功能、拦截缓冲层的唯一内容**（009 起提示语退役）。清单条目 = 标题 ≤200 字 + 启用开关 + `lastCompletedDate` + 重复规则三列 + `createdAt`/`dueDate`（007），上限 20 条（今日区+过期区共享）；完成判定 = `lastCompletedDate == 今天`（惰性重置，无清理任务）；重复规则四选一：每天（默认）/ 按星期几（位掩码 bit0=周一…bit6=周日）/ 每 N 天（2–365 滚动，锚点=`lastCompletedDate`，切换规则不清锚点）/ 单次（007：只在有效期日轮到，当天完成跨日清理、未完成跨日进过期区、无迟到补勾）——判定纯逻辑在 `util/TodoRecurrence`；不轮到的日子待办页灰显禁勾、覆盖层卡片与 D/T 分母只含「轮到且启用」条目（`todayTodos` 快照过滤兑现）；每次勾选写 `todo_completions` 完成事件（008：当天同条唯一、取消即删），统计页有任务完成统计；无通知；覆盖层只读展示（前 3 条、每条截前 12 字、全完成显 ✓ 行、今日无「轮到且启用」条目时空态常驻——009 落地：无启用=引导添加、有启用但今日不轮到=告知，卡片不再隐藏），勾选仅在待办页（列表单行省略、点条目弹只读全文弹窗）。
+- **循环游标（HintCursor）**：提示语展示为「内置（资源数组顺序）+ 池（id 升序）」单一序列的循环，游标持久化在 DataStore（`hint_cycle_cursor`），进程重启续接；序列增删后取模继续，不承诺严格不重不漏。004 的栈式一次性提示已退役（存量行经 MIGRATION_4_5 改挂 pool）；009 拍板并于 2026-09 落地整条提示语链路退役——待办为唯一缓冲内容、`hints` 物理表只读保留（Room v9 空迁移，无 DAO）、游标与内置开关停用（DataStore 残留键不清理），提示语展示与轮换逻辑已随代码删除。
 - **档位/周期（StatsRange/StatsPeriod）**：统计页 日/周/月/年 自然周期（周一起算、不含未来周期；月=当年 1 月至今，年=最早事件年至今）；顶部今日四数（拦截/取消/打开/连续天数，008 起并进统计主页「今日拦截」卡）与档位无关。
 - **连击（Streak）**：连续完成 5 秒锻炼的天数；今天未完成但昨天连续则不断连。
 - **品牌色**：从应用图标提取的卡片主色（`AppBrandColorExtractor` + Palette），回退健康绿 `FALLBACK_BRAND_ARGB`。

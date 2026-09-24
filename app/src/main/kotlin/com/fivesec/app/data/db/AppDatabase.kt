@@ -6,7 +6,6 @@ import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.fivesec.app.domain.model.Hint
 import com.fivesec.app.domain.model.InterceptionEvent
 import com.fivesec.app.domain.model.InterceptionOutcome
 import com.fivesec.app.domain.model.TargetApp
@@ -14,15 +13,14 @@ import com.fivesec.app.domain.model.Todo
 import com.fivesec.app.domain.model.TodoCompletion
 
 @Database(
-    entities = [TargetApp::class, InterceptionEvent::class, Hint::class, Todo::class, TodoCompletion::class],
-    version = 8, // v8：新增 todo_completions 完成事件表（specs/008-todo-stats，统计页任务历史数据源）
+    entities = [TargetApp::class, InterceptionEvent::class, Todo::class, TodoCompletion::class],
+    version = 9, // v9：提示语功能退役（specs/009-retire-hints）——Hint 实体出库，物理 hints 表保留（空迁移）
     exportSchema = false,
 )
 @TypeConverters(InterceptionOutcomeConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun targetAppDao(): TargetAppDao
     abstract fun interceptionEventDao(): InterceptionEventDao
-    abstract fun hintDao(): HintDao
     abstract fun todoDao(): TodoDao
     abstract fun todoCompletionDao(): TodoCompletionDao
 }
@@ -132,6 +130,15 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
                 "ON `todo_completions` (`todoId`, `completedDate`)"
         )
     }
+}
+
+// 从版本8迁移到版本9：提示语功能退役（specs/009-retire-hints）。
+// 迁移体为空（零 SQL）：Hint 实体退出 @Database 声明后 identity hash 变化，升版本仅为让
+// room_master_table 重写校验值（不升版本老安装打开即抛 "cannot verify the data integrity"）。
+// 物理 hints 表与存量数据**原样保留**（只读退役：应用零读写、无 DAO，可追溯不可用）——
+// 不 DROP、不清空、零破坏性操作（数据零破坏红线，FR-006）。
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(database: SupportSQLiteDatabase) = Unit
 }
 
 class InterceptionOutcomeConverter {

@@ -7,11 +7,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Checklist
-import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Checklist
-import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -33,7 +31,7 @@ import androidx.compose.ui.res.stringResource
 import com.fivesec.app.R
 
 /**
- * 首页骨架（specs/005 起 4 Tab；布局优化后顺序：待办 / 提示语 / 统计 / 设置，默认落待办）：
+ * 首页骨架（specs/009 起 3 Tab：待办 / 统计 / 设置，默认落待办——提示语 Tab 随功能退役移除）：
  * - 原「拦截」Tab 更名「设置」并右移到最右（内容仍是拦截总开关+目标应用管理，重构另立 spec），
  *   图标换齿轮以贴「设置」语义；选中态品牌绿、未选中灰，无胶囊指示器；点击瞬时切换，无切换动画。
  * - SaveableStateHolder 按页保持滚动位置等 UI 状态；各页 ViewModel 挂在首页
@@ -50,14 +48,16 @@ private enum class HomeTab(
     val unselectedIcon: ImageVector,
 ) {
     TODOS(R.string.tab_todos, Icons.Filled.Checklist, Icons.Outlined.Checklist),
-    TIPS(R.string.tab_tips, Icons.Filled.Lightbulb, Icons.Outlined.Lightbulb),
     STATS(R.string.tab_stats, Icons.Filled.BarChart, Icons.Outlined.BarChart),
     SETTINGS(R.string.tab_settings, Icons.Filled.Settings, Icons.Outlined.Settings),
 }
 
 @Composable
 fun HomeScreen() {
-    var selectedTab by rememberSaveable { mutableStateOf(HomeTab.TODOS) }
+    // 以枚举名持久化选中 Tab，恢复按名查找并兜底 TODOS：升级窗口的旧存档（如已退役的 TIPS）
+    // 不会让枚举解析抛异常（specs/009 Tab 收窄的防崩兜底）
+    var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.TODOS.name) }
+    val selectedTab = HomeTab.entries.find { it.name == selectedTabName } ?: HomeTab.TODOS
     val stateHolder = rememberSaveableStateHolder()
 
     Scaffold(
@@ -67,7 +67,7 @@ fun HomeScreen() {
                     val selected = tab == selectedTab
                     NavigationBarItem(
                         selected = selected,
-                        onClick = { selectedTab = tab },
+                        onClick = { selectedTabName = tab.name },
                         icon = {
                             Icon(
                                 if (selected) tab.selectedIcon else tab.unselectedIcon,
@@ -93,7 +93,6 @@ fun HomeScreen() {
             Box(Modifier.padding(padding).consumeWindowInsets(padding)) {
                 when (selectedTab) {
                     HomeTab.TODOS -> TodoScreen()
-                    HomeTab.TIPS -> HintListScreen()
                     HomeTab.STATS -> StatsScreen()
                     HomeTab.SETTINGS -> InterceptScreen()
                 }

@@ -295,7 +295,7 @@ fun TodoScreen(
             },
             dismissButton = {
                 TextButton(onClick = { deleteTarget = null }) {
-                    Text(stringResource(R.string.hints_dismiss))
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
         ) {
@@ -580,7 +580,7 @@ private fun TodoEditDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.hints_dismiss))
+                Text(stringResource(R.string.common_cancel))
             }
         },
     ) {
@@ -599,7 +599,7 @@ private fun TodoEditDialog(
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
-            stringResource(R.string.hints_char_count, text.length, TodoRepository.MAX_TEXT_LENGTH),
+            stringResource(R.string.common_char_count, text.length, TodoRepository.MAX_TEXT_LENGTH),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier

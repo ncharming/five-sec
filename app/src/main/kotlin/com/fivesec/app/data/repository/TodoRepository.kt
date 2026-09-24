@@ -7,6 +7,7 @@ import com.fivesec.app.domain.model.Todo
 import com.fivesec.app.domain.model.TodoCompletion
 import com.fivesec.app.domain.model.TodoRule
 import com.fivesec.app.domain.model.TodayTodo
+import com.fivesec.app.domain.model.TodayTodosSnapshot
 import com.fivesec.app.util.DateUtil
 import com.fivesec.app.util.TimeProvider
 import com.fivesec.app.util.TodoRecurrence
@@ -20,7 +21,7 @@ import kotlinx.coroutines.launch
 
 /**
  * 待办聚合点（specs/005-daily-todos；006 重复规则；007 一次性/过期口径；008 完成事件）：
- *  - 无障碍服务在主线程同步调 [todayTodos] 取覆盖层"今日待办"快照（快照模式，对齐 HintRepository）；
+ *  - 无障碍服务在主线程同步调 [todayTodos] 取覆盖层"今日待办"快照（快照模式，009 起为覆盖层唯一内容源）；
  *  - 待办页经 [observeAll]/add/rename/remove/setEnabled/setCompleted/setRecurrence/revive 管理；
  *  - 统计页经 [observeCompletionCountByTodoBetween]/[observeEarliestCompletionDate] 聚合完成历史
  *    （todo_completions 事件表，勾选落一行/取消删当日，统计=流水实时聚合无预聚合表）。
@@ -54,13 +55,14 @@ class TodoRepository @Inject constructor(
 
     private fun today(): String = DateUtil.todayString(timeProvider.now())
 
-    /** 覆盖层创建时调用（主线程安全：锁内纯内存映射）；只含「启用且今天轮到」条目，
-     *  isDone 按 today 口径映射——覆盖层卡片的 D/T 分母、○ 未完成列表、空块隐藏因此自动
-     *  只看轮到条目（FR-006/FR-007），服务与 BlockingOverlay 零改动。一次性条目当天计入、
-     *  过期/非有效期日天然排除（isDue 口径）。条目按 [overlayOrder] 排序：卡片只取头部，
-     *  谁「排在前面」由这里定。 */
-    fun todayTodos(today: String): List<TodayTodo> = synchronized(lock) {
-        overlayOrder(
+    /** 覆盖层创建时调用（主线程安全：锁内纯内存映射）；items 只含「启用且今天轮到」条目，
+     *  isDone 按 today 口径映射——覆盖层卡片 D/T 分母、○ 未完成列表因此自动只看轮到条目
+     *  （FR-006/FR-007）。anyEnabled = 全量快照中是否存在任何启用条目（含今日不轮到者）——
+     *  009 空态二分的判定源（无启用=引导添加、有启用今日不轮到=告知），与 items 同锁产出时点一致。
+     *  一次性条目当天计入、过期/非有效期日天然排除（isDue 口径）。条目按 [overlayOrder] 排序：
+     *  卡片只取头部，谁「排在前面」由这里定。 */
+    fun todayTodos(today: String): TodayTodosSnapshot = synchronized(lock) {
+        val due = overlayOrder(
             snapshot.filter {
                 it.isEnabled && TodoRecurrence.isDue(
                     it.repeatType,
@@ -72,6 +74,7 @@ class TodoRepository @Inject constructor(
                 )
             },
         ).map { TodayTodo(it.text, it.lastCompletedDate == today) }
+        TodayTodosSnapshot(items = due, anyEnabled = snapshot.any { it.isEnabled })
     }
 
     /** 待办页列表（id 升序，含停用与过期条目，分区由 VM 派生；透传 DAO）。 */
@@ -159,7 +162,7 @@ class TodoRepository @Inject constructor(
     /** 最早完成日期（yyyy-MM-dd；无记录为 null）——统计页年档位可选范围与拦截最早事件取更早。 */
     fun observeEarliestCompletionDate(): Flow<String?> = todoCompletionDao.observeEarliestDate()
 
-    /** trim 非空白 + 200 字符硬截断（待办口径；提示语维持 30 字，两者不再同一口径）；不合法返回 null（不落库）。 */
+    /** trim 非空白 + 200 字符硬截断（待办口径）；不合法返回 null（不落库）。 */
     private fun normalize(text: String): String? {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return null
@@ -170,7 +173,7 @@ class TodoRepository @Inject constructor(
         /** 待办数量上限（添加校验与 UI 名额行共用单一来源；今日/过期两区共享，specs/007）。 */
         const val MAX_TODOS = 20
 
-        /** 标题长度上限：待办 200 字（提示语维持 30 字不变）。展示层另有两个更小的口径：待办页单行省略、拦截卡片截前 12 字。 */
+        /** 标题长度上限：待办 200 字。展示层另有两个更小的口径：待办页单行省略、拦截卡片截前 12 字。 */
         const val MAX_TEXT_LENGTH = 200
 
         /** 覆盖层卡片排序（用户拍板口径）：第一层类型优先级 仅今天→每N天→每周几→每天

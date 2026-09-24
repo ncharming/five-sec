@@ -15,28 +15,18 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore by preferencesDataStore(name = "five_sec_settings")
 
 /**
- * 内置提示语开关的持久化存取口（specs：提示语页内置条目启停）：
- * 生产实现是 [SettingsDataStore]（DataStore Preferences，项目现有配置存储），
- * 抽成接口是为了让 HintRepository / HintListViewModel 在 JVM 单测里用手控 fake 替身——
- * 具体 DataStore 依赖 Context 与磁盘文件，无法在纯 JUnit 测试中安全构造。
+ * 应用设置存取口（DataStore Preferences）。提示语相关键（`builtin_hints_enabled`/
+ * `hint_cycle_cursor`）随 specs/009-retire-hints 退役：代码全部移除，设备上的残留键值
+ * 不清理、无读取者（FR-007 允许残留）。
  */
-interface BuiltinHintsSetting {
-    /** 内置提示语是否参与随机抽取；首次使用（无历史配置）按 true 回落。 */
-    val builtinHintsEnabled: Flow<Boolean>
-
-    suspend fun setBuiltinHintsEnabled(enabled: Boolean)
-}
-
 @Singleton
 class SettingsDataStore @Inject constructor(
     @ApplicationContext private val context: Context,
-) : BuiltinHintsSetting {
+) {
     private object Keys {
         val GLOBAL_ENABLED = booleanPreferencesKey("interception_globally_enabled")
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_completed")
         val RETENTION_DAYS = intPreferencesKey("stats_retention_days")
-        val BUILTIN_HINTS_ENABLED = booleanPreferencesKey("builtin_hints_enabled")
-        val HINT_CURSOR = intPreferencesKey("hint_cycle_cursor") // 提示语循环游标（specs/005）
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -44,27 +34,13 @@ class SettingsDataStore @Inject constructor(
             globalInterceptionEnabled = p[Keys.GLOBAL_ENABLED] ?: true,
             onboardingCompleted = p[Keys.ONBOARDING_DONE] ?: false,
             statsRetentionDays = p[Keys.RETENTION_DAYS] ?: 90,
-            builtinHintsEnabled = p[Keys.BUILTIN_HINTS_ENABLED] ?: true, // 首次使用默认开启 = 现行为
         )
-    }
-
-    /** 提示语循环游标：下一次应展示的序列下标；进程重启后续接而非归零（specs/005-daily-todos）。 */
-    val hintCursor: Flow<Int> = context.dataStore.data.map { p -> p[Keys.HINT_CURSOR] ?: 0 }
-
-    suspend fun setHintCursor(value: Int) {
-        context.dataStore.edit { it[Keys.HINT_CURSOR] = value }
     }
 
     val globalEnabled: Flow<Boolean> = settings.map { it.globalInterceptionEnabled }
 
-    override val builtinHintsEnabled: Flow<Boolean> = settings.map { it.builtinHintsEnabled }
-
     suspend fun setGlobalEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.GLOBAL_ENABLED] = enabled }
-    }
-
-    override suspend fun setBuiltinHintsEnabled(enabled: Boolean) {
-        context.dataStore.edit { it[Keys.BUILTIN_HINTS_ENABLED] = enabled }
     }
 
     suspend fun setOnboardingCompleted(done: Boolean) {

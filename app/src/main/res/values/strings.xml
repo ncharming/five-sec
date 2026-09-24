@@ -16,24 +16,17 @@
 
     <!-- Blocking screen -->
     <string name="blocking_title">是否打开 %1$s？</string>
-    <string-array name="blocking_exercise_hints">
-        <item>收紧盆底肌，保持 5 秒</item>
-        <item>深吸一口气，慢慢吐出来</item>
-        <item>眨眼 10 次</item>
-        <item>看一眼远处（6 米外的东西）</item>
-        <item>耸肩到耳根，停 3 秒再放下</item>
-        <item>闭上眼，问自己：现在真的要打开吗？</item>
-        <item>攥紧拳头 3 秒，再完全张开手指</item>
-    </string-array>
     <string name="blocking_open">打开</string>
     <string name="blocking_cancel">取消</string>
     <string name="blocking_wait">请先思考 %1$d 秒</string>
     <string name="blocking_choose">✓ 请选择</string>
 
-    <!-- Blocking overlay 今日待办卡片（specs/005-daily-todos） -->
+    <!-- Blocking overlay 今日待办卡片（specs/005-daily-todos；009 起唯一缓冲内容，空态二分常驻） -->
     <string name="blocking_todos_title">今日待办 %1$d/%2$d</string>
     <string name="blocking_todos_all_done">今日待办已全部完成 ✓</string>
     <string name="blocking_todos_more">…还有 %1$d 条</string>
+    <string name="blocking_todos_empty_none">还没有今日待办 · 打开「五秒」添加</string>
+    <string name="blocking_todos_empty_none_due">今天没有轮到的待办</string>
 
     <!-- Intercept（合并页：拦截总开关 + 无障碍状态 + 应用清单，specs/005-daily-todos） -->
     <string name="intercept_title">拦截</string>
@@ -88,25 +81,10 @@
     <string name="todos_date_unknown">—</string>
     <string name="todos_menu_revive">改为今天</string>
 
-    <!-- Custom hint manager（specs/004 引入；specs/005 起循环展示） -->
-    <string name="hints_title">自定义提示语</string>
-    <string name="hints_subtitle">拦截时按顺序循环展示一条</string>
-    <string name="hints_add">添加提示语</string>
-    <string name="hints_empty">还没有自定义提示语。添加后会与内置提示按顺序轮换展示。</string>
-    <string name="hints_input_hint">输入提示语</string>
-    <string name="hints_add_confirm">添加</string>
-    <string name="hints_dismiss">取消</string>
-    <string name="hints_delete">删除这条提示语</string>
-    <string name="hints_builtin_section">内置提示语（只读）</string>
-    <string name="hints_builtin_switch">内置提示语开关</string>
-    <string name="hints_builtin_save_failed">设置未能保存，已恢复原状态</string>
-    <string name="hints_char_count">%1$d/%2$d</string>
-
-    <!-- Home bottom tabs（specs/005-daily-todos：[待办, 拦截, 提示语, 统计]，默认待办） -->
+    <!-- Home bottom tabs（specs/009 起三项：待办/统计/设置，默认待办——提示语 Tab 已退役） -->
     <string name="tab_todos">待办</string>
-    <string name="tab_settings">设置</string>
-    <string name="tab_tips">提示语</string>
     <string name="tab_stats">统计</string>
+    <string name="tab_settings">设置</string>
 
     <!-- App list -->
     <string name="app_list_title">拦截应用</string>
@@ -129,7 +107,9 @@
     <!-- Common dialog（统一弹窗标题/按钮文案，替代此前硬编码中文） -->
     <string name="common_notice">提示</string>
     <string name="common_confirm">确定</string>
+    <string name="common_cancel">取消</string>
     <string name="common_done">完成</string>
+    <string name="common_char_count">%1$d/%2$d</string>
 
     <!-- Stats -->
     <string name="stats_title">统计</string>
