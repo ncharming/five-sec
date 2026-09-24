@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,12 +19,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,10 +39,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -58,18 +63,24 @@ import com.fivesec.app.ui.components.AppIcon
 import com.fivesec.app.ui.components.CardSurface
 import com.fivesec.app.ui.components.PageHeader
 import com.fivesec.app.ui.theme.Spacing
+import kotlin.math.roundToInt
 
 /**
- * 统计页（specs/008-todo-stats 双块重构；统一视觉：大标题页头 + 白卡体系）。
+ * 统计页（specs/008 双块结构 + 2026-09 用户拍板主页视觉重构；统一视觉：大标题页头 + 白卡体系）。
  *
- * 页内三态：主页（今日拦截三列卡 + 连击卡【锚点不动】+ 今日任务三列卡 + 两张入口卡）/
+ * 页内三态：主页（「今日任务」Hero 卡 + 「今日拦截」双 Hero 卡，均整卡可点进对应二级页）/
  * 应用拦截统计二级页（原"各应用历史数据"整块原样搬迁）/ 任务完成统计二级页（周期总完成 +
  * 按条目完成次数）。二级页不进导航图——页内状态 + BackHandler 兜底系统返回，底部 Tab 栏全程
  * 保留且切 Tab 现场不丢（HomeScreen 的 SaveableStateHolder 免费给）；两个二级页共享档位/周期
  * 选择（同一时间视角对比两块数据，状态在 VM 里）。
  *
- * 空态契约（specs/002 FR 口径延续）：数值为 0 是有效数据——今日三卡、总完成卡照常渲染 0；
- * 仅任务条目列表无行时显示空态文案（拦截侧应用卡恒渲染目标应用 0 值卡）。
+ * 主页重构口径（用户拍板）：一屏两域、每域一个焦点——原「拦截三列卡 + 连击卡 + 任务三列卡 +
+ * 两张入口行」的等权重布局改为双 Hero 卡；连击并入拦截卡（同为 5 秒锻炼语义）；数据全部仍读
+ * StatsViewModel 现有流（ui/todoToday），0 是有效数据照常渲染，跨零点沿用 VM 构造锚点。
+ * 原 AGENTS.md「今日四卡」锚点属计划内重构（验证标准第 4 条的用户拍板例外）。
+ *
+ * 空态契约（specs/002 FR 口径延续）：数值为 0 是有效数据——Hero 数字、进度条（0/0 → 0%）照常
+ * 渲染 0；仅任务条目列表无行时显示空态文案（拦截侧应用卡恒渲染目标应用 0 值卡）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -144,7 +155,7 @@ fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
 /** 统计页页内三态（rememberSaveable 存名，跨配置变更/切 Tab 保留现场）。 */
 private enum class StatsPage { MAIN, APP_HISTORY, TODO_HISTORY }
 
-/** 统计主页：今日拦截三列卡 + 连击卡（两卡零改动，锚点）+ 今日任务三列卡 + 两张入口卡。 */
+/** 统计主页：「今日任务」Hero 卡 + 「今日拦截」双 Hero 卡，均整卡可点进二级页（入口即内容）。 */
 @Composable
 private fun StatsMainPage(
     ui: StatsUi,
@@ -161,72 +172,251 @@ private fun StatsMainPage(
         Modifier.padding(horizontal = Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        // ── 今日三指标：单卡三列，发丝线分隔（锚点，零改动） ──
-        CardSurface {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min)
-                    .padding(vertical = Spacing.lg),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BigMetric(stringResource(R.string.stats_today_intercepted), ui.total.toString(), Modifier.weight(1f))
-                VerticalHairline()
-                BigMetric(stringResource(R.string.stats_today_canceled), ui.canceled.toString(), Modifier.weight(1f))
-                VerticalHairline()
-                BigMetric(stringResource(R.string.stats_today_opened), ui.opened.toString(), Modifier.weight(1f))
-            }
-        }
+        TodayTasksCard(stats = todoToday, onClick = onOpenTodoHistory)
+        TodayInterceptCard(stats = ui, onClick = onOpenAppHistory)
+    }
+}
 
-        // ── 连续完成天数（锚点，零改动） ──
-        CardSurface {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(Spacing.lg),
-                horizontalAlignment = Alignment.CenterHorizontally,
+/**
+ * 今日任务 Hero 卡（视觉稿主焦点）：完成/轮到大字 + 品牌绿进度条 + 百分比 + 过期警示行。
+ * 全部完成（total>0 且完成=轮到）时追加「✓ 全部完成」胶囊；total=0 渲染 0/0 · 0%
+ * （0 是有效数据，不做特殊空态）。整卡可点进任务完成统计二级页。
+ */
+@Composable
+private fun TodayTasksCard(stats: TodoTodayStatsUi, onClick: () -> Unit) {
+    val allDone = stats.total > 0 && stats.completed >= stats.total
+    val progressFraction = if (stats.total > 0) stats.completed.toFloat() / stats.total else 0f
+    val percent = if (stats.total > 0) (stats.completed * 100.0 / stats.total).roundToInt() else 0
+
+    CardSurface(onClick = onClick) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.lg, vertical = Spacing.lg),
+        ) {
+            DomainRow(Icons.Filled.Checklist, stringResource(R.string.stats_domain_today_tasks))
+            Row(
+                modifier = Modifier.padding(top = Spacing.md),
+                verticalAlignment = Alignment.Bottom,
             ) {
                 Text(
-                    "${ui.streak} 天",
-                    style = MaterialTheme.typography.headlineMedium,
+                    "${stats.completed}",
+                    style = MaterialTheme.typography.displaySmall,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    stringResource(R.string.stats_streak),
-                    style = MaterialTheme.typography.bodySmall,
+                    "/${stats.total}",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = Spacing.xs),
+                    modifier = Modifier.padding(start = 2.dp, bottom = 3.dp),
+                )
+                if (allDone) {
+                    Spacer(Modifier.weight(1f))
+                    AllDonePill()
+                }
+            }
+            Text(
+                stringResource(R.string.stats_tasks_hero_label, stats.total),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = Spacing.xs),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(6.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainer),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(progressFraction)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                    )
+                }
+                Text(
+                    "$percent%",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = Spacing.sm),
                 )
             }
+            ExpiredRow(stats.expired, modifier = Modifier.padding(top = Spacing.sm))
         }
+    }
+}
 
-        // ── 今日任务三数（specs/008）：任务=轮到且启用（D/T 同口径）/ 完成 / 过期 ──
-        CardSurface {
+/** 今日拦截双 Hero 卡：拦截次数（主）| 连续天数（次，同为 5 秒锻炼语义）+ 取消/打开小字；整卡可点。 */
+@Composable
+private fun TodayInterceptCard(stats: StatsUi, onClick: () -> Unit) {
+    CardSurface(onClick = onClick) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.lg, vertical = Spacing.lg),
+        ) {
+            DomainRow(Icons.Filled.Shield, stringResource(R.string.stats_today_intercepted))
             Row(
                 Modifier
                     .fillMaxWidth()
                     .height(IntrinsicSize.Min)
-                    .padding(vertical = Spacing.lg),
+                    .padding(top = Spacing.md),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                BigMetric(stringResource(R.string.stats_today_tasks), todoToday.total.toString(), Modifier.weight(1f))
+                HeroCell(
+                    value = "${stats.total}",
+                    label = stringResource(R.string.stats_today_intercepted),
+                    emphasized = true,
+                    modifier = Modifier.weight(1f),
+                )
                 VerticalHairline()
-                BigMetric(stringResource(R.string.stats_today_tasks_done), todoToday.completed.toString(), Modifier.weight(1f))
-                VerticalHairline()
-                BigMetric(stringResource(R.string.stats_today_tasks_expired), todoToday.expired.toString(), Modifier.weight(1f))
+                HeroCell(
+                    value = "${stats.streak}",
+                    unit = stringResource(R.string.stats_unit_day),
+                    label = stringResource(R.string.stats_streak),
+                    emphasized = false,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                modifier = Modifier.padding(top = Spacing.md),
+            )
+            Text(
+                stringResource(R.string.stats_today_outcomes, stats.canceled, stats.opened),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = Spacing.sm),
+            )
+        }
+    }
+}
+
+/** 域标题行：品牌色圆底图标 + 域名 + ›（箭头纯装饰，可点语义由整卡承载）。 */
+@Composable
+private fun DomainRow(icon: ImageVector, title: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+        Text(
+            title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = Spacing.sm),
+        )
+        Icon(
+            Icons.Filled.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+/** 双 Hero 单元：大数字（+可选小单位）+ 灰色小标签；主格 36sp / 次格 28sp 拉开主次。 */
+@Composable
+private fun HeroCell(
+    value: String,
+    label: String,
+    emphasized: Boolean,
+    modifier: Modifier = Modifier,
+    unit: String? = null,
+) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                value,
+                style = if (emphasized) {
+                    MaterialTheme.typography.displaySmall
+                } else {
+                    MaterialTheme.typography.headlineMedium
+                },
+                fontWeight = FontWeight.Bold,
+            )
+            if (unit != null) {
+                Text(
+                    unit,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 2.dp, bottom = 3.dp),
+                )
             }
         }
-
-        // ── 两块入口：历史数据下沉二级页（specs/008） ──
-        EntryCard(
-            icon = Icons.Filled.Apps,
-            title = stringResource(R.string.stats_entry_intercept_history),
-            onClick = onOpenAppHistory,
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = Spacing.xs),
         )
-        EntryCard(
-            icon = Icons.Filled.Checklist,
-            title = stringResource(R.string.stats_entry_todo_history),
-            onClick = onOpenTodoHistory,
+    }
+}
+
+/** 全完成胶囊：primaryContainer 底 + 「✓ 全部完成」，只在 total>0 且完成=轮到时出现。 */
+@Composable
+private fun AllDonePill() {
+    Box(
+        Modifier
+            .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        Text(
+            stringResource(R.string.stats_tasks_all_done),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+        )
+    }
+}
+
+/** 过期警示行（specs/008：过期只出现在今日）：0 常规弱化；>0 红点 + 红色加粗。 */
+@Composable
+private fun ExpiredRow(expired: Int, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        if (expired > 0) {
+            Box(
+                Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.error),
+            )
+            Spacer(Modifier.width(5.dp))
+        }
+        Text(
+            stringResource(R.string.stats_expired_count, expired),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = if (expired > 0) FontWeight.Bold else null,
+            color = if (expired > 0) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
         )
     }
 }
@@ -251,39 +441,6 @@ private fun DetailHeader(title: String, onBack: () -> Unit) {
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )
-    }
-}
-
-/** 单行入口卡：图标 + 标题 + › 箭头，整卡可点进二级页。 */
-@Composable
-private fun EntryCard(icon: ImageVector, title: String, onClick: () -> Unit) {
-    CardSurface(onClick = onClick) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Spacing.lg, vertical = Spacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                icon,
-                contentDescription = null, // 装饰性图标，标题文本已承担语义
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(22.dp),
-            )
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = Spacing.md),
-            )
-            Icon(
-                Icons.Filled.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
 }
 
@@ -386,24 +543,6 @@ private fun TodoRangeStatCard(ui: TodoRangeStatsUi, modifier: Modifier = Modifie
                 modifier = Modifier.padding(start = Spacing.md),
             )
         }
-    }
-}
-
-/** 大数字指标：加粗数值 + 灰色小标签。 */
-@Composable
-private fun BigMetric(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            value,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = Spacing.xs),
-        )
     }
 }
 

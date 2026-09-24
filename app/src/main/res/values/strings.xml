@@ -149,9 +149,13 @@
     <string name="stats_metric_canceled">取消</string>
 
     <!-- Stats / 任务完成统计（specs/008-todo-stats） -->
-    <string name="stats_today_tasks">任务</string>
-    <string name="stats_today_tasks_done">完成</string>
-    <string name="stats_today_tasks_expired">过期</string>
+    <!-- 统计主页双 Hero 卡重构（用户拍板视觉稿 2026-09） -->
+    <string name="stats_domain_today_tasks">今日任务</string>
+    <string name="stats_unit_day">天</string>
+    <string name="stats_tasks_hero_label">今日已完成 · 共 %1$d 个轮到</string>
+    <string name="stats_tasks_all_done">✓ 全部完成</string>
+    <string name="stats_expired_count">过期 %1$d</string>
+    <string name="stats_today_outcomes">取消 %1$d · 打开 %2$d</string>
     <string name="stats_entry_intercept_history">应用拦截统计</string>
     <string name="stats_entry_todo_history">任务完成统计</string>
     <string name="stats_todo_period_total">本期完成</string>
