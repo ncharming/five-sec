@@ -33,6 +33,7 @@ import kotlinx.coroutines.launch
  * **唯一**缓冲内容——[todos] 快照（[TodayTodosSnapshot]）注入瞬间定格，四态渲染见
  * specs/009 contracts/todo-card-overlay.md §B：部分完成（「今日待办 D/T」+ ○ 未完成条目，最多 3 行，
  * 超出折叠）/ 全部完成（✓ 整行）/ 无启用条目（引导添加）/ 有启用但今日不轮到（告知）。
+ * 条目文本经 [TodoCardText] 投影：取首个非空行截 12 字（多行待办口径，2026-09 修订）。
  * 卡片常驻：空态不再整块隐藏（009 空态二分）。只读、不参与 render() 锁定。
  * 布局优化（用户拍板）：72sp 大倒计时块已删，倒计时数字融进「请先思考 N 秒」行（22sp 品牌绿），
  * 解锁后该行变「✓ 请选择」。条目顺序由 TodoRepository.todayTodos 预排（仅今天→每N天→每周几→每天、
@@ -179,7 +180,7 @@ class BlockingOverlay(
         todoTitle.setTextColor(onSurfaceColor)
         todoItems.visibility = View.VISIBLE
         val shown = pending.take(TODO_MAX_LINES)
-        val text = shown.joinToString("\n") { TODO_BULLET + truncateForCard(it.text) }
+        val text = shown.joinToString("\n") { TODO_BULLET + TodoCardText.project(it.text) }
         val overflow = pending.size - shown.size
         todoItems.text = if (overflow > 0) {
             text + "\n" + ctx.getString(R.string.blocking_todos_more, overflow)
@@ -187,11 +188,6 @@ class BlockingOverlay(
             text
         }
     }
-
-    /** 卡片单条展示截断（specs/007 收紧为 12 字）：存储可到 200 字（待办页看全文），卡片是 5 秒
-     *  阅读场景，只留前 12 字（超长加省略号，省略号不计入 12）。 */
-    private fun truncateForCard(text: String): String =
-        if (text.length > TODO_DISPLAY_MAX) text.take(TODO_DISPLAY_MAX) + "…" else text
 
     private fun buildRoot(): View {
         val row = LinearLayout(ctx).apply {
@@ -304,9 +300,6 @@ class BlockingOverlay(
         /** 待办条目最多展示行数（用户拍板：排序后只展示前 3 条——一次性/间隔类优先露出，
          *  剩余折叠进 blocking_todos_more），超出折叠。 */
         private const val TODO_MAX_LINES = 3
-
-        /** 卡片单条展示字符上限（specs/007：30→12，5 秒可读更克制）：完整内容在待办页看，超长加省略号。 */
-        private const val TODO_DISPLAY_MAX = 12
 
         /** 未完成条目前缀符号（与 "✓" 同属覆盖层符号常量，不入资源）。 */
         private const val TODO_BULLET = "○ "

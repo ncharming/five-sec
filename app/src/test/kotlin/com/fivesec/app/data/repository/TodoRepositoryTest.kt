@@ -33,7 +33,11 @@ import org.junit.Test
  */
 class TodoRepositoryTest {
 
-    /** 手控 fake：observeAll 返回 StateFlow，测试手动改值模拟 Room 重发；写操作记录待断言。 */
+    /** 手控 fake：observeAll 返回 StateFlow，测试手动改值模拟 Room 重发；写操作记录待断言。
+     *  读改写一律收进 synchronized(this) 块：仓库收集器在 Default 线程跑 purge（读 state→写回），
+     *  与测试线程的 deleteById/rename 等并发时存在丢失更新（旧列表复活已删行）——真实 Room
+     *  是单连接串行写，同步的 fake 才与被测语义一致（2026-09 修：既有竞态被时序暴露）。
+     *  块内无挂起点，锁不会跨挂起持有。 */
     private class FakeTodoDao : TodoDao {
         val state = MutableStateFlow<List<Todo>>(emptyList())
         val inserted = CopyOnWriteArrayList<Todo>()
@@ -49,28 +53,28 @@ class TodoRepositoryTest {
 
         override suspend fun findById(id: Long): Todo? = state.value.firstOrNull { it.id == id }
 
-        override suspend fun insert(todo: Todo): Long {
+        override suspend fun insert(todo: Todo): Long = synchronized(this) {
             inserted += todo
             state.value = state.value + todo.copy(id = inserted.size.toLong())
-            return inserted.size.toLong()
+            inserted.size.toLong()
         }
 
-        override suspend fun updateText(id: Long, text: String) {
+        override suspend fun updateText(id: Long, text: String) = synchronized(this) {
             renamed += id to text
             state.value = state.value.map { if (it.id == id) it.copy(text = text) else it }
         }
 
-        override suspend fun setEnabled(id: Long, enabled: Boolean) {
+        override suspend fun setEnabled(id: Long, enabled: Boolean) = synchronized(this) {
             enabledChanges += id to enabled
             state.value = state.value.map { if (it.id == id) it.copy(isEnabled = enabled) else it }
         }
 
-        override suspend fun setCompletedDate(id: Long, date: String) {
+        override suspend fun setCompletedDate(id: Long, date: String) = synchronized(this) {
             completionChanges += Triple(id, date, date.isNotEmpty())
             state.value = state.value.map { if (it.id == id) it.copy(lastCompletedDate = date) else it }
         }
 
-        override suspend fun deleteById(id: Long) {
+        override suspend fun deleteById(id: Long) = synchronized(this) {
             deletedIds += id
             state.value = state.value.filterNot { it.id == id }
         }
@@ -81,7 +85,7 @@ class TodoRepositoryTest {
             repeatDays: Int,
             intervalDays: Int,
             dueDate: String,
-        ) {
+        ): Unit = synchronized(this) {
             recurrenceCalls += RecurrenceCall(id, repeatType, repeatDays, intervalDays, dueDate)
             state.value = state.value.map {
                 if (it.id == id) {
@@ -92,13 +96,13 @@ class TodoRepositoryTest {
             }
         }
 
-        override suspend fun setDueDate(id: Long, date: String) {
+        override suspend fun setDueDate(id: Long, date: String) = synchronized(this) {
             dueDateCalls += id to date
             state.value = state.value.map { if (it.id == id) it.copy(dueDate = date) else it }
         }
 
         /** 模拟 Room 的 DELETE 语义：同步作用于 state（触发重发 → 收集器再跑一次无匹配行，自稳定）。 */
-        override suspend fun purgeCompletedOneOffs(today: String) {
+        override suspend fun purgeCompletedOneOffs(today: String) = synchronized(this) {
             purgeCalls += today
             state.value = state.value.filterNot {
                 it.repeatType == TodoRecurrence.REPEAT_ONCE &&
@@ -238,6 +242,22 @@ class TodoRepositoryTest {
 
         assertTrue(result.isSuccess)
         assertEquals(forty, dao.inserted.single().text) // 40 字在 200 上限内，trim 后原样入库
+    }
+
+    @Test
+    fun `add与rename多行文本_内部换行保留首尾空白行剥掉`() = runTest {
+        val dao = FakeTodoDao()
+        dao.state.value = listOf(Todo(id = 7, text = "旧文案"))
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
+
+        // 多行口径（2026-09 修订）：编辑层不再把 \n 折叠为空格，仓库只剥首尾空白（含空白行）
+        val result = repo.add("  买牛奶\n\n还有酸奶和面包  ")
+
+        assertTrue(result.isSuccess)
+        assertEquals("买牛奶\n\n还有酸奶和面包", dao.inserted.single().text)
+        assertTrue(repo.rename(7, "\n背单词\n30个\n").isSuccess)
+        assertEquals("背单词\n30个", dao.renamed.single().second)
+        assertTrue(repo.add("\n \n").isFailure) // 只剩空白行=空白输入，同一拒绝口径
     }
 
     @Test

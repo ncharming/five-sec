@@ -587,9 +587,10 @@ private fun TodoEditDialog(
         OutlinedTextField(
             value = text,
             onValueChange = { raw ->
-                // 多行输入只为编辑时长文本可见；换行折叠为空格，保持"单行标题"的存储与展示口径
-                val sanitized = raw.replace("\n", " ")
-                if (sanitized.length <= TodoRepository.MAX_TEXT_LENGTH) text = sanitized
+                // 真实换行（2026-09 口径修订，取代「换行折叠为空格」）：回车存 \n——
+                // 详情弹窗按行渲染、列表单行省略、拦截卡片取首个非空行（TodoCardText）；
+                // 保存时 trim 剥掉首尾空白行；200 字预算含换行符，不另立计数规则
+                if (raw.length <= TodoRepository.MAX_TEXT_LENGTH) text = raw
             },
             placeholder = { Text(stringResource(R.string.todos_input_hint)) },
             minLines = 3,
