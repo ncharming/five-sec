@@ -94,7 +94,7 @@ ui/theme/       Compose 主题 token（与 colors.xml 的 brand_* 同源）
 - Commit 格式：Conventional Commits + 中文主题 —— `feat(stats): 日周月年周期筛选`、`fix(test): …`、`docs(specs): …`、`chore: …`。
 - 新功能走 spec-kit 流程：`specs/NNN-名称/` 下 spec → plan/research/data-model/contracts/quickstart → tasks.md，实现时逐项勾选 tasks.md 复选框，行为变更同步 README。
 - PR 描述要求：写清动机（为什么改）、改动面（动了哪些模块/表/流程）、自检结果（对照「验证标准」逐项报告）。
-- CI（`.github/workflows/android-build.yml`）：推 master、提 PR、手动 dispatch 触发；在 ubuntu runner 上直接用 `gradle` 8.9（不依赖 wrapper jar），只跑「验证标准」第 1、2 项，产物 `five-sec-debug-apk`。
+- CI（`.github/workflows/android-build.yml`）：**仅推 master 触发**（2026-09 拍板收窄：PR/手动 dispatch/其他分支不触发）；在 ubuntu runner 上直接用 `gradle` 8.9（不依赖 wrapper jar），只跑「验证标准」第 1、2 项，产物 `five-sec-debug-apk`。
 
 ## 验证标准
 

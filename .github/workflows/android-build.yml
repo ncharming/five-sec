@@ -1,12 +1,10 @@
 name: Android Build
 
-# 触发：推送到 main/master、PR、以及手动运行（Actions 页面点 "Run workflow"）
+# 触发：仅推送到 master（用户拍板 2026-09：PR / 手动 dispatch / 其他分支一律不触发，
+# 直推 master 的单人工作流里多触发面只会制造重复运行与噪音）
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
+    branches: [ master ]
 
 jobs:
   build:

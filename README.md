@@ -57,7 +57,7 @@ minSdk 26（Android 8.0）/ targetSdk 35，单 `app` 模块。
 
 ## CI（GitHub Actions）
 
-仓库已包含 [.github/workflows/android-build.yml](.github/workflows/android-build.yml)：推送到 main/master、提 PR，或在 Actions 页面手动「Run workflow」时，会自动构建 debug APK 并运行单元测试。
+仓库已包含 [.github/workflows/android-build.yml](.github/workflows/android-build.yml)：**仅推送到 master 时**触发（PR、其他分支、手动运行一律不触发），自动构建 debug APK 并运行单元测试。
 
 - **无需 Android Studio / 本地 SDK**：CI 在 ubuntu runner 上配置 JDK 17 + Android SDK + Gradle 8.9，并直接用 `gradle` 构建（不依赖 wrapper jar）。
 - **获取 APK**：构建完成后，在该次 Action 运行页底部的 **Artifacts** 下载 `five-sec-debug-apk`，解压得到 `app-debug.apk`，传到手机安装即可。
