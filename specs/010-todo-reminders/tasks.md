@@ -15,3 +15,10 @@
 - [x] 13. 测试：TodoRepositoryTest setReminderTime 口径（设置/清除/非法拒绝）与 add 落列；FakeTodoDao 扩展新方法
 - [x] 14. 验证：`gradle :app:assembleDebug` + `gradle :app:testDebugUnitTest` 全绿（181 tests, 0 failed）；quickstart.md 手测场景过
 - [x] 15. 文档：README（待办段新增提醒说明 + 平台限制：强停/勿扰/精确闹钟/全屏显示/OEM 省电）与 AGENTS.md（架构树 reminder/ 包、待办术语「无通知」口径更新）；commit（Conventional Commits 中文主题）推 master
+
+## 修复轮（真机反馈：只亮横幅不响铃、点了才响）
+
+- [x] 16. 响铃前台服务 ReminderAlarmService：铃声/震动唯一持有方，Receiver 到点直接启动——与页面拉起解耦，息屏/亮屏/FSI 被拒都即时响（mediaPlayback 类型 + WAKE_LOCK 保 CPU 不睡 + 60s 超时收底 + START_NOT_STICKY）
+- [x] 17. FSI 链路保留并归服务：前台通知即 FSI 载体（息屏/锁屏直拉全屏页）；亮屏由服务补拉页面（无障碍运行=后台启动豁免，Activity singleTop + onNewIntent 去重重装）；Receiver 后台 FGS 启动被拒 → 退化一次性响铃通知
+- [x] 18. 提醒页升级：完整内容展示（多行原文不截断）+ 每条「完成」按钮；页面不再持有铃/超时（onUserInteraction→STOP_RING，finish()→FINISH 统一撤服务）；通知渠道 v2 静音（防渠道一声+服务循环双响，v1 渠道启动时删除）
+- [x] 19. 无通知权限不再静默跳过（响铃优先拍板）；文档同步：spec FR-002/FR-004 与边界、scheduling 契约、quickstart 息屏/亮屏/无障碍关闭场景、README 与 AGENTS.md 口径；188 tests 全绿

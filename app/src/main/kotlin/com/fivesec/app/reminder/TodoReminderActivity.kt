@@ -1,6 +1,6 @@
 package com.fivesec.app.reminder
 
-import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -17,8 +17,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -34,7 +35,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -43,24 +43,24 @@ import com.fivesec.app.ui.theme.FiveSecTheme
 import com.fivesec.app.ui.theme.Spacing
 import dagger.hilt.android.AndroidEntryPoint
 import java.time.LocalTime
-import kotlinx.coroutines.Job
+import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * 全屏提醒页（specs/010 决策 6/14/15）：full-screen intent 通知拉起的类闹钟界面——锁屏之上显示、
- * 自动亮屏、常亮、不进最近任务；ReminderRinger 持续响铃+震动。
+ * 全屏提醒页（specs/010 决策 6/14/15）：类闹钟界面——锁屏之上显示、自动亮屏、常亮、不进最近
+ * 任务。铃声与震动由 ReminderAlarmService 持有（修复轮：原绑在本页 onCreate，FSI 亮屏降级/
+ * 被拒时只亮横幅不响）；本页只负责展示与完成操作，任何交互经服务 ACTION_STOP_RING 停铃，
+ * 关页（关闭按钮/返回/全勾自动关）在 [finish] 统一收口发 ACTION_FINISH 撤服务。
  *
- * 停铃三路径（先到先赢）：① 任意交互（勾一条/关闭）——人已到场，铃声使命完成；
- * ② 60 秒无操作自动停铃——收进静默通知（点开带剩余 ids 回本页仍可完成）；
- * ③ 全部勾完——列表空即自动关页。返回手势=关闭（走同一路径停铃）。
+ * singleTop：FSI 拉起与服务亮屏补拉并发去重；第二场提醒命中已开页面走 [onNewIntent] 重装。
+ * 条目展示**完整内容**（多行原文、不截断）+ 每条「完成」按钮——一键直完成（与待办页同款
+ * setCompleted 双写口径）。
  */
 @AndroidEntryPoint
 class TodoReminderActivity : ComponentActivity() {
 
     private val viewModel: TodoReminderViewModel by viewModels()
-    private lateinit var ringer: ReminderRinger
-    private var timeoutJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,20 +77,12 @@ class TodoReminderActivity : ComponentActivity() {
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        // 人已到场：清掉 FSI 通知——它 setOngoing 不可滑掉，页本身就是提醒本体，
-        // 留在通知栏会让用户处理完仍挂着一条「未处理」假象（见 Receiver 的 id 契约注释）
+        // 人已到场：清掉 FSI/前台通知——页本身就是提醒本体（服务仍在响铃，交互即停）
         NotificationManagerCompat.from(this).cancel(TodoReminderReceiver.NOTIFICATION_ID)
 
-        ringer = ReminderRinger(this)
-        ringer.start()
-        viewModel.load(intent.getLongArrayExtra(EXTRA_TODO_IDS)?.toList() ?: emptyList())
+        viewModel.load(todoIds())
 
-        // 60s 无操作：停铃 → 静默通知（剩余条目）→ 关页
-        timeoutJob = lifecycleScope.launch {
-            delay(RING_TIMEOUT_MILLIS)
-            onTimeout()
-        }
-        // 全部勾完：自动关页（ringer 在 onDestroy 统一收口）
+        // 全部勾完：自动关页（finish 收口统一撤服务）
         lifecycleScope.launch {
             viewModel.state.collect { state ->
                 if (state.loaded && state.rows.isEmpty()) finish()
@@ -99,70 +91,56 @@ class TodoReminderActivity : ComponentActivity() {
 
         setContent {
             FiveSecTheme {
-                // collectAsStateWithLifecycle：勾选完成的行移除要驱动重组（state.value 快照不会触发）
+                // collectAsStateWithLifecycle：完成行的移除要驱动重组（state.value 快照不会触发）
                 val state by viewModel.state.collectAsStateWithLifecycle()
                 ReminderScreen(
                     state = state,
-                    onComplete = { id ->
-                        stopRinging() // 人已到场：铃使命完成，页留着让人勾完
-                        viewModel.complete(id)
-                    },
+                    onComplete = { id -> viewModel.complete(id) },
                     onClose = { finish() },
                 )
             }
         }
     }
 
-    override fun onDestroy() {
-        timeoutJob?.cancel()
-        ringer.stop()
-        super.onDestroy()
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // 已开页面被第二场提醒复用（singleTop）：重装新一场的条目
+        viewModel.load(todoIds(), force = true)
+        NotificationManagerCompat.from(this).cancel(TodoReminderReceiver.NOTIFICATION_ID)
     }
 
-    private fun stopRinging() {
-        timeoutJob?.cancel()
-        ringer.stop()
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        // 任意触摸（勾选/滚动/返回……）：人已到场，铃使命完成（幂等）
+        sendServiceAction(this, ReminderAlarmService.ACTION_STOP_RING)
     }
 
-    private fun onTimeout() {
-        ringer.stop()
-        val pending = viewModel.pendingIds()
-        if (pending.isNotEmpty()) postTimeoutNotice(pending.toLongArray())
-        finish()
+    override fun finish() {
+        // 关页统一收口：关闭按钮 / 返回手势 / 全勾自动关——撤服务（停铃+清通知+自灭）。
+        // 页面可能在后台时刻 finish，startService 或被系统拒绝：runCatching，服务有 60s 自愈
+        sendServiceAction(this, ReminderAlarmService.ACTION_FINISH)
+        super.finish()
     }
 
-    /** 60s 超时收底：静默通知（notice 渠道），点开带剩余 ids 回本页。 */
-    private fun postTimeoutNotice(ids: LongArray) {
-        val contentIntent = PendingIntent.getActivity(
-            this,
-            REQUEST_NOTICE,
-            Intent(this, TodoReminderActivity::class.java)
-                .putExtra(EXTRA_TODO_IDS, ids)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        val notification = NotificationCompat.Builder(this, ReminderChannels.CHANNEL_NOTICE)
-            .setSmallIcon(R.drawable.ic_todo_reminder)
-            .setContentTitle(getString(R.string.todo_reminder_notification_title))
-            .setContentText(getString(R.string.todo_reminder_notice_text))
-            .setContentIntent(contentIntent)
-            .setAutoCancel(true)
-            .build()
-        NotificationManagerCompat.from(this).notify(NOTICE_ID, notification)
-    }
+    private fun todoIds(): List<Long> =
+        intent.getLongArrayExtra(EXTRA_TODO_IDS)?.toList() ?: emptyList()
 
     companion object {
         const val EXTRA_TODO_IDS = "todo_ids"
 
-        /** 响铃上限（决策 15）：待办提醒不是起床闹钟，1 分钟足够引起注意。 */
-        private const val RING_TIMEOUT_MILLIS = 60_000L
-
-        private const val REQUEST_NOTICE = 10_013
-        private const val NOTICE_ID = 10_014
+        /** 显式 startService 语义：服务已在前台运行，动作即达；未运行时服务自灭，无副作用。 */
+        private fun sendServiceAction(context: Context, action: String) {
+            runCatching {
+                context.startService(
+                    Intent(context, ReminderAlarmService::class.java).setAction(action),
+                )
+            }
+        }
     }
 }
 
-/** 提醒页界面：竖向居中单卡——标题（含当前时刻）+ 条目列表（Checkbox 勾完成）+ 关闭按钮。 */
+/** 提醒页界面：竖向居中单卡（可滚动）——标题（含当前时刻）+ 条目列表（完整内容+完成按钮）+ 关闭。 */
 @Composable
 private fun ReminderScreen(
     state: TodoReminderViewModel.ReminderUiState,
@@ -173,6 +151,7 @@ private fun ReminderScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(Spacing.xl),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -214,13 +193,18 @@ private fun ReminderScreen(
                                     .padding(vertical = Spacing.xs),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Checkbox(checked = false, onCheckedChange = { onComplete(row.id) })
+                                // 完整内容不截断（多行原文保留）——提醒页是「看全 + 一键完成」的地方
                                 Text(
                                     row.text,
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.padding(start = Spacing.xs),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = Spacing.sm),
                                 )
+                                Button(onClick = { onComplete(row.id) }) {
+                                    Text(stringResource(R.string.todo_reminder_action_complete))
+                                }
                             }
                         }
                     }
@@ -237,5 +221,8 @@ private fun ReminderScreen(
     }
 }
 
-private fun currentMinuteLabel(): String =
-    "%02d:%02d".format(LocalTime.now().hour, LocalTime.now().minute)
+private fun currentMinuteLabel(): String {
+    val now = LocalTime.now()
+    // Locale.ROOT：任何系统语言下标题时刻都是 ASCII 数字（展示位，但与库口径保持同一习惯）
+    return String.format(Locale.ROOT, "%02d:%02d", now.hour, now.minute)
+}

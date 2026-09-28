@@ -23,6 +23,11 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- 提醒震动 -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- 响铃前台服务（specs/010 修复轮）：铃声/震动不依赖页面拉起，息屏亮屏都即时响 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- 响铃期间保持 CPU 不睡（息屏且全屏页未拉起时铃声不断续） -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name=".FiveSecApp"
@@ -57,12 +62,21 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- 到点提醒全屏页（specs/010）：只经 full-screen intent 通知/通知点开进入；锁屏上显示、不进最近任务 -->
+        <!-- 到点提醒全屏页（specs/010）：FSI/服务补拉/通知点开进入；锁屏上显示、不进最近任务；
+             singleTop：FSI 与亮屏补拉并发去重，第二场提醒复用已开页面走 onNewIntent -->
         <activity
             android:name=".reminder.TodoReminderActivity"
             android:excludeFromRecents="true"
             android:exported="false"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.FiveSec" />
+
+        <!-- 响铃前台服务（specs/010 修复轮）：铃声/震动的唯一持有方，Receiver 到点直接启动，
+             不依赖页面拉起（mediaPlayback 类型：正在播放闹钟铃声即媒体播放的本义） -->
+        <service
+            android:name=".reminder.ReminderAlarmService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- 单一「下一响」闹钟落点（specs/010） -->
         <receiver

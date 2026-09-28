@@ -12,7 +12,7 @@ import android.os.Vibrator
  * 类闹钟心智）+ 闹钟式循环震动波形。零内置音频（纯离线原则：只用系统资源）。
  *
  * 防御：个别 ROM 默认闹钟 URI 缺失或 MediaPlayer 打不开时 runCatching 静默降级——只震不响不崩
- * （宁可少一感不闪退，与 overlay addView 降级同思路）。生命周期由持有方（全屏提醒页）显式管理。
+ * （宁可少一感不闪退，与 overlay addView 降级同思路）。生命周期由持有方（响铃前台服务）显式管理。
  */
 class ReminderRinger(private val context: Context) {
 
@@ -57,8 +57,8 @@ class ReminderRinger(private val context: Context) {
     }
 
     companion object {
-        /** 闹钟式波形：震 1s 停 0.5s 循环。 */
-        private val VIBRATION_PATTERN = longArrayOf(0, 1_000, 500)
+        /** 闹钟式波形：震 1s 停 0.5s 循环。internal：降级路径的一次性通知震动同款波形。 */
+        internal val VIBRATION_PATTERN = longArrayOf(0, 1_000, 500)
 
         /** createWaveform 的 repeat 索引：0 = 从头循环。 */
         private const val VIBRATION_REPEAT_FROM_START = 0

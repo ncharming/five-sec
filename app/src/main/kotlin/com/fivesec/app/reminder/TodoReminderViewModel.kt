@@ -34,9 +34,13 @@ class TodoReminderViewModel @Inject constructor(
     private val _state = MutableStateFlow(ReminderUiState())
     val state: StateFlow<ReminderUiState> = _state.asStateFlow()
 
-    /** 装载（onCreate 调一次；重复调用防重入——FSI 重发场景同一 Activity 实例不重置列表）。 */
-    fun load(ids: List<Long>) {
-        if (_state.value.loaded) return
+    /**
+     * 装载（onCreate 调一次；防重入——FSI 重发场景同一实例不重置列表）。
+     * force：singleTop 复用的已开页面被第二场提醒命中（onNewIntent）时强制重装新一场条目。
+     */
+    fun load(ids: List<Long>, force: Boolean = false) {
+        if (_state.value.loaded && !force) return
+        _state.value = ReminderUiState() // force 时回装载态，防闪旧内容
         viewModelScope.launch {
             val today = DateUtil.todayString(timeProvider.now())
             val rows = todoRepository.findByIds(ids)
@@ -54,7 +58,4 @@ class TodoReminderViewModel @Inject constructor(
             _state.update { it.copy(rows = it.rows.filterNot { row -> row.id == id }) }
         }
     }
-
-    /** 超时收底通知带参用：当前未处理条目的 ids。 */
-    fun pendingIds(): List<Long> = _state.value.rows.map { it.id }
 }
