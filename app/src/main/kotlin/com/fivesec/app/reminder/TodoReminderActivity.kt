@@ -77,6 +77,10 @@ class TodoReminderActivity : ComponentActivity() {
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        // 人已到场：清掉 FSI 通知——它 setOngoing 不可滑掉，页本身就是提醒本体，
+        // 留在通知栏会让用户处理完仍挂着一条「未处理」假象（见 Receiver 的 id 契约注释）
+        NotificationManagerCompat.from(this).cancel(TodoReminderReceiver.NOTIFICATION_ID)
+
         ringer = ReminderRinger(this)
         ringer.start()
         viewModel.load(intent.getLongArrayExtra(EXTRA_TODO_IDS)?.toList() ?: emptyList())

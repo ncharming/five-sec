@@ -97,11 +97,11 @@ class TodoReminderReceiver : BroadcastReceiver() {
     companion object {
         const val EXTRA_TRIGGER_AT = "trigger_at"
 
+        /** 提醒通知固定 id：同时最多一场提醒在处理，重发覆盖而非堆叠；提醒页打开时据此清掉。 */
+        const val NOTIFICATION_ID = 10_012
+
         /** 内容/FSI PendingIntent 的 requestCode（同一目标 Activity，extras 随最新触发更新）。 */
         private const val REQUEST_CONTENT = 10_011
-
-        /** 提醒通知固定 id：同时最多一场提醒在处理，重发覆盖而非堆叠。 */
-        private const val NOTIFICATION_ID = 10_012
 
         /** 通知正文预览条数（与覆盖层卡片「前 3 条」同性格：预览克制，全量进提醒页看）。 */
         private const val PREVIEW_COUNT = 3
