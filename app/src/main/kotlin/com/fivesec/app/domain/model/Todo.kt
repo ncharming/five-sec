@@ -18,6 +18,9 @@ import com.fivesec.app.util.TodoRecurrence
  * 007 两列：[createdAt]（创建日，只在插入时写、永不改写——行内副行展示，老数据空串显示「—」）
  * 与 [dueDate]（一次性规则「仅今天」的有效期日：==今天轮到、<今天未完成=过期、转回重复类清空；
  * 「改为今天」只重写此列）。两列分离是因为「复活可改写有效期」与「创建时间不可变」是两个不变量。
+ *
+ * 010 提醒列：[reminderTime]（HH:mm，空=无提醒）。只存时刻不存日期——日期语义由既有规则列推导
+ * （重复类=每个轮到日该时刻、单次=dueDate 当天该时刻），完整时间点永不存在第二份。
  */
 @Entity(tableName = "todos")
 data class Todo(
@@ -30,6 +33,7 @@ data class Todo(
     val intervalDays: Int = 0, // 间隔天数 N（2..365）；仅 repeatType=2 有语义
     val createdAt: String = "", // 创建日 yyyy-MM-dd；老数据（v7 前）为空串 → 展示「—」（不伪造迁移日）
     val dueDate: String = "", // 一次性有效期日 yyyy-MM-dd；仅 repeatType=3 有语义，其余恒空串
+    val reminderTime: String = "", // 提醒时刻 HH:mm（specs/010）；空串 = 无提醒（默认关，存量升级零感知）
 )
 
 /**

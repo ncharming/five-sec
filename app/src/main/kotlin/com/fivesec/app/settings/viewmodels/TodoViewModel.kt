@@ -91,12 +91,17 @@ class TodoViewModel @Inject constructor(
         _today.value = DateUtil.todayString(timeProvider.now())
     }
 
-    fun add(text: String, rule: TodoRule = TodoRule.DAILY) {
+    fun add(text: String, rule: TodoRule = TodoRule.DAILY, reminderTime: String = "") {
         viewModelScope.launch {
             // 失败静默忽略（空白/名额满是 UI 已挡的不可达路径，repository 校验是双保险）；
             // 不打 android.util.Log——纯 JVM 单测未 mock，会直接抛 RuntimeException
-            todoRepository.add(text, rule)
+            todoRepository.add(text, rule, reminderTime)
         }
+    }
+
+    /** 提醒时刻设置/清除转发（specs/010）：空串=清除；表单 TimePicker 已产出合法值。 */
+    fun setReminderTime(id: Long, time: String) {
+        viewModelScope.launch { todoRepository.setReminderTime(id, time) }
     }
 
     fun rename(id: Long, text: String) {

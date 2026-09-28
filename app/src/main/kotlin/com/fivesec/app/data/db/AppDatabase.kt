@@ -14,7 +14,7 @@ import com.fivesec.app.domain.model.TodoCompletion
 
 @Database(
     entities = [TargetApp::class, InterceptionEvent::class, Todo::class, TodoCompletion::class],
-    version = 9, // v9：提示语功能退役（specs/009-retire-hints）——Hint 实体出库，物理 hints 表保留（空迁移）
+    version = 10, // v10：待办到点提醒（specs/010）——todos 新增 reminderTime 列（HH:mm，空=无提醒）
     exportSchema = false,
 )
 @TypeConverters(InterceptionOutcomeConverter::class)
@@ -139,6 +139,16 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
 // 不 DROP、不清空、零破坏性操作（数据零破坏红线，FR-006）。
 val MIGRATION_8_9 = object : Migration(8, 9) {
     override fun migrate(database: SupportSQLiteDatabase) = Unit
+}
+
+// 从版本9迁移到版本10：待办到点提醒（specs/010）——todos 新增 reminderTime 一列（HH:mm 时刻）。
+// 纯 ADD COLUMN + DEFAULT ''：存量行空串 = 无提醒（默认关），零数据迁移语句、零丢失、零感知；
+// 列定义必须与 Room 为 Todo 实体生成的 schema 逐字一致（AppDatabaseMigrationTest 手建 v9 库守住）。
+// 五表零触碰（interception_events 红线照旧）；提醒链路全部新代码，不写任何事件表（010 口径）。
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE todos ADD COLUMN reminderTime TEXT NOT NULL DEFAULT ''")
+    }
 }
 
 class InterceptionOutcomeConverter {

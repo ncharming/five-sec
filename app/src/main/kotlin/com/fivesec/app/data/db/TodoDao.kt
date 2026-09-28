@@ -52,6 +52,14 @@ interface TodoDao {
     @Query("UPDATE todos SET dueDate = :date WHERE id = :id")
     suspend fun setDueDate(id: Long, date: String)
 
+    /** 提醒时刻定向更新（specs/010）：单列 UPDATE，空串=清除提醒；绝不触碰文本/规则/完成态/启停。 */
+    @Query("UPDATE todos SET reminderTime = :time WHERE id = :id")
+    suspend fun updateReminderTime(id: Long, time: String)
+
+    /** 按 id 集合批量取（specs/010 提醒页装载：FSI 通知携带 ids → 打开时装载对应条目）。 */
+    @Query("SELECT * FROM todos WHERE id IN (:ids) ORDER BY id ASC")
+    suspend fun findByIds(ids: List<Long>): List<Todo>
+
     /**
      * 惰性清理（specs/007）：已完成的一次性待办，完成日不是今天 → 物理删除（无后台任务，
      * 由仓库在 observeAll 收集路径顺手调用；DELETE 触发 Room 重发后二次执行无匹配行，自稳定）。

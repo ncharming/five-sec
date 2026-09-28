@@ -8,6 +8,7 @@ import com.fivesec.app.domain.model.TodoCompletion
 import com.fivesec.app.domain.model.TodoRule
 import com.fivesec.app.domain.model.TodayTodo
 import com.fivesec.app.domain.model.TodayTodosSnapshot
+import com.fivesec.app.reminder.TodoReminderPlanner
 import com.fivesec.app.util.DateUtil
 import com.fivesec.app.util.TimeProvider
 import com.fivesec.app.util.TodoRecurrence
@@ -17,10 +18,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * 待办聚合点（specs/005-daily-todos；006 重复规则；007 一次性/过期口径；008 完成事件）：
+ * 待办聚合点（specs/005-daily-todos；006 重复规则；007 一次性/过期口径；008 完成事件；010 提醒列）：
  *  - 无障碍服务在主线程同步调 [todayTodos] 取覆盖层"今日待办"快照（快照模式，009 起为覆盖层唯一内容源）；
  *  - 待办页经 [observeAll]/add/rename/remove/setEnabled/setCompleted/setRecurrence/revive 管理；
  *  - 统计页经 [observeCompletionCountByTodoBetween]/[observeEarliestCompletionDate] 聚合完成历史
@@ -81,11 +83,15 @@ class TodoRepository @Inject constructor(
     fun observeAll(): Flow<List<Todo>> = todoDao.observeAll()
 
     /** 新增：校验（trim/空白拒/200 字截断 + 规则兜底校验）+ 上限 20；失败返回中文文案的 Result。
-     *  [rule] 缺省 = 每天（既有调用零改动）。createdAt=今天；仅今天规则 dueDate=今天、其余空串。 */
-    suspend fun add(text: String, rule: TodoRule = TodoRule.DAILY): Result<Unit> {
+     *  [rule] 缺省 = 每天（既有调用零改动）。createdAt=今天；仅今天规则 dueDate=今天、其余空串；
+     *  [reminderTime]（010）缺省空串=无提醒，非空须过 HH:mm 校验（表单 TimePicker 已产出合法值，双保险）。 */
+    suspend fun add(text: String, rule: TodoRule = TodoRule.DAILY, reminderTime: String = ""): Result<Unit> {
         val normalized = normalize(text)
             ?: return Result.failure(IllegalArgumentException("待办内容不能为空"))
         val safeRule = normalizeRule(rule).getOrElse { return Result.failure(it) }
+        if (!TodoReminderPlanner.isValidReminderTime(reminderTime)) {
+            return Result.failure(IllegalArgumentException("提醒时刻格式须为 HH:mm"))
+        }
         if (todoDao.count() >= MAX_TODOS) {
             return Result.failure(IllegalStateException("最多可添加${MAX_TODOS}条待办，请删除后重试"))
         }
@@ -97,6 +103,7 @@ class TodoRepository @Inject constructor(
             intervalDays = safeRule.intervalDays,
             createdAt = today,
             dueDate = if (safeRule.repeatType == TodoRecurrence.REPEAT_ONCE) today else "",
+            reminderTime = reminderTime,
         )
         return runCatching { todoDao.insert(todo); Unit }
     }
@@ -128,6 +135,21 @@ class TodoRepository @Inject constructor(
     suspend fun revive(id: Long) {
         todoDao.setDueDate(id, today())
     }
+
+    /** 提醒时刻设置/清除（010）：定向单列 UPDATE（与文本/规则更新同一并发安全口径）；
+     *  空串=清除；非法 HH:mm 拒绝（表单 TimePicker 已挡，仓库兜底）。 */
+    suspend fun setReminderTime(id: Long, time: String): Result<Unit> {
+        if (!TodoReminderPlanner.isValidReminderTime(time)) {
+            return Result.failure(IllegalArgumentException("提醒时刻格式须为 HH:mm"))
+        }
+        return runCatching { todoDao.updateReminderTime(id, time) }
+    }
+
+    /** 库直读全量（010：开机/时间变更广播重排用——不信内存快照，收集器可能尚未就绪）。 */
+    suspend fun allTodosOnce(): List<Todo> = todoDao.observeAll().first()
+
+    /** 按 id 批量取（010：提醒页装载，FSI 通知携带 ids → 打开时取对应条目）。 */
+    suspend fun findByIds(ids: List<Long>): List<Todo> = todoDao.findByIds(ids)
 
     /** 规则兜底校验（主拦截在编辑弹窗表单层）：周几至少一天；间隔收敛 2..365；仅今天原样通过。 */
     private fun normalizeRule(rule: TodoRule): Result<TodoRule> = when {

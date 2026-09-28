@@ -12,6 +12,18 @@
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions"
         xmlns:tools="http://schemas.android.com/tools" />
 
+    <!-- 待办到点提醒（specs/010）：全离线闹钟链路，零网络零内置音频 -->
+    <!-- 13+ 通知运行时权限：到点全屏页经通知 full-screen intent 拉起，未授权则提醒不显示（页内横幅引导） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 12+ 精确闹钟：未开「闹钟和提醒」时自动降级非精确（仍响、可能漂移数分钟，页内横幅提示） -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- full-screen intent 载体（normal 权限，14+ 由用户在设置放行「全屏显示」） -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- 重启/时间变更后重排提醒闹钟（决策 5） -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 提醒震动 -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <application
         android:name=".FiveSecApp"
         android:allowBackup="true"
@@ -44,5 +56,29 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <!-- 到点提醒全屏页（specs/010）：只经 full-screen intent 通知/通知点开进入；锁屏上显示、不进最近任务 -->
+        <activity
+            android:name=".reminder.TodoReminderActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/Theme.FiveSec" />
+
+        <!-- 单一「下一响」闹钟落点（specs/010） -->
+        <receiver
+            android:name=".reminder.TodoReminderReceiver"
+            android:exported="false" />
+
+        <!-- 重启/覆盖更新/时间与时区变更后全量重排（系统保护广播，仅系统可发） -->
+        <receiver
+            android:name=".reminder.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

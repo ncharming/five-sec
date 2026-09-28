@@ -101,6 +101,16 @@ class TodoRepositoryTest {
             state.value = state.value.map { if (it.id == id) it.copy(dueDate = date) else it }
         }
 
+        val reminderCalls = CopyOnWriteArrayList<Pair<Long, String>>()
+
+        override suspend fun updateReminderTime(id: Long, time: String) {
+            reminderCalls += id to time
+            state.value = state.value.map { if (it.id == id) it.copy(reminderTime = time) else it }
+        }
+
+        override suspend fun findByIds(ids: List<Long>): List<Todo> =
+            state.value.filter { it.id in ids }.sortedBy { it.id }
+
         /** 模拟 Room 的 DELETE 语义：同步作用于 state（触发重发 → 收集器再跑一次无匹配行，自稳定）。 */
         override suspend fun purgeCompletedOneOffs(today: String) = synchronized(this) {
             purgeCalls += today
@@ -621,5 +631,61 @@ class TodoRepositoryTest {
 
         assertEquals(1, dao.completionChanges.size) // todos 行照常转发（Room 侧无匹配行为 no-op）
         assertTrue(completions.rows.isEmpty()) // 无快照可写，静默跳过
+    }
+
+    // ── 提醒时刻（specs/010）──
+
+    @Test
+    fun `setReminderTime合法时刻定向落列_空串清除_非法拒绝`() = runTest {
+        val dao = FakeTodoDao()
+        dao.state.value = listOf(Todo(id = 1, text = "每天条目"))
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
+
+        // 设置：合法 HH:mm 落列（定向单列 UPDATE，其余列不动）
+        assertTrue(repo.setReminderTime(1, "18:30").isSuccess)
+        assertEquals(listOf(1L to "18:30"), dao.reminderCalls)
+        assertEquals("18:30", dao.state.value.single().reminderTime)
+
+        // 清除：空串同样合法
+        assertTrue(repo.setReminderTime(1, "").isSuccess)
+        assertEquals("", dao.state.value.single().reminderTime)
+
+        // 非法格式拒绝且不落 DAO（表单 TimePicker 已挡，仓库兜底）
+        val bad = repo.setReminderTime(1, "25:99")
+        assertTrue(bad.isFailure)
+        assertEquals(listOf(1L to "18:30", 1L to ""), dao.reminderCalls)
+    }
+
+    @Test
+    fun `add带提醒时刻落列_缺省空串_非法拒绝`() = runTest {
+        val dao = FakeTodoDao()
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
+
+        // 带（新建即设提醒）
+        assertTrue(repo.add("背单词", TodoRule.DAILY, "07:00").isSuccess)
+        assertEquals("07:00", dao.inserted.single().reminderTime)
+
+        // 缺省（既有调用零改动的默认关口径）
+        assertTrue(repo.add("读10页书").isSuccess)
+        assertEquals("", dao.inserted[1].reminderTime)
+
+        // 非法（仓库兜底，中文文案）
+        val bad = repo.add("坏格式", TodoRule.DAILY, "8:30")
+        assertTrue(bad.isFailure)
+        assertEquals(2, dao.inserted.size)
+    }
+
+    @Test
+    fun `findByIds按序返回提醒页装载路径可用`() = runTest {
+        val dao = FakeTodoDao()
+        dao.state.value = listOf(
+            Todo(id = 3, text = "第三条"),
+            Todo(id = 1, text = "第一条"),
+            Todo(id = 2, text = "第二条"),
+        )
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
+
+        // id 升序（与 DAO 同口径）；不存在的 id 静默忽略（FSI 通知跨进程窗口期的脏 ids）
+        assertEquals(listOf(1L, 2L), repo.findByIds(listOf(2L, 1L, 99L)).map { it.id })
     }
 }

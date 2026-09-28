@@ -81,6 +81,27 @@
     <string name="todos_date_unknown">—</string>
     <string name="todos_menu_revive">改为今天</string>
 
+    <!-- Todos 到点提醒（specs/010-todo-reminders）：弹窗/行内/横幅/通知/全屏页全量文案 -->
+    <string name="todos_reminder_section">提醒</string>
+    <string name="todos_reminder_none">未设置 · 点击设置到点提醒</string>
+    <string name="todos_reminder_clear">清除</string>
+    <string name="todos_reminder_pick_title">提醒时刻</string>
+    <string name="todos_reminder_once_hint">提醒只在有效期日当天响</string>
+    <string name="todos_reminder_inline">提醒 %1$s</string>
+    <string name="todo_reminder_banner_notifications">未开启通知权限，到点提醒将无法显示</string>
+    <string name="todo_reminder_banner_exact">未开启精确闹钟，提醒时间可能不准</string>
+    <string name="todo_reminder_banner_fsi">未开启全屏显示，提醒将只在通知栏横幅显示</string>
+    <string name="todo_reminder_banner_action">去开启</string>
+    <string name="todo_reminder_channel_alarm">到点提醒</string>
+    <string name="todo_reminder_channel_alarm_desc">待办到点时全屏提醒并响铃震动</string>
+    <string name="todo_reminder_channel_notice">提醒收底通知</string>
+    <string name="todo_reminder_channel_notice_desc">长时间未处理时在通知栏保留的提醒</string>
+    <string name="todo_reminder_notification_title">待办提醒</string>
+    <string name="todo_reminder_notification_more">；等 %1$d 条</string>
+    <string name="todo_reminder_notice_text">你有到点的待办未处理</string>
+    <string name="todo_reminder_screen_title">到点提醒 %1$s</string>
+    <string name="todo_reminder_close">关闭</string>
+
     <!-- Home bottom tabs（specs/009 起三项：待办/统计/设置，默认待办——提示语 Tab 已退役） -->
     <string name="tab_todos">待办</string>
     <string name="tab_stats">统计</string>
