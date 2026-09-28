@@ -21,7 +21,11 @@ object ReminderPermissions {
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
 
-    /** 12+ 「闹钟和提醒」开关未开（<12 恒 false——无此限制，闹钟恒精确）。 */
+    /**
+     * 12+ 精确闹钟不可用（<12 恒 false——无此限制）。修复轮二起 Manifest 已改声明
+     * USE_EXACT_ALARM（安装即自动授予、不可撤销），正常恒 false——本查询保留作 ROM 异常
+     * 兜底与横幅数据源；一旦真出现缺失即降级非精确闹钟（Doze 下会被推迟到亮屏）。
+     */
     fun exactAlarmMissing(context: Context): Boolean =
         Build.VERSION.SDK_INT >= 31 &&
             context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() == false

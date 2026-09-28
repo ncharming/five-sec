@@ -96,7 +96,7 @@
 - **FR-003**: 提醒触发 MUST 只作用于「启用 && 今天轮到 && 当天未完成」条目（`TodoRecurrence.isDue` 同源判定 + 响前查库）；同一分钟多条 MUST 聚合为一次响铃/一页展示。
 - **FR-004**: 提醒页 MUST 展示条目**完整内容**（多行原文不截断）并支持逐条「完成」按钮（复用仓库勾选双写口径：todos 行 + todo_completions 事件）与关闭；全部勾完 MUST 自动关闭；60 秒无操作 MUST 自动停铃并收进静默通知（点开可回提醒页完成）。「勾选仅在待办页」口径扩展为「待办页与提醒页」。
 - **FR-005**: 排程 MUST 只面向未来（绝不补响已过时刻）；时刻/规则/启停/删除/复活的每次变更 MUST 即时重排；重启/应用更新/时间与时区变更 MUST 触发全量重排；每次进入 App MUST 兜底重排。
-- **FR-006**: 权限策略：声明 `SCHEDULE_EXACT_ALARM`（12+ 引导开「闹钟和提醒」，未授权自动降级非精确闹钟并提示）、`POST_NOTIFICATIONS`（13+ 首次保存提醒时刻时请求；拒绝不阻断）、`USE_FULL_SCREEN_INTENT`（14+ 引导设置放行）；待办页横幅按缺失项提示；MUST NOT 申请勿扰穿透。
+- **FR-006**: 权限策略：声明 `USE_EXACT_ALARM`（12+ 修复轮二拍板：闹钟类应用专用权限，安装即自动授予、Doze 深度休眠下仍准点——原 `SCHEDULE_EXACT_ALARM` 侧载默认不授予，降级非精确会被 Doze 推迟到亮屏，真机复现息屏不触发）、`POST_NOTIFICATIONS`（13+ 首次保存提醒时刻时请求；拒绝不阻断、仍响铃）、`USE_FULL_SCREEN_INTENT`（14+ 引导设置放行）；待办页横幅按缺失项提示；MUST NOT 申请勿扰穿透。
 - **FR-007**: 提醒 MUST NOT 留任何痕：不写 `interception_events`、不写 `todo_completions`（勾完成的事件除外——那是既有勾选口径）、不提供「已提醒」标记、不进统计。
 - **FR-008**: 现有两种提示逻辑（进入五秒 APP 时的展示、拦截覆盖层今日待办卡片）MUST 零改动：无障碍服务、拦截状态机、覆盖层 UI 与统计口径一行不碰。
 - **FR-009**: 升级迁移 MUST 零丢失：todos 新增 `reminderTime` 一列（TEXT NOT NULL DEFAULT ''），存量行空串 = 无提醒；MUST 配套手建库迁移测试；MUST NOT 破坏性迁移。

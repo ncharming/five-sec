@@ -77,7 +77,7 @@ v1 渠道（`todo_reminder_alarm`，带渠道铃声）已废弃：渠道设置�
 | 权限 | 版本 | 请求时机 | 拒绝后果 |
 |---|---|---|---|
 | `POST_NOTIFICATIONS` | 13+ 运行时 | 首次保存提醒时刻 | 保存成功；通知不显示但**仍响铃震动**（服务+页面补拉不依赖通知可见性；横幅持续提示） |
-| `SCHEDULE_EXACT_ALARM` | 12+ 设置开关 | 横幅「去开启」→ `ACTION_REQUEST_SCHEDULE_EXACT_ALARM` | 降级非精确（横幅提示可能不准）；后台 FGS 启动可能被拒 → 一次性响铃通知兜底 |
+| `USE_EXACT_ALARM` | 12+ 声明即授（修复轮二） | 无需任何操作（安装自动授予、不可撤销；侧载自用口径——Play 上架需重新评估） | 正常恒已授予；`canScheduleExactAlarms()` 兜底分支 + 横幅仅防 ROM 异常 |
 | `USE_FULL_SCREEN_INTENT` | 14+ 设置开关 | 横幅「去开启」→ `ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT` | 息屏时不弹全屏页（仍响铃震动，亮屏补拉/横幅兜底） |
 | `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_MEDIA_PLAYBACK` / `WAKE_LOCK` / `VIBRATE` / `RECEIVE_BOOT_COMPLETED` | 普通权限 | 安装即授 | — |
 

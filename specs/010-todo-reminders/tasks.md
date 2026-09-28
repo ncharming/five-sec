@@ -22,3 +22,9 @@
 - [x] 17. FSI 链路保留并归服务：前台通知即 FSI 载体（息屏/锁屏直拉全屏页）；亮屏由服务补拉页面（无障碍运行=后台启动豁免，Activity singleTop + onNewIntent 去重重装）；Receiver 后台 FGS 启动被拒 → 退化一次性响铃通知
 - [x] 18. 提醒页升级：完整内容展示（多行原文不截断）+ 每条「完成」按钮；页面不再持有铃/超时（onUserInteraction→STOP_RING，finish()→FINISH 统一撤服务）；通知渠道 v2 静音（防渠道一声+服务循环双响，v1 渠道启动时删除）
 - [x] 19. 无通知权限不再静默跳过（响铃优先拍板）；文档同步：spec FR-002/FR-004 与边界、scheduling 契约、quickstart 息屏/亮屏/无障碍关闭场景、README 与 AGENTS.md 口径；188 tests 全绿
+
+## 修复轮二（真机反馈：息屏不触发；页面视觉差；完成按钮换复选框）
+
+- [x] 20. 息屏 Doze 根治：`SCHEDULE_EXACT_ALARM`（侧载默认不授予 → 降级非精确 → Doze 推迟到亮屏）换成 `USE_EXACT_ALARM`（闹钟类应用权限，安装即自动授予、不可撤销，Doze 仍准点）；`canScheduleExactAlarms` 降级分支与横幅保留作 ROM 异常兜底；Manifest/横幅文案/README/spec FR-006/契约表/quickstart Doze 核心验证场景同步
+- [x] 21. 提醒页视觉重排（功能不变）：品牌绿渐变背景 + 圆形闹钟徽章 + 大号时刻（display 级）+ 逐条独立卡片（surfaceContainerLow、大内边距）+ 底部整宽关闭按钮；宽度上限 520dp、可滚动
+- [x] 22. 交互调整：条目「完成」按钮改为**前置复选框**勾选即完成（同款 setCompleted 双写，勾后即移除）；删除 todo_reminder_action_complete 字符串、screen_title 拆为纯标签 + 独立大号时刻

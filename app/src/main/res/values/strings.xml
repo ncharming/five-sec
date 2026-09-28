@@ -89,7 +89,7 @@
     <string name="todos_reminder_once_hint">提醒只在有效期日当天响</string>
     <string name="todos_reminder_inline">提醒 %1$s</string>
     <string name="todo_reminder_banner_notifications">未开启通知权限，到点提醒将无法显示</string>
-    <string name="todo_reminder_banner_exact">未开启精确闹钟，提醒时间可能不准</string>
+    <string name="todo_reminder_banner_exact">系统未授予精确闹钟（罕见），息屏时提醒可能被推迟</string>
     <string name="todo_reminder_banner_fsi">未开启全屏显示，息屏时提醒将不弹全屏页（仍会响铃震动）</string>
     <string name="todo_reminder_banner_action">去开启</string>
     <string name="todo_reminder_channel_alarm">到点提醒</string>
@@ -99,8 +99,7 @@
     <string name="todo_reminder_notification_title">待办提醒</string>
     <string name="todo_reminder_notification_more">；等 %1$d 条</string>
     <string name="todo_reminder_notice_text">你有到点的待办未处理</string>
-    <string name="todo_reminder_screen_title">到点提醒 %1$s</string>
-    <string name="todo_reminder_action_complete">完成</string>
+    <string name="todo_reminder_screen_title">到点提醒</string>
     <string name="todo_reminder_close">关闭</string>
 
     <!-- Home bottom tabs（specs/009 起三项：待办/统计/设置，默认待办——提示语 Tab 已退役） -->

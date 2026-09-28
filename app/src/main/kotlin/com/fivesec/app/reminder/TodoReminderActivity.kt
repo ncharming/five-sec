@@ -8,7 +8,9 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,12 +18,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +38,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -54,8 +63,8 @@ import kotlinx.coroutines.launch
  * 关页（关闭按钮/返回/全勾自动关）在 [finish] 统一收口发 ACTION_FINISH 撤服务。
  *
  * singleTop：FSI 拉起与服务亮屏补拉并发去重；第二场提醒命中已开页面走 [onNewIntent] 重装。
- * 条目展示**完整内容**（多行原文、不截断）+ 每条「完成」按钮——一键直完成（与待办页同款
- * setCompleted 双写口径）。
+ * 条目展示**完整内容**（多行原文、不截断）+ 前置**复选框**勾选即完成（与待办页同款
+ * setCompleted 双写口径）；版式为类闹钟设计（渐变背景 + 闹钟徽章 + 大号时刻，见 ReminderScreen）。
  */
 @AndroidEntryPoint
 class TodoReminderActivity : ComponentActivity() {
@@ -140,19 +149,34 @@ class TodoReminderActivity : ComponentActivity() {
     }
 }
 
-/** 提醒页界面：竖向居中单卡（可滚动）——标题（含当前时刻）+ 条目列表（完整内容+完成按钮）+ 关闭。 */
+/**
+ * 提醒页界面（修复轮二重排）：类闹钟版式——品牌绿渐变背景 + 闹钟徽章 + 大号时刻，
+ * 条目逐条独立卡片、**前置复选框勾选即完成**（勾后即从列表移除），底部整宽关闭。
+ * 满屏展示/响铃/震动等功能语义不变（感官在前台服务，本页纯展示与操作）。
+ */
 @Composable
 private fun ReminderScreen(
     state: TodoReminderViewModel.ReminderUiState,
     onComplete: (Long) -> Unit,
     onClose: () -> Unit,
 ) {
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    // 顶部品牌绿薄雾 → 背景色的纵向渐变：给「闹钟正在响」的场景一点仪式感，不喧宾夺主
+    val gradient = Brush.verticalGradient(
+        listOf(
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+            MaterialTheme.colorScheme.background,
+        ),
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(gradient),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(Spacing.xl),
+                .padding(horizontal = Spacing.xl, vertical = Spacing.xl),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -160,61 +184,87 @@ private fun ReminderScreen(
             LaunchedEffect(Unit) {
                 while (true) {
                     nowMinute = currentMinuteLabel()
-                    delay(30_000) // 分钟跳变粒度刷新，只为标题展示
+                    delay(30_000) // 分钟跳变粒度刷新，只为时刻展示
                 }
             }
+            // 闹钟徽章：品牌绿容器 + 白描闹钟图标
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_todo_reminder),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+            Spacer(Modifier.height(Spacing.md))
             Text(
-                stringResource(R.string.todo_reminder_screen_title, nowMinute),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
+                stringResource(R.string.todo_reminder_screen_title),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(Spacing.xs))
+            Text(
+                nowMinute,
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
             )
-            Spacer(Modifier.height(Spacing.lg))
-            Surface(
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surface,
+            Spacer(Modifier.height(Spacing.xl))
+
+            Column(
                 modifier = Modifier
-                    .widthIn(max = 480.dp)
+                    .widthIn(max = 520.dp)
                     .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
-                Column(Modifier.padding(Spacing.lg)) {
-                    if (!state.loaded) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(Spacing.md),
-                            horizontalArrangement = Arrangement.Center,
-                        ) { CircularProgressIndicator() }
-                    } else {
-                        state.rows.forEach { row ->
+                if (!state.loaded) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(Spacing.md),
+                        horizontalArrangement = Arrangement.Center,
+                    ) { CircularProgressIndicator() }
+                } else {
+                    state.rows.forEach { row ->
+                        // 每条独立卡片：前置复选框勾选即完成（完整内容多行原文不截断）
+                        Surface(
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = Spacing.xs),
+                                    .padding(horizontal = Spacing.lg, vertical = Spacing.md),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                // 完整内容不截断（多行原文保留）——提醒页是「看全 + 一键完成」的地方
+                                Checkbox(checked = false, onCheckedChange = { onComplete(row.id) })
                                 Text(
                                     row.text,
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier
                                         .weight(1f)
-                                        .padding(end = Spacing.sm),
+                                        .padding(start = Spacing.sm),
                                 )
-                                Button(onClick = { onComplete(row.id) }) {
-                                    Text(stringResource(R.string.todo_reminder_action_complete))
-                                }
                             }
                         }
                     }
-                    Spacer(Modifier.height(Spacing.md))
-                    Button(
-                        onClick = onClose,
-                        modifier = Modifier.align(Alignment.End),
-                    ) {
-                        Text(stringResource(R.string.todo_reminder_close))
-                    }
+                }
+                Spacer(Modifier.height(Spacing.sm))
+                OutlinedButton(
+                    onClick = onClose,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                ) {
+                    Text(stringResource(R.string.todo_reminder_close))
                 }
             }
         }
