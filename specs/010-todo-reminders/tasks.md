@@ -28,3 +28,8 @@
 - [x] 20. 息屏 Doze 根治：`SCHEDULE_EXACT_ALARM`（侧载默认不授予 → 降级非精确 → Doze 推迟到亮屏）换成 `USE_EXACT_ALARM`（闹钟类应用权限，安装即自动授予、不可撤销，Doze 仍准点）；`canScheduleExactAlarms` 降级分支与横幅保留作 ROM 异常兜底；Manifest/横幅文案/README/spec FR-006/契约表/quickstart Doze 核心验证场景同步
 - [x] 21. 提醒页视觉重排（功能不变）：品牌绿渐变背景 + 圆形闹钟徽章 + 大号时刻（display 级）+ 逐条独立卡片（surfaceContainerLow、大内边距）+ 底部整宽关闭按钮；宽度上限 520dp、可滚动
 - [x] 22. 交互调整：条目「完成」按钮改为**前置复选框**勾选即完成（同款 setCompleted 双写，勾后即移除）；删除 todo_reminder_action_complete 字符串、screen_title 拆为纯标签 + 独立大号时刻
+
+## 修复轮三（真机复验：息屏仍不触发；亮屏正常 → 两层根因齐修）
+
+- [x] 23. 调度层改 `AlarmManager.setAlarmClock()`（市面闹钟应用通行实现）：AOSP 最高优先级闹钟、触发时系统**真正退出 Doze**、完全不需要精确闹钟权限（删除 canScheduleExactAlarms 降级分支，不存在静默掉非精确被推迟的路径）；状态栏「即将闹钟」图标点开回主页；USE_EXACT_ALARM 声明保留仅作 12+ 后台 FGS 启动豁免兼容面
+- [x] 24. 电池优化白名单引导（OEM「应用速冻」是息屏不响的头号元凶，代码层绕不过）：`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 权限 + `isIgnoringBatteryOptimizations` 检查 + 待办页横幅一键 `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 弹窗（取代已无意义的精确闹钟横幅）；文档同步 spec FR-006/边界、契约调度与权限表、quickstart 息屏核心验证、README 平台限制

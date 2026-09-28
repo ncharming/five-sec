@@ -25,9 +25,9 @@ Activity.onCreate，导致「只亮横幅、点了才响」。服务由 Receiver
 ## TodoReminderScheduler（AlarmManager 封装）
 
 - `scheduleNext(triggerAtMillis: Long)`：单一 PendingIntent（requestCode 固定、FLAG_IMMUTABLE|UPDATE_CURRENT），intent 携带 `EXTRA_TRIGGER_AT = triggerAtMillis`。
-- 精确策略：`canScheduleExactAlarms()`（12+，以下恒精确）真 → `setExactAndAllowWhileIdle(RTC_WAKEUP, …)`；假 → `setAndAllowWhileIdle(RTC_WAKEUP, …)`（降级仍响，可能漂移数分钟——决策 4）。
+- **`setAlarmClock()`（修复轮三拍板）**：AOSP 最高优先级闹钟（PRIORITY_ALARM_CLOCK），触发时系统**真正退出 Doze**（DeviceIdleController.onAlarmClockSend），且**完全不需要精确闹钟权限**（SCHEDULE/USE_EXACT_ALARM 权限体系不适用）——不存在授权异常静默降级被 Doze 推迟的路径；状态栏常驻「即将闹钟」图标（点开回五秒主页），OEM 省电策略对「用户设定的闹钟」类最宽容。这是市面闹钟应用的通行实现。原 setExactAndAllowWhileIdle/canScheduleExactAlarms 分支已删（真机复现：亮屏准点、息屏不触发——setExact 类只在 Doze 内投递不退出 Doze，且受精确闹钟授权牵制）。
+- Manifest 仍声明 `USE_EXACT_ALARM`：仅作 12+ 「精确闹钟触发 → 后台启动前台服务」豁免与 ROM 启发式的兼容面（安装即授、不可撤销），调度不依赖。
 - `cancel()`：无条件取消 PendingIntent（幂等）。
-- RTC_WAKEUP：到点唤醒设备（类闹钟语义），与设备睡眠态无关。
 
 ## TodoReminderCoordinator（重排唯一入口）
 
@@ -77,8 +77,9 @@ v1 渠道（`todo_reminder_alarm`，带渠道铃声）已废弃：渠道设置�
 | 权限 | 版本 | 请求时机 | 拒绝后果 |
 |---|---|---|---|
 | `POST_NOTIFICATIONS` | 13+ 运行时 | 首次保存提醒时刻 | 保存成功；通知不显示但**仍响铃震动**（服务+页面补拉不依赖通知可见性；横幅持续提示） |
-| `USE_EXACT_ALARM` | 12+ 声明即授（修复轮二） | 无需任何操作（安装自动授予、不可撤销；侧载自用口径——Play 上架需重新评估） | 正常恒已授予；`canScheduleExactAlarms()` 兜底分支 + 横幅仅防 ROM 异常 |
+| 电池优化白名单（修复轮三） | 6.0+ 设置开关 | 横幅「去开启」→ `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 一键弹窗 | 国产 ROM 息屏「应用速冻」可能冻结进程连闹钟广播都收不到（代码层绕不过，市面提醒类应用通行引导；部分 ROM 需再进电池设置选「允许后台运行/无限制」） |
+| `USE_EXACT_ALARM` | 12+ 声明即授 | 无需操作（兼容面保留，调度用 setAlarmClock 不依赖） | — |
 | `USE_FULL_SCREEN_INTENT` | 14+ 设置开关 | 横幅「去开启」→ `ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT` | 息屏时不弹全屏页（仍响铃震动，亮屏补拉/横幅兜底） |
-| `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_MEDIA_PLAYBACK` / `WAKE_LOCK` / `VIBRATE` / `RECEIVE_BOOT_COMPLETED` | 普通权限 | 安装即授 | — |
+| `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_MEDIA_PLAYBACK` / `WAKE_LOCK` / `VIBRATE` / `RECEIVE_BOOT_COMPLETED` / `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | 普通权限 | 安装即授 | — |
 
 横幅只在「存在已设提醒的待办 && 对应权限缺失」时出现（不用提醒的用户永不被打扰）；ON_RESUME 重查，补齐即消。

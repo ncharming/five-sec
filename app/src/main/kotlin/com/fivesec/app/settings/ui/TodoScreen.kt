@@ -123,7 +123,7 @@ fun TodoScreen(
     fun refreshReminderPermGaps() {
         reminderPermGaps = ReminderPermGaps(
             notifications = ReminderPermissions.notificationsMissing(context),
-            exactAlarm = ReminderPermissions.exactAlarmMissing(context),
+            battery = ReminderPermissions.batteryMissing(context),
             fullScreen = ReminderPermissions.fullScreenMissing(context),
         )
     }
@@ -202,14 +202,14 @@ fun TodoScreen(
                         },
                     )
                 }
-                if (reminderPermGaps.exactAlarm) {
+                if (reminderPermGaps.battery) {
                     ReminderPermBanner(
-                        text = stringResource(R.string.todo_reminder_banner_exact),
+                        text = stringResource(R.string.todo_reminder_banner_battery),
                         onAction = {
                             runCatching {
                                 context.startActivity(
                                     Intent(
-                                        Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                                         Uri.parse("package:${context.packageName}"),
                                     ),
                                 )
@@ -958,7 +958,7 @@ private fun todoRuleDayLabel(day: DayOfWeek): String = when (day) {
 /** 提醒权限缺口快照（specs/010 横幅判定源）：三项各自独立（ReminderPermissions 同口径）。 */
 private data class ReminderPermGaps(
     val notifications: Boolean = false,
-    val exactAlarm: Boolean = false,
+    val battery: Boolean = false,
     val fullScreen: Boolean = false,
 )
 

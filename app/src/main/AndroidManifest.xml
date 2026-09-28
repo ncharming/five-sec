@@ -15,11 +15,13 @@
     <!-- 待办到点提醒（specs/010）：全离线闹钟链路，零网络零内置音频 -->
     <!-- 13+ 通知运行时权限：到点全屏页经通知 full-screen intent 拉起，未授权则提醒不显示（页内横幅引导） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- 12+ 精确闹钟（修复轮二拍板）：改用 USE_EXACT_ALARM——闹钟类应用专用权限，安装即自动授予
-         且不可撤销，Doze 深度休眠下仍准点。原先的 SCHEDULE_EXACT_ALARM 侧载默认不授予，降级
-         setAndAllowWhileIdle 的非精确闹钟会被 Doze 推迟到亮屏维护窗口（真机复现：亮屏准点、
-         息屏不动、手动亮屏才弹）。canScheduleExactAlarms 的降级分支保留作 ROM 异常兜底 -->
+    <!-- 12+ 精确闹钟（修复轮三）：调度已改 setAlarmClock（闹钟类应用专用 API，触发时系统退出
+         Doze，且完全不需要精确闹钟权限）。此声明仅作兼容面保留：12+ 「精确闹钟触发 → 后台启动
+         前台服务」豁免与部分 ROM 的启发式识别仍看它，安装即自动授予、不可撤销，无副作用 -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- 电池优化白名单（修复轮三）：国产 ROM 息屏「应用速冻」会冻结进程连闹钟广播都收不到，
+         引导用户一键「忽略电池优化」是市面提醒类应用的通行做法（需此权限才能拉起授权弹窗） -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- full-screen intent 载体（normal 权限，14+ 由用户在设置放行「全屏显示」） -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- 重启/时间变更后重排提醒闹钟（决策 5） -->

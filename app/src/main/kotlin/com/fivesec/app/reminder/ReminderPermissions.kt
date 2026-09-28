@@ -1,17 +1,17 @@
 package com.fivesec.app.reminder
 
 import android.Manifest
-import android.app.AlarmManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.core.app.NotificationManagerCompat
+import android.os.PowerManager
 import androidx.core.content.ContextCompat
 
 /**
- * 提醒链路权限状态（specs/010 决策 16）：三项门限各自独立查询——待办页横幅（逐条提示）与
- * receiver 发通知前的防御检查共用同一实现，口径不漂移。全部只读查询，不做任何申请动作
- * （申请/跳设置由调用方各自负责）。
+ * 提醒链路权限状态（specs/010 决策 16；修复轮三以电池优化取代精确闹钟项）：各门限独立查询——
+ * 待办页横幅（逐条提示）共用同一实现，口径不漂移。全部只读查询，不做任何申请动作
+ * （申请/跳设置由调用方各自负责）。精确闹钟项已删除：调度改 setAlarmClock 后不再依赖
+ * 精确闹钟权限体系（见 TodoReminderScheduler KDoc）。
  */
 object ReminderPermissions {
 
@@ -22,13 +22,13 @@ object ReminderPermissions {
             PackageManager.PERMISSION_GRANTED
 
     /**
-     * 12+ 精确闹钟不可用（<12 恒 false——无此限制）。修复轮二起 Manifest 已改声明
-     * USE_EXACT_ALARM（安装即自动授予、不可撤销），正常恒 false——本查询保留作 ROM 异常
-     * 兜底与横幅数据源；一旦真出现缺失即降级非精确闹钟（Doze 下会被推迟到亮屏）。
+     * 未加入电池优化白名单（修复轮三新增）：国产 ROM 息屏后的「应用速冻/睡眠待机优化」会冻结
+     * 进程，连闹钟广播都收不到（真机复现：亮屏准点、息屏不响）——这是代码层绕不过的系统策略，
+     * 市面提醒类应用通行做法就是引导用户忽略电池优化（23+ 恒可查询；个别 ROM 恒已授则不提示）。
      */
-    fun exactAlarmMissing(context: Context): Boolean =
-        Build.VERSION.SDK_INT >= 31 &&
-            context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() == false
+    fun batteryMissing(context: Context): Boolean =
+        context.getSystemService(PowerManager::class.java)
+            ?.isIgnoringBatteryOptimizations(context.packageName) == false
 
     /** 14+ 全屏显示未放行（<14 恒 false——FSI 安装即授）。 */
     fun fullScreenMissing(context: Context): Boolean =

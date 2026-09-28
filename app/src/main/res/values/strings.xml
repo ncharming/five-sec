@@ -89,7 +89,7 @@
     <string name="todos_reminder_once_hint">提醒只在有效期日当天响</string>
     <string name="todos_reminder_inline">提醒 %1$s</string>
     <string name="todo_reminder_banner_notifications">未开启通知权限，到点提醒将无法显示</string>
-    <string name="todo_reminder_banner_exact">系统未授予精确闹钟（罕见），息屏时提醒可能被推迟</string>
+    <string name="todo_reminder_banner_battery">未忽略电池优化，息屏时提醒可能被系统省电冻结</string>
     <string name="todo_reminder_banner_fsi">未开启全屏显示，息屏时提醒将不弹全屏页（仍会响铃震动）</string>
     <string name="todo_reminder_banner_action">去开启</string>
     <string name="todo_reminder_channel_alarm">到点提醒</string>
