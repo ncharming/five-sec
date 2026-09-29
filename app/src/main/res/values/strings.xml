@@ -94,6 +94,8 @@
     <string name="todo_reminder_banner_action">去开启</string>
     <string name="todo_reminder_channel_alarm">到点提醒</string>
     <string name="todo_reminder_channel_alarm_desc">待办到点时响铃震动并全屏提醒</string>
+    <string name="todo_reminder_channel_fallback">提醒兜底响铃</string>
+    <string name="todo_reminder_channel_fallback_desc">提醒服务被系统拦截时的一次性响铃兜底</string>
     <string name="todo_reminder_channel_notice">提醒收底通知</string>
     <string name="todo_reminder_channel_notice_desc">长时间未处理时在通知栏保留的提醒</string>
     <string name="todo_reminder_notification_title">待办提醒</string>

@@ -1,17 +1,11 @@
 package com.fivesec.app.reminder
 
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.media.RingtoneManager
-import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.fivesec.app.R
 import com.fivesec.app.data.repository.TodoRepository
-import com.fivesec.app.domain.model.Todo
 import dagger.hilt.android.AndroidEntryPoint
 import java.time.Instant
 import java.time.ZoneId
@@ -28,8 +22,9 @@ import kotlinx.coroutines.launch
  * （ReminderAlarmService——铃声震动不依赖页面拉起，息屏/亮屏/FSI 被拒都即时响；
  * 通知由服务作前台通知发出）→ 无论响没响都重排下一响。
  *
- * 降级路径：12+ 无精确闹钟授权时闹钟走非精确、后台启动前台服务可能被拒——catch 后改发
- * 「一次性响铃通知」（builder 级铃声+震动：渠道静音、服务缺席时兜底响一声一震）。
+ * 降级路径（修复轮四）：12+ 无精确闹钟授权等场景 startForegroundService 同步被拒时，
+ * 改发「一次性响铃通知」——挂**兜底响铃渠道**（渠道级 ALARM 声+震动波形；API 26+
+ * 渠道覆盖 builder，可闻性必须钉在渠道上），服务缺席时仍有一声一震可闻。
  *
  * goAsync + 注入的应用级 scope：挂起查库期间 receiver 不被系统提前掐掉，finally 里 finish()。
  */
@@ -71,74 +66,23 @@ class TodoReminderReceiver : BroadcastReceiver() {
                 context,
                 Intent(context, ReminderAlarmService::class.java)
                     .setAction(ReminderAlarmService.ACTION_START)
-                    .putExtra(ReminderAlarmService.EXTRA_NOTIFICATION, buildAlarmNotification(context, due))
+                    .putExtra(ReminderAlarmService.EXTRA_NOTIFICATION, ReminderNotifications.buildAlarmNotification(context, due))
                     .putExtra(ReminderAlarmService.EXTRA_TODO_IDS, ids.toLongArray())
                     .putExtra(ReminderAlarmService.EXTRA_DAY, reminderDay)
                     .putExtra(ReminderAlarmService.EXTRA_MINUTE, minute),
             )
         }
-        // 服务起不来（12+ 无精确闹钟授权等）：一次性响铃通知兜底——响一声一震 + 点开进页
+        // 服务起不来（12+ 无精确闹钟授权等）：一次性响铃通知兜底——渠道一声一震 + 点开进页
         if (started.isFailure) {
             NotificationManagerCompat.from(context)
-                .notify(NOTIFICATION_ID, buildAlarmNotification(context, due, degraded = true))
+                .notify(NOTIFICATION_ID, ReminderNotifications.buildAlarmNotification(context, due, degraded = true))
         }
     }
-
-    /**
-     * 提醒载体通知：静音渠道（铃声单一来源在服务的 MediaPlayer 循环，防渠道一声+循环双响），
-     * FSI 锁屏直拉全屏页；降级版在 builder 挂一次性铃声+震动（服务缺席时的最小可闻兜底）。
-     */
-    private fun buildAlarmNotification(context: Context, due: List<Todo>, degraded: Boolean = false) =
-        NotificationCompat.Builder(context, ReminderChannels.CHANNEL_ALARM)
-            .setSmallIcon(R.drawable.ic_todo_reminder)
-            .setContentTitle(context.getString(R.string.todo_reminder_notification_title))
-            .setContentText(previewText(context, due))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(previewText(context, due)))
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setContentIntent(contentIntent(context, due))
-            .setFullScreenIntent(contentIntent(context, due), true) // 锁屏/息屏直接拉全屏页；亮屏出高分横幅（服务补拉页面）
-            .setAutoCancel(true)
-            .setOngoing(true) // 提醒页处理中不滑掉；页面/服务收口时统一清掉
-            .apply {
-                if (degraded) {
-                    // NotificationCompat 约定：sound 传 usage 常量（框架侧自行装配 ALARM 属性）
-                    setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM), AudioAttributes.USAGE_ALARM)
-                    setVibrate(ReminderRinger.VIBRATION_PATTERN)
-                }
-            }
-            .build()
-
-    private fun previewText(context: Context, due: List<Todo>): String {
-        val titles = due.map { it.text }
-        return if (titles.size <= PREVIEW_COUNT) {
-            titles.joinToString("；")
-        } else {
-            titles.take(PREVIEW_COUNT).joinToString("；") +
-                context.getString(R.string.todo_reminder_notification_more, titles.size - PREVIEW_COUNT)
-        }
-    }
-
-    private fun contentIntent(context: Context, due: List<Todo>): PendingIntent =
-        PendingIntent.getActivity(
-            context,
-            REQUEST_CONTENT,
-            Intent(context, TodoReminderActivity::class.java)
-                .putExtra(TodoReminderActivity.EXTRA_TODO_IDS, due.map { it.id }.toLongArray())
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
 
     companion object {
         const val EXTRA_TRIGGER_AT = "trigger_at"
 
         /** 提醒通知固定 id（服务前台通知同 id）：同时最多一场提醒在处理，重发覆盖而非堆叠。 */
         const val NOTIFICATION_ID = 10_012
-
-        /** 内容/FSI PendingIntent 的 requestCode（同一目标 Activity，extras 随最新触发更新）。 */
-        private const val REQUEST_CONTENT = 10_011
-
-        /** 通知正文预览条数（与覆盖层卡片「前 3 条」同性格：预览克制，全量进提醒页看）。 */
-        private const val PREVIEW_COUNT = 3
     }
 }

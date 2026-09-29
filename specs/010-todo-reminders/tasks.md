@@ -33,3 +33,9 @@
 
 - [x] 23. 调度层改 `AlarmManager.setAlarmClock()`（市面闹钟应用通行实现）：AOSP 最高优先级闹钟、触发时系统**真正退出 Doze**、完全不需要精确闹钟权限（删除 canScheduleExactAlarms 降级分支，不存在静默掉非精确被推迟的路径）；状态栏「即将闹钟」图标点开回主页；USE_EXACT_ALARM 声明保留仅作 12+ 后台 FGS 启动豁免兼容面
 - [x] 24. 电池优化白名单引导（OEM「应用速冻」是息屏不响的头号元凶，代码层绕不过）：`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 权限 + `isIgnoringBatteryOptimizations` 检查 + 待办页横幅一键 `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 弹窗（取代已无意义的精确闹钟横幅）；文档同步 spec FR-006/边界、契约调度与权限表、quickstart 息屏核心验证、README 平台限制
+
+## 修复轮四（链路审计：降级兜底自 minSdk 26 起从未可闻 + 服务侧第二道闸无声自灭）
+
+- [x] 25. 降级一次性响铃通知改挂独立「兜底响铃渠道」（`todo_reminder_alarm_fallback`：渠道级默认 ALARM 声 + 闹钟式震动波形）：API 26+ 通知声音/震动由**渠道**决定、builder `setSound/setVibrate` 恒被渠道覆盖——原「builder 挂铃声」写法从未真正响过；载体渠道仍钉死静音（铃声唯一来源在服务的 MediaPlayer，防双响）
+- [x] 26. 通知装配抽出 `ReminderNotifications`（Receiver 主路径/服务降级共用一份，防预览/FSI/requestCode 口径漂移）；`ReminderAlarmService.startForeground` 被拒（OEM 变体的第二道闸）不再无声自灭——按本场口径重查库发兜底响铃通知再收口，两层启动闸任一被拒都仍可闻
+- [x] 27. 测试：`ReminderNotificationsTest`（Robolectric）钉渠道契约（主路径静音载体 / 降级挂兜底渠道 / 兜底渠道 ALARM 声+震 / 载体渠道钉死静音）；README 通知权限口径修正（未授权仍响铃）+ quickstart 降级验证场景

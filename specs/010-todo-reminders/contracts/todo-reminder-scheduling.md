@@ -40,7 +40,7 @@ Activity.onCreate，导致「只亮横幅、点了才响」。服务由 Receiver
 1. 读 `EXTRA_TRIGGER_AT`（防御：无 extra → 仅重排后返回）。
 2. `goAsync()` + 注入 scope：按**触发时刻**（非当前时间）换算本地 `reminderDay`（yyyy-MM-dd）与 `minute`（HH:mm）。
 3. `allTodosOnce().filter { TodoReminderPlanner.isDueForMinute(it, reminderDay, minute) }` —— 响前查库（决策 13）：排程后到点前发生的勾选/停用/删除全部被最新库态吸收。
-4. 空集 → 不响（静默，例如到点前刚勾完成）；非空 → 构建静音 FSI 通知（alarm 渠道 v2）→ 启动 `ReminderAlarmService`（前台服务即时响铃+震动；FGS 通知即该 FSI 通知，息屏/锁屏直拉全屏页，亮屏出高分横幅）。启动被拒（12+ 无精确闹钟授权等后台 FGS 限制）→ 退化直发「一次性响铃通知」（builder 级铃声+震动兜底一声一震）。**不再因无通知权限静默跳过**（修复轮拍板：响铃优先——服务响铃 + 亮屏补拉页面都不依赖通知可见性；横幅持续教育授权）。
+4. 空集 → 不响（静默，例如到点前刚勾完成）；非空 → 构建静音 FSI 通知（alarm 渠道 v2，装配统一在 `ReminderNotifications`）→ 启动 `ReminderAlarmService`（前台服务即时响铃+震动；FGS 通知即该 FSI 通知，息屏/锁屏直拉全屏页，亮屏出高分横幅）。启动被拒（12+ 无精确闹钟授权等后台 FGS 限制）→ 退化直发「一次性响铃通知」（**兜底响铃渠道**：渠道级 ALARM 声+震动波形一声一震——修复轮四：API 26+ 渠道覆盖 builder，可闻性必须钉在渠道上，原 builder 级挂声写法从未生效）。**不再因无通知权限静默跳过**（修复轮拍板：响铃优先——服务响铃 + 亮屏补拉页面都不依赖通知可见性；横幅持续教育授权）。
 5. 最后 `rescheduleNow()` 排下一响（链式永续）。
 
 ## BootReceiver
@@ -50,7 +50,7 @@ Activity.onCreate，导致「只亮横幅、点了才响」。服务由 Receiver
 ## ReminderAlarmService（响铃前台服务，修复轮新增）
 
 - `foregroundServiceType="mediaPlayback"`（正在播放闹钟铃声即媒体播放的本义；12+ 后台启动前台服务的豁免恰好覆盖「精确闹钟触发」路径）。
-- `ACTION_START(ids, day, minute, notification)`：startForeground（5s 时限先行）→ `ReminderRinger` 响铃 → CPU 唤醒锁（60s+余量，息屏且页面未拉起时铃声不断续）→ 60s 超时任务 → 亮屏补拉 `TodoReminderActivity`（runCatching：无障碍服务运行时进程拥有后台启动 Activity 豁免；失败则横幅+铃声兜底。与 FSI 并发拉起由 Activity singleTop + onNewIntent 去重）。
+- `ACTION_START(ids, day, minute, notification)`：startForeground（5s 时限先行）→ `ReminderRinger` 响铃 → CPU 唤醒锁（60s+余量，息屏且页面未拉起时铃声不断续）→ 60s 超时任务 → 亮屏补拉 `TodoReminderActivity`（runCatching：无障碍服务运行时进程拥有后台启动 Activity 豁免；失败则横幅+铃声兜底。与 FSI 并发拉起由 Activity singleTop + onNewIntent 去重）。startForeground 被拒（OEM 变体的第二道闸，修复轮四前无声自灭）→ 按触发口径重查库发「兜底响铃通知」再收口——两层启动闸任一被拒都仍可闻。
 - `ACTION_STOP_RING`（页面任意交互发送）：人已到场，停铃；服务保留待 FINISH 收口。
 - `ACTION_FINISH`（Activity.finish() 统一收口发送：关闭按钮/返回/全勾自动关）：停铃、撤前台通知、自灭。
 - 60s 超时收底：按触发口径（day+minute）响前同款查库重算剩余 → 静默通知（notice 渠道、autoCancel、点开带剩余 ids 回全屏页）→ 撤前台通知自灭。
@@ -59,15 +59,16 @@ Activity.onCreate，导致「只亮横幅、点了才响」。服务由 Receiver
 ## TodoReminderActivity（全屏提醒页）
 
 - `@AndroidEntryPoint ComponentActivity` + Compose（FiveSecTheme）；`setShowWhenLocked`/`setTurnScreenOn`（26 用 window flags 兜底）+ keep-screen-on；`excludeFromRecents`；exported=false；`singleTop`（FSI 与亮屏补拉并发去重；第二场提醒复用已开页面走 onNewIntent 强制重装）。
-- 数据：intent `EXTRA_TODO_IDS` → `repository.findByIds` → 展示前按「仍启用 && 当天未完成」防御过滤（跨进程窗口期的脏 ids 吸收）。条目展示**完整内容**（多行原文不截断）+ 每条「完成」按钮。
+- 数据：intent `EXTRA_TODO_IDS` → `repository.findByIds` → 展示前按「仍启用 && 当天未完成」防御过滤（跨进程窗口期的脏 ids 吸收）。条目展示**完整内容**（多行原文不截断）+ 前置复选框勾选即完成。
 - 感官归服务（页面不再持有 ReminderRinger）；`onUserInteraction` 任一触摸 → `ACTION_STOP_RING`（幂等）；`finish()` → `ACTION_FINISH`（关闭/返回/全勾自动关三路径统一收口）。
-- 操作（决策 14）：逐条「完成」按钮（`setCompleted(id, today, true)`，与待办页同款双写）；「关闭」按钮；全勾完自动关页。无贪睡。
+- 操作（决策 14）：前置复选框（`setCompleted(id, today, true)`，与待办页同款双写，勾后即从列表移除）；「关闭」按钮；全勾完自动关页。无贪睡。
 
 ## 通知渠道（ReminderChannels，FiveSecApp 启动创建）
 
 | 渠道 | 重要级 | 声音 | 用途 |
 |---|---|---|---|
 | `todo_reminder_alarm_v2` | HIGH | **静音**（服务 MediaPlayer 循环是铃声唯一来源，防渠道一声+循环双响；显式置空防 ROM 默认声） | 服务前台通知 = FSI 载体：息屏/锁屏直拉全屏页；亮屏高分横幅（服务同时补拉页面） |
+| `todo_reminder_alarm_fallback`（修复轮四） | HIGH | **默认 ALARM 声**（USAGE_ALARM 音量流）+ 闹钟式震动波形 | 一次性响铃兜底通知：前台服务两层启动闸任一被拒时直发，服务缺席时的最小可闻兜底 |
 | `todo_reminder_notice` | LOW | 无 | 60s 超时后的静默收底通知 |
 
 v1 渠道（`todo_reminder_alarm`，带渠道铃声）已废弃：渠道设置创建后不可变，升级设备启动时删除防双响。

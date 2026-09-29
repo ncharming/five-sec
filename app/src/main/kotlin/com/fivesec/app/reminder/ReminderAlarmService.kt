@@ -35,6 +35,10 @@ import kotlinx.coroutines.launch
  * ② 60s 无操作自动收底（响前口径重查剩余条目 → 静默通知 → 自灭）；
  * ③ 页面关闭/全勾完（ACTION_FINISH——经 Activity.finish() 统一收口发送）。
  * 响铃期间持 CPU 唤醒锁（60s+余量）：息屏且 FSI 被拒时屏幕不亮，CPU 睡死会让铃声断续。
+ *
+ * 降级收口（修复轮四）：前台化被拒（startForeground 才抛的 OEM 变体）时按本场口径重查库
+ * 发「兜底响铃通知」（渠道级一声 ALARM 铃+震动）再自灭——两层启动闸（Receiver 的
+ * startForegroundService 同步抛、此处的 startForeground 抛）任一被拒都仍可闻。
  */
 @AndroidEntryPoint
 class ReminderAlarmService : Service() {
@@ -88,7 +92,8 @@ class ReminderAlarmService : Service() {
             return
         }
         // startForeground 必须先行（5s 时限）；12+ 后台启动前台服务被拒时在此抛——
-        // Receiver 侧的 runCatching 之外的第二道闸，异常即自灭（Receiver 已同步 catch 退化路径）
+        // 修复轮四：被拒不再无声自灭（Receiver 侧只兜 startForegroundService 同步抛的场景，
+        // 此处兜 startForeground 才抛的 OEM 变体），按本场口径重查库发兜底响铃通知再收口
         runCatching {
             if (Build.VERSION.SDK_INT >= 29) {
                 startForeground(TodoReminderReceiver.NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
@@ -96,7 +101,7 @@ class ReminderAlarmService : Service() {
                 startForeground(TodoReminderReceiver.NOTIFICATION_ID, notification)
             }
         }.onFailure {
-            stopSelf()
+            postDegradedAndStop()
             return
         }
 
@@ -108,6 +113,31 @@ class ReminderAlarmService : Service() {
             onTimeout()
         }
         tryLaunchActivity(pendingIds)
+    }
+
+    /**
+     * 前台化被拒的收口（修复轮四）：响前口径重查（与 onTimeout 同源——查库失败发不出就
+     * 静默，宁可少一声不虚报）→ 发「兜底响铃通知」（渠道级一声 ALARM 铃+震动，服务缺席
+     * 时的最小可闻兜底）→ 自灭。挂起重查在 startForeground 5s 时限内绰绰有余（本地库
+     * 单表 SELECT）。
+     */
+    private fun postDegradedAndStop() {
+        scope.launch {
+            val due = runCatching {
+                todoRepository.allTodosOnce().filter {
+                    TodoReminderPlanner.isDueForMinute(it, reminderDay, minute)
+                }
+            }.getOrDefault(emptyList())
+            if (due.isNotEmpty()) {
+                runCatching {
+                    NotificationManagerCompat.from(this@ReminderAlarmService).notify(
+                        TodoReminderReceiver.NOTIFICATION_ID,
+                        ReminderNotifications.buildAlarmNotification(this@ReminderAlarmService, due, degraded = true),
+                    )
+                }
+            }
+            stopSelf()
+        }
     }
 
     /**
