@@ -78,6 +78,9 @@
     <string name="todos_rule_once_hint">只在今天生效，未完成将进入过期待办</string>
     <string name="todos_section_today">今日待办</string>
     <string name="todos_section_expired">过期待办（%1$d）</string>
+    <!-- 今日卡规则分组名（读侧分类=编辑弹窗四选一的镜像；每天/单次复用 todos_rule_daily / todos_rule_once） -->
+    <string name="todos_group_weekly">每周%1$s</string>
+    <string name="todos_group_interval">每 %1$d 天</string>
     <string name="todos_date_unknown">—</string>
     <string name="todos_menu_revive">改为今天</string>
 

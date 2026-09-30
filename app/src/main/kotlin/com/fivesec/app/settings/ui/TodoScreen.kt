@@ -94,6 +94,9 @@ import java.time.DayOfWeek
  * 待办页（specs/005-daily-todos；006 增重复规则；007 两区分区，首页默认 Tab）。
  * 分区（specs/007）：「今日待办」卡（一切未过期条目，维持 id 升序与灰显/停用机制）+
  * 「过期待办 (n)」卡（一次性失败存量，有效期日升序；无过期整卡不显示）。
+ * 今日卡内按重复规则分组（TodoRuleGroups 纯投影）：组序=编辑弹窗四段（每天→每周→每N天→
+ * 单次），不同星期集合/不同 N 各自成组（组名自描述，如「每周一、三」），读侧分类与编辑侧
+ * 词汇表一致；过期区语义是「失败存量」而非规则分类，不参与分组。
  * 每行标题下副行纯日期（今日区=创建日「—」兜底、过期区=有效期日）；过期行无勾选框/开关，
  * 仅「改为今天 / 删除」——失败可重试，但无迟到补勾（用户拍板口径）。
  * 视觉沿用四页统一语言（PageHeader + 白卡行骨架 + FiveSecDialog 弹窗）；名额行已移除——
@@ -239,23 +242,31 @@ fun TodoScreen(
                     modifier = Modifier.padding(Spacing.xl),
                 )
             } else {
-                // ── 今日待办卡：一切未过期条目（含停用/不轮到/今日一次性） ──
+                // ── 今日待办卡：一切未过期条目（含停用/不轮到/今日一次性），卡内按重复规则分组 ──
                 SectionLabel(stringResource(R.string.todos_section_today))
                 CardSurface(Modifier.padding(horizontal = Spacing.lg)) {
-                    uiState.todayRows.forEachIndexed { index, row ->
-                        if (index > 0) {
+                    TodoRuleGroups.groupByRule(uiState.todayRows).forEachIndexed { groupIndex, group ->
+                        if (groupIndex > 0) {
                             HorizontalDivider(
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                             )
                         }
-                        TodoItemRow(
-                            row = row,
-                            onToggleDone = { viewModel.setCompleted(row.todo.id, !row.doneToday) },
-                            onToggleEnabled = { viewModel.setEnabled(row.todo.id, it) },
-                            onShowDetail = { detailTarget = row },
-                            onRename = { editTarget = row },
-                            onDelete = { deleteTarget = row },
-                        )
+                        RuleGroupHeader(ruleGroupLabel(group))
+                        group.rows.forEachIndexed { index, row ->
+                            if (index > 0) {
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                )
+                            }
+                            TodoItemRow(
+                                row = row,
+                                onToggleDone = { viewModel.setCompleted(row.todo.id, !row.doneToday) },
+                                onToggleEnabled = { viewModel.setEnabled(row.todo.id, it) },
+                                onShowDetail = { detailTarget = row },
+                                onRename = { editTarget = row },
+                                onDelete = { deleteTarget = row },
+                            )
+                        }
                     }
                 }
 
@@ -442,6 +453,46 @@ private fun SectionLabel(text: String) {
             bottom = Spacing.xs,
         ),
     )
+}
+
+/** 今日卡内规则分组头：与区标题同字体但缩进对齐行内容（md），组间靠分隔线+组头双重区隔。 */
+@Composable
+private fun RuleGroupHeader(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(
+            start = Spacing.md,
+            end = Spacing.md,
+            top = Spacing.md,
+            bottom = Spacing.xs,
+        ),
+    )
+}
+
+/**
+ * 分组名与编辑弹窗同一词汇表：每天 / 每周一、三 / 每 N 天 / 单次——读侧分类不发明新词。
+ * 防御：周几空集（脏数据，表单已拦）给类型名「每周几」不伪造天数；未知类型兜底按每天档
+ * 命名（与 isDue 的脏值兜底同思路：不让条目凭空消失/错位）。
+ */
+@Composable
+private fun ruleGroupLabel(group: TodoRuleGroups.Group): String = when (group.repeatType) {
+    TodoRecurrence.REPEAT_WEEKLY -> {
+        val days = DayOfWeek.values().filter { group.repeatDays and TodoRecurrence.bitOf(it) != 0 }
+        if (days.isEmpty()) {
+            stringResource(R.string.todos_rule_weekly)
+        } else {
+            // 标签须先在组合上下文取好（joinToString 的 transform 非组合上下文），
+            // forEach 是 inline——lambda 内 stringResource 可用
+            val dayNames = ArrayList<String>(days.size)
+            days.forEach { dayNames.add(todoRuleDayLabel(it)) }
+            stringResource(R.string.todos_group_weekly, dayNames.joinToString("、"))
+        }
+    }
+    TodoRecurrence.REPEAT_INTERVAL -> stringResource(R.string.todos_group_interval, group.intervalDays)
+    TodoRecurrence.REPEAT_ONCE -> stringResource(R.string.todos_rule_once)
+    else -> stringResource(R.string.todos_rule_daily)
 }
 
 /** 今日区行：今日勾选框 + 标题（完成划线/停用弱化，单行省略、点击看全文）+ 副行日期 + 启用开关 + ⋯（修改/删除）。 */
