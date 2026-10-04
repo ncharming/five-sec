@@ -25,13 +25,20 @@ interface TodoCompletionDao {
     @Query("DELETE FROM todo_completions WHERE todoId = :todoId AND completedDate = :date")
     suspend fun deleteByTodoAndDate(todoId: Long, date: String)
 
-    /** 周期内按条目聚合完成次数（次数降序，同次数按文本排序保证稳定展示）；供任务历史二级页。 */
+    /** 周期内按条目聚合完成次数与其中过期补完次数（次数降序，同次数按文本排序保证稳定展示）；供任务历史二级页。 */
     @Query(
-        "SELECT todoId, todoText, COUNT(*) AS completions FROM todo_completions " +
+        "SELECT todoId, todoText, COUNT(*) AS completions, SUM(wasExpired) AS lateCompletions FROM todo_completions " +
             "WHERE completedDate >= :startDate AND completedDate < :endDate " +
             "GROUP BY todoId ORDER BY completions DESC, todoText ASC"
     )
     fun observeCountByTodoBetween(startDate: String, endDate: String): Flow<List<TodoRangeCount>>
+
+    /** 区间内过期补完次数（今日卡「今日补完」与历史页拆分行共用）；COUNT 恒回非 null 的 0。 */
+    @Query(
+        "SELECT COUNT(*) FROM todo_completions " +
+            "WHERE wasExpired = 1 AND completedDate >= :startDate AND completedDate < :endDate"
+    )
+    fun observeLateCountBetween(startDate: String, endDate: String): Flow<Int>
 
     /** 最早完成日期；无记录时为 null。用于年档位可选范围（与拦截最早事件取更早）。 */
     @Query("SELECT MIN(completedDate) FROM todo_completions")
@@ -39,4 +46,9 @@ interface TodoCompletionDao {
 }
 
 /** 周期内按待办条目聚合的查询结果投影（非持久化实体；todoText 为事件行内快照，同一 todoId 恒同值或取任一行）。 */
-data class TodoRangeCount(val todoId: Long, val todoText: String, val completions: Int)
+data class TodoRangeCount(
+    val todoId: Long,
+    val todoText: String,
+    val completions: Int,
+    val lateCompletions: Int, // 其中过期补完次数（wasExpired=1 的事件数；正常完成 = completions - lateCompletions）
+)

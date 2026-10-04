@@ -14,7 +14,7 @@ import com.fivesec.app.domain.model.TodoCompletion
 
 @Database(
     entities = [TargetApp::class, InterceptionEvent::class, Todo::class, TodoCompletion::class],
-    version = 10, // v10：待办到点提醒（specs/010）——todos 新增 reminderTime 列（HH:mm，空=无提醒）
+    version = 11, // v11：todo_completions 新增 wasExpired 列（2026-10 过期补完标记，统计区分迟到完成）
     exportSchema = false,
 )
 @TypeConverters(InterceptionOutcomeConverter::class)
@@ -148,6 +148,16 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
 val MIGRATION_9_10 = object : Migration(9, 10) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("ALTER TABLE todos ADD COLUMN reminderTime TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+// 从版本10迁移到版本11：todo_completions 新增 wasExpired 列（2026-10-04 过期补完标记）。
+// 纯 ADD COLUMN + DEFAULT 0：存量完成事件全部视作正常完成（历史里无从考证当时是否过期，
+// 不伪造）；零数据迁移语句、零丢失；列定义必须与 Room 为 TodoCompletion 生成的 schema
+// 逐字一致（AppDatabaseMigrationTest 手建 v10 库守住）。五表零触碰（interception_events 红线照旧）。
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE todo_completions ADD COLUMN wasExpired INTEGER NOT NULL DEFAULT 0")
     }
 }
 

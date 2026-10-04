@@ -13,6 +13,7 @@ import java.time.Instant
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -150,9 +151,15 @@ class TodoRepositoryTest {
             emit(
                 rows.filter { it.completedDate >= startDate && it.completedDate < endDate }
                     .groupBy { it.todoId }
-                    .map { (todoId, group) -> TodoRangeCount(todoId, group.first().todoText, group.size) }
+                    .map { (todoId, group) ->
+                        TodoRangeCount(todoId, group.first().todoText, group.size, group.count { it.wasExpired })
+                    }
                     .sortedWith(compareByDescending<TodoRangeCount> { it.completions }.thenBy { it.todoText }),
             )
+        }
+
+        override fun observeLateCountBetween(startDate: String, endDate: String): Flow<Int> = flow {
+            emit(rows.count { it.wasExpired && it.completedDate >= startDate && it.completedDate < endDate })
         }
 
         override fun observeEarliestDate(): Flow<String?> = flow { emit(rows.minOfOrNull { it.completedDate }) }
@@ -584,6 +591,25 @@ class TodoRepositoryTest {
         repo.setCompleted(7, today, completed = true)
 
         assertEquals(listOf(TodoCompletion(todoId = 7, todoText = "背单词", completedDate = today)), completions.rows)
+    }
+
+    @Test
+    fun `setCompleted过期补完标记按入口落列_同日重勾以最后入口为准`() = runTest {
+        val dao = FakeTodoDao()
+        dao.state.value = listOf(Todo(id = 7, text = "每天条目", createdAt = "2026-09-20"))
+        val completions = FakeTodoCompletionDao()
+        val repo = TodoRepository(dao, completions, timeProvider)
+
+        // 过期区补勾入口（2026-10-04）→ wasExpired=true：统计侧把迟到完成显式分列
+        repo.setCompleted(7, today, completed = true, wasExpired = true)
+        assertEquals(true, completions.rows.single().wasExpired)
+        assertEquals(1, repo.observeLateCompletionCountBetween(today, "2026-09-24").first())
+
+        // 同日取消后从今日区正常入口重勾 → 标记回落 false（REPLACE 覆盖，不残留迟到标记）
+        repo.setCompleted(7, today, completed = false)
+        repo.setCompleted(7, today, completed = true)
+        assertEquals(false, completions.rows.single().wasExpired)
+        assertEquals(0, repo.observeLateCompletionCountBetween(today, "2026-09-24").first())
     }
 
     @Test

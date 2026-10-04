@@ -99,4 +99,34 @@ class TodoCompletionDaoTest {
         assertNull(dao.observeEarliestDate().first())
         assertEquals(emptyList<TodoRangeCount>(), dao.observeCountByTodoBetween("2000-01-01", "2999-12-31").first())
     }
+
+    @Test
+    fun `过期补完标记聚合_按条目拆分与区间计数`() = runTest {
+        // A：两次正常完成 + 一次过期补完（周三）；B：一次过期补完（周二）——2026-10-04 补完标记口径
+        dao.upsert(TodoCompletion(todoId = 1, todoText = "A", completedDate = "2026-09-21"))
+        dao.upsert(TodoCompletion(todoId = 1, todoText = "A", completedDate = "2026-09-23", wasExpired = true))
+        dao.upsert(TodoCompletion(todoId = 1, todoText = "A", completedDate = "2026-09-24"))
+        dao.upsert(TodoCompletion(todoId = 2, todoText = "B", completedDate = "2026-09-22", wasExpired = true))
+
+        val week = dao.observeCountByTodoBetween("2026-09-21", "2026-09-28").first()
+        val a = week.single { it.todoText == "A" }
+        assertEquals(3, a.completions)
+        assertEquals(1, a.lateCompletions) // 其中过期补完 1 次，正常完成 = 3 - 1
+        val b = week.single { it.todoText == "B" }
+        assertEquals(1, b.lateCompletions)
+
+        // 区间补完计数只数 wasExpired 行：全周 2、周三当天 1（A）、周二 1（B）、周一 0（半开端点不计）
+        assertEquals(2, dao.observeLateCountBetween("2026-09-21", "2026-09-28").first())
+        assertEquals(1, dao.observeLateCountBetween("2026-09-23", "2026-09-24").first())
+        assertEquals(1, dao.observeLateCountBetween("2026-09-22", "2026-09-23").first())
+        assertEquals(0, dao.observeLateCountBetween("2026-09-21", "2026-09-22").first())
+    }
+
+    @Test
+    fun `过期补完标记默认false_旧调用零改动`() = runTest {
+        dao.upsert(TodoCompletion(todoId = 1, todoText = "A", completedDate = "2026-09-23"))
+
+        assertEquals(0, dao.observeCountByTodoBetween("2026-09-23", "2026-09-24").first().single().lateCompletions)
+        assertEquals(0, dao.observeLateCountBetween("2026-09-23", "2026-09-24").first())
+    }
 }

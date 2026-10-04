@@ -134,7 +134,10 @@ fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
                             onSelectRange = viewModel::selectRange,
                             onSelectPeriod = viewModel::selectPeriod,
                         )
-                        TodoPeriodTotalCard(todoRangeStats.sumOf { it.completions })
+                        TodoPeriodTotalCard(
+                            total = todoRangeStats.sumOf { it.completions },
+                            lateTotal = todoRangeStats.sumOf { it.lateCompletions },
+                        )
                         if (todoRangeStats.isEmpty()) {
                             Text(
                                 stringResource(R.string.stats_todo_empty),
@@ -251,7 +254,7 @@ private fun TodayTasksCard(stats: TodoTodayStatsUi, onClick: () -> Unit) {
                     modifier = Modifier.padding(start = Spacing.sm),
                 )
             }
-            ExpiredRow(stats.expired, modifier = Modifier.padding(top = Spacing.sm))
+            ExpiredRow(stats.expired, stats.lateCompleted, modifier = Modifier.padding(top = Spacing.sm))
         }
     }
 }
@@ -395,9 +398,11 @@ private fun AllDonePill() {
     }
 }
 
-/** 过期警示行（specs/008：过期只出现在今日）：0 常规弱化；>0 红点 + 红色加粗。 */
+/** 过期警示行（specs/008：过期只出现在今日）：0 常规弱化；>0 红点 + 红色加粗。
+ *  今日补完数 >0 时并列展示（2026-10-04：补了的看得见——过期区补勾的事件数，与过期 n 各说各话：
+ *  n 是还挂着的失败存量，m 是今天已经补掉的；全补完时 n=0 走弱化色，m 行照常可见）。 */
 @Composable
-private fun ExpiredRow(expired: Int, modifier: Modifier = Modifier) {
+private fun ExpiredRow(expired: Int, lateCompleted: Int, modifier: Modifier = Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         if (expired > 0) {
             Box(
@@ -418,6 +423,14 @@ private fun ExpiredRow(expired: Int, modifier: Modifier = Modifier) {
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
         )
+        if (lateCompleted > 0) {
+            Text(
+                " · " + stringResource(R.string.stats_late_completed_today, lateCompleted),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 5.dp),
+            )
+        }
     }
 }
 
@@ -492,9 +505,10 @@ private fun RangeSelector(
     }
 }
 
-/** 任务历史：周期总完成次数卡（0 也是有效数据，照常渲染）。 */
+/** 任务历史：周期总完成次数卡（0 也是有效数据，照常渲染）；过期补完 >0 时拆分行显式指出
+ *  （2026-10-04：迟到完成不冒充准时——总数含补完，拆行让成分看得见）。 */
 @Composable
-private fun TodoPeriodTotalCard(total: Int) {
+private fun TodoPeriodTotalCard(total: Int, lateTotal: Int) {
     CardSurface {
         Column(
             Modifier
@@ -513,11 +527,20 @@ private fun TodoPeriodTotalCard(total: Int) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = Spacing.xs),
             )
+            if (lateTotal > 0) {
+                Text(
+                    stringResource(R.string.stats_todo_period_late, lateTotal),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = Spacing.xs),
+                )
+            }
         }
     }
 }
 
-/** 任务历史条目卡：文本快照（单行省略）+ 完成次数（删除的条目按快照展示不失联）。 */
+/** 任务历史条目卡：文本快照（单行省略）+ 完成次数（删除的条目按快照展示不失联）；
+ *  含过期补完时次数旁小字标出（2026-10-04：正常完成与补完不混算功劳）。 */
 @Composable
 private fun TodoRangeStatCard(ui: TodoRangeStatsUi, modifier: Modifier = Modifier) {
     CardSurface(modifier) {
@@ -535,13 +558,22 @@ private fun TodoRangeStatCard(ui: TodoRangeStatsUi, modifier: Modifier = Modifie
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            Text(
-                stringResource(R.string.stats_todo_item_count, ui.completions),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = Spacing.md),
-            )
+            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = Spacing.md)) {
+                Text(
+                    stringResource(R.string.stats_todo_item_count, ui.completions),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (ui.lateCompletions > 0) {
+                    Text(
+                        stringResource(R.string.stats_todo_item_late, ui.lateCompletions),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
         }
     }
 }

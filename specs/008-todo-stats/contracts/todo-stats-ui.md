@@ -9,7 +9,8 @@ StatsScreen（rememberSaveable 存当前页；BackHandler 非主页时回主页�
 ├── MAIN 主页（2026-09 用户拍板视觉重构：一屏两域双 Hero 卡）
 │   ├── PageHeader(统计 / 每一次停留，都算数)          ← 不动
 │   ├── 今日任务 Hero 卡：完成/轮到大字 + 品牌绿进度条 + 百分比
-│   │     + 过期行（>0 红点红字）+ 全完成「✓ 全部完成」胶囊；整卡可点 → TODO_HISTORY
+│   │     + 过期行（>0 红点红字；今日补完 >0 追加品牌绿「今日补完 m」，2026-10-04）
+│   │     + 全完成「✓ 全部完成」胶囊；整卡可点 → TODO_HISTORY
 │   └── 今日拦截双 Hero 卡：拦截次数（36sp）| 连续完成天数（28sp，发丝线分隔）
 │         + 底部小字「取消 x · 打开 y」；整卡可点 → APP_HISTORY
 ├── APP_HISTORY 应用拦截统计二级页
@@ -19,8 +20,8 @@ StatsScreen（rememberSaveable 存当前页；BackHandler 非主页时回主页�
 └── TODO_HISTORY 任务完成统计二级页
     ├── 页头：返回箭头 + 标题「任务完成统计」
     ├── 日/周/月/年分段 + 周期 Chip                    ← 与拦截二级页共享选择状态
-    ├── 总完成次数卡（大数字 + 「本期完成」）
-    └── 按条目卡：文本快照（单行省略）+ 右侧「完成 N 次」，次数降序
+    ├── 总完成次数卡（大数字 + 「本期完成」；过期补完 >0 追加「其中过期补完 M 次」拆分行，2026-10-04）
+    └── 按条目卡：文本快照（单行省略）+ 右侧「完成 N 次」（次数降序；含补完的条目下小字「过期补完 m 次」）
 ```
 
 > 重构说明（2026-09，用户拍板）：008 原契约的「今日拦截三列卡 + 连击卡 + 今日任务三列卡 + 两张入口卡」
@@ -34,6 +35,7 @@ StatsScreen（rememberSaveable 存当前页；BackHandler 非主页时回主页�
 | 任务 x | isEnabled && isDue(今天)——与覆盖层 D/T 分母同源谓词 | 停用条目；间隔完成当天（灰显期）；未来 dueDate 一次性；过期单次；过期但今天不轮到的重复类 |
 | 完成 y | x 中 lastCompletedDate == 今天 | 昨天完成的（跨日惰性失效） |
 | 过期 n | isExpired（单次 && dueDate<今天 && 未完成，或 2026-10 修订起重复类错过最近轮到日），含停用——与待办页过期区同口径 | 已完成条目（含今天完成的重复类：完成即补救） |
+| 今日补完 m（2026-10-04） | 今日 wasExpired=1 的完成事件数（observeLateCountBetween）——过期区补勾入口才计数 | 今日区/提醒页正常勾选；昨天补完的（跨日惰性失效） |
 
 ## 状态与交互契约
 
@@ -53,11 +55,14 @@ StatsScreen（rememberSaveable 存当前页；BackHandler 非主页时回主页�
 | stats_tasks_hero_label | 今日已完成 · 共 %1$d 个轮到（重构新增） |
 | stats_tasks_all_done | ✓ 全部完成（重构新增） |
 | stats_expired_count | 过期 %1$d（重构新增） |
+| stats_late_completed_today | 今日补完 %1$d（2026-10-04 新增） |
 | stats_today_outcomes | 取消 %1$d · 打开 %2$d（重构新增） |
 | stats_entry_intercept_history | 应用拦截统计 |
 | stats_entry_todo_history | 任务完成统计 |
 | stats_todo_period_total | 本期完成 |
+| stats_todo_period_late | 其中过期补完 %1$d 次（2026-10-04 新增） |
 | stats_todo_item_count | 完成 %1$d 次 |
+| stats_todo_item_late | 过期补完 %1$d 次（2026-10-04 新增） |
 | stats_todo_empty | 本期暂无完成记录 |
 | stats_back | 返回（contentDescription） |
 

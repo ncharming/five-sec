@@ -165,13 +165,18 @@ class TodoRepository @Inject constructor(
     /** 勾选写 [today]、取消写空串；today 由调用方按当天口径传入（VM 持 TimeProvider）。
      *  双写完成事件（008）：勾选 upsert 一行（todoId+当日+文本快照——快照取勾选当时的文本，
      *  条目事后删除/改名历史不失联）；取消删当日行——(todoId, 当日) 唯一，重勾永不重复计数。
+     *  [wasExpired]（2026-10-04 二次修订）：过期补完标记——从过期区完成入口勾掉传 true，统计侧
+     *  将「过期补完」与正常完成显式分列；正常入口（今日区勾选/提醒页完成）恒 false。同日重勾
+     *  REPLACE 覆盖，以最后一次入口为准。
      *  顺序为先 todos 行后事件行：当日 UI 判定以 lastCompletedDate 为准，事件行晚到不影响；
      *  中途崩溃的窗口由下次勾选的 REPLACE 自愈，不引入跨 DAO 事务。 */
-    suspend fun setCompleted(id: Long, today: String, completed: Boolean) {
+    suspend fun setCompleted(id: Long, today: String, completed: Boolean, wasExpired: Boolean = false) {
         todoDao.setCompletedDate(id, if (completed) today else "")
         if (completed) {
             val text = todoDao.findById(id)?.text ?: return // 条目已被并发删除：无快照可写，跳过
-            todoCompletionDao.upsert(TodoCompletion(todoId = id, todoText = text, completedDate = today))
+            todoCompletionDao.upsert(
+                TodoCompletion(todoId = id, todoText = text, completedDate = today, wasExpired = wasExpired),
+            )
         } else {
             todoCompletionDao.deleteByTodoAndDate(id, today)
         }
@@ -180,6 +185,10 @@ class TodoRepository @Inject constructor(
     /** 周期内按条目的完成次数（统计页任务历史二级页；区间 [startDate, endDate) 半开，yyyy-MM-dd 字典序）。 */
     fun observeCompletionCountByTodoBetween(startDate: String, endDate: String): Flow<List<TodoRangeCount>> =
         todoCompletionDao.observeCountByTodoBetween(startDate, endDate)
+
+    /** 周期内过期补完次数（2026-10-04：统计侧显式区分迟到完成；今日卡与历史页共用同一查询口径）。 */
+    fun observeLateCompletionCountBetween(startDate: String, endDate: String): Flow<Int> =
+        todoCompletionDao.observeLateCountBetween(startDate, endDate)
 
     /** 最早完成日期（yyyy-MM-dd；无记录为 null）——统计页年档位可选范围与拦截最早事件取更早。 */
     fun observeEarliestCompletionDate(): Flow<String?> = todoCompletionDao.observeEarliestDate()

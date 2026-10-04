@@ -11,6 +11,7 @@ import com.fivesec.app.util.FALLBACK_BRAND_ARGB
 import com.fivesec.app.util.TimeProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,11 +27,14 @@ import kotlinx.coroutines.launch
 
 data class StatsUi(val total: Int, val canceled: Int, val opened: Int, val streak: Int)
 
-/** 今日任务三数卡（specs/008；口径见 [TodoTodayStatsCalculator]，与覆盖层 D/T 同源）。 */
-data class TodoTodayStatsUi(val total: Int, val completed: Int, val expired: Int)
+/** 今日任务三数卡（specs/008；口径见 [TodoTodayStatsCalculator]，与覆盖层 D/T 同源）。
+ *  [lateCompleted]（2026-10-04）：今日「过期补完」次数——从过期区完成入口勾掉的条目数，
+ *  事件表 wasExpired 聚合，与过期 n 并列展示（补了的看得见，没补的看得见）。 */
+data class TodoTodayStatsUi(val total: Int, val completed: Int, val expired: Int, val lateCompleted: Int)
 
-/** 任务历史二级页条目卡：事件行文本快照 + 周期内完成次数（删除的条目按快照展示不失联）。 */
-data class TodoRangeStatsUi(val todoText: String, val completions: Int)
+/** 任务历史二级页条目卡：事件行文本快照 + 周期内完成次数（删除的条目按快照展示不失联）。
+ *  [lateCompletions]：其中过期补完次数——统计显式区分迟到完成（正常完成 = completions - lateCompletions）。 */
+data class TodoRangeStatsUi(val todoText: String, val completions: Int, val lateCompletions: Int)
 
 data class AppRangeStatsUi(
     val packageName: String,
@@ -68,15 +72,23 @@ class StatsViewModel @Inject constructor(
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, StatsUi(0, 0, 0, 0))
 
-    /** 今日任务三数（specs/008）：todos 行集实时派生，today 沿用构造锚点（与今日拦截卡同一跨日口径）。 */
+    /** 今日任务三数 + 今日补完（specs/008；2026-10-04 补完标记）：todos 行集实时派生 + 事件表
+     *  过期补完聚合，today 沿用构造锚点（与今日拦截卡同一跨日口径）。 */
     val todoToday: StateFlow<TodoTodayStatsUi> =
-        todoRepository.observeAll()
-            .map { rows ->
-                TodoTodayStatsCalculator.compute(rows, today).let {
-                    TodoTodayStatsUi(total = it.total, completed = it.completed, expired = it.expired)
-                }
+        combine(
+            todoRepository.observeAll(),
+            todoRepository.observeLateCompletionCountBetween(today, LocalDate.parse(today).plusDays(1).toString()),
+        ) { rows, lateCount ->
+            TodoTodayStatsCalculator.compute(rows, today).let {
+                TodoTodayStatsUi(
+                    total = it.total,
+                    completed = it.completed,
+                    expired = it.expired,
+                    lateCompleted = lateCount,
+                )
             }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, TodoTodayStatsUi(0, 0, 0))
+        }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, TodoTodayStatsUi(0, 0, 0, 0))
 
     /** 应用品牌色（ARGB），按包名；提取在后台进行，就绪后逐个回填。 */
     private val brandColors = MutableStateFlow<Map<String, Int>>(emptyMap())
@@ -161,8 +173,8 @@ class StatsViewModel @Inject constructor(
             }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    /** 所选自然周期内按条目的完成次数（specs/008 任务历史二级页）：总次数由 UI 侧 sumOf 派生。
-     *  周期端点毫秒 → yyyy-MM-dd 半开区间字符串比较（字典序=时间序）；与 appRangeStats 共享周期选择。 */
+    /** 所选自然周期内按条目的完成次数与过期补完拆分（specs/008 任务历史二级页）：总次数由 UI 侧
+     *  sumOf 派生。周期端点毫秒 → yyyy-MM-dd 半开区间字符串比较（字典序=时间序）；与 appRangeStats 共享周期选择。 */
     @OptIn(ExperimentalCoroutinesApi::class)
     val todoRangeStats: StateFlow<List<TodoRangeStatsUi>> =
         selectedPeriod
@@ -170,7 +182,11 @@ class StatsViewModel @Inject constructor(
                 todoRepository.observeCompletionCountByTodoBetween(
                     startDate = DateUtil.millisToDateString(period.startMillis, zone),
                     endDate = DateUtil.millisToDateString(period.endMillis, zone),
-                ).map { rows -> rows.map { TodoRangeStatsUi(todoText = it.todoText, completions = it.completions) } }
+                ).map { rows ->
+                    rows.map {
+                        TodoRangeStatsUi(todoText = it.todoText, completions = it.completions, lateCompletions = it.lateCompletions)
+                    }
+                }
             }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 

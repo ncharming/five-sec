@@ -93,16 +93,26 @@ class TodoViewModelTest {
     /** setRecurrence 定向 UPDATE 的转发记录。 */
     private data class RecurrenceCall(val id: Long, val type: Int, val days: Int, val interval: Int, val dueDate: String)
 
-    /** 完成事件 fake（specs/008）：VM 测试不关心事件内容，空实现即可满足构造签名。 */
-    private class NoopCompletionDao : TodoCompletionDao {
-        override suspend fun upsert(completion: TodoCompletion) = Unit
+    /** 完成事件 fake（specs/008 + 2026-10 补完标记）：记录 upsert 供过期补完断言；观察流空实现。 */
+    private class RecordingCompletionDao : TodoCompletionDao {
+        val upserts = CopyOnWriteArrayList<TodoCompletion>()
+
+        override suspend fun upsert(completion: TodoCompletion) {
+            upserts += completion
+        }
+
         override suspend fun deleteByTodoAndDate(todoId: Long, date: String) = Unit
+
         override fun observeCountByTodoBetween(startDate: String, endDate: String): Flow<List<TodoRangeCount>> = flow { emit(emptyList()) }
+
+        override fun observeLateCountBetween(startDate: String, endDate: String): Flow<Int> = flow { emit(0) }
+
         override fun observeEarliestDate(): Flow<String?> = flow { emit(null) }
     }
 
     private val dispatcher = StandardTestDispatcher()
     private lateinit var dao: RecordingDao
+    private lateinit var completionDao: RecordingCompletionDao
     private lateinit var viewModel: TodoViewModel
 
     // 可拨动的假时钟：today 由 VM 经 DateUtil 派生，断言用同一 API 计算（对时区免疫，CI UTC 可跑）
@@ -113,7 +123,8 @@ class TodoViewModelTest {
     fun setUp() {
         Dispatchers.setMain(dispatcher)
         dao = RecordingDao()
-        viewModel = TodoViewModel(TodoRepository(dao, NoopCompletionDao(), timeProvider), timeProvider)
+        completionDao = RecordingCompletionDao()
+        viewModel = TodoViewModel(TodoRepository(dao, completionDao, timeProvider), timeProvider)
     }
 
     @After
@@ -417,6 +428,27 @@ class TodoViewModelTest {
         advanceUntilIdleAndFlush()
         assertEquals(0, viewModel.uiState.value.todayRows.size)
         assertEquals(listOf(1L), viewModel.uiState.value.expiredRows.map { it.todo.id })
+    }
+
+    @Test
+    fun `过期行完成转发带过期补完标记_今日区正常勾选不带`() = runTest(dispatcher) {
+        nowMillis = 1_789_000_000_000L
+        viewModel.refreshToday()
+        val todayStr = DateUtil.todayString(nowMillis)
+        dao.state.value = listOf(
+            Todo(id = 1, text = "过期条目", createdAt = "2026-01-01"),
+            Todo(id = 2, text = "正常条目", createdAt = todayStr),
+        )
+        advanceUntilIdleAndFlush()
+
+        // 过期区补勾入口传 wasExpired=true；今日区正常勾选缺省 false——统计侧据此区分迟到完成
+        viewModel.setCompleted(1, true, wasExpired = true)
+        viewModel.setCompleted(2, true)
+        advanceUntilIdleAndFlush()
+
+        val flags = completionDao.upserts.associate { it.todoId to it.wasExpired }
+        assertEquals(true, flags[1L])
+        assertEquals(false, flags[2L])
     }
 
     private fun advanceUntilIdleAndFlush() {

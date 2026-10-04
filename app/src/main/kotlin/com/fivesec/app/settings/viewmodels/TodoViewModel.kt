@@ -155,9 +155,11 @@ class TodoViewModel @Inject constructor(
         }
     }
 
-    /** 今日勾选/取消：以 VM 持有的 today 口径写入（与 uiState 派生口径严格同源）。 */
-    fun setCompleted(id: Long, completed: Boolean) {
-        viewModelScope.launch { todoRepository.setCompleted(id, _today.value, completed) }
+    /** 今日勾选/取消：以 VM 持有的 today 口径写入（与 uiState 派生口径严格同源）。
+     *  [wasExpired]：过期补完标记——过期区完成入口传 true（统计显式区分迟到完成），今日区
+     *  正常勾选缺省 false；取消勾选不区分（删的是同一行事件）。 */
+    fun setCompleted(id: Long, completed: Boolean, wasExpired: Boolean = false) {
+        viewModelScope.launch { todoRepository.setCompleted(id, _today.value, completed, wasExpired) }
     }
 
     companion object {

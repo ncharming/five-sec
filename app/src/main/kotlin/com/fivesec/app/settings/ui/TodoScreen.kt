@@ -99,8 +99,9 @@ import java.time.DayOfWeek
  * 今日卡内按重复规则分组（TodoRuleGroups 纯投影）：组序=编辑弹窗四段（每天→每周→每N天→
  * 单次），不同星期集合/不同 N 各自成组（组名自描述，如「每周一、三」），读侧分类与编辑侧
  * 词汇表一致；过期区语义是「失败存量」而非规则分类，不参与分组。
- * 每行标题下副行纯日期（今日区=创建日「—」兜底、过期区=错过的轮到日）；过期行无勾选框/开关，
- * 单次「改为今天 / 删除」、重复类「修改 / 删除」——失败可重试，但无迟到补勾（用户拍板口径）。
+ * 每行标题下副行纯日期（今日区=创建日「—」兜底、过期区=错过的轮到日）；过期行有补勾框、
+ * 无启用开关，菜单单次「改为今天 / 删除」、重复类「修改 / 删除」——失败可重试也可直接补勾
+ * （2026-10-04 二次修订：补勾写「过期补完」标记，统计侧显式区分迟到完成，不冒充准时）。
  * 视觉沿用四页统一语言（PageHeader + 白卡行骨架 + FiveSecDialog 弹窗）；名额行已移除——
  * 容量语义由「满员底部提示 + 添加兜底弹窗」承载。标题 ≤200 字：列表单行省略，点条目看只读全文弹窗。
  * 只读约定：拦截覆盖层上的待办卡片由本页数据派生（快照只含轮到条目），勾选只发生在本页（FR-005）。
@@ -289,6 +290,7 @@ fun TodoScreen(
                             }
                             TodoExpiredRow(
                                 row = row,
+                                onToggleDone = { viewModel.setCompleted(row.todo.id, true, wasExpired = true) },
                                 onShowDetail = { detailTarget = row },
                                 onRevive = { viewModel.revive(row.todo.id) },
                                 onRename = { editTarget = row },
@@ -501,7 +503,9 @@ private fun ruleGroupLabel(group: TodoRuleGroups.Group): String = when (group.re
     else -> stringResource(R.string.todos_rule_daily)
 }
 
-/** 今日区行：今日勾选框 + 标题（完成划线/停用弱化，单行省略、点击看全文）+ 副行日期 + 启用开关 + ⋯（修改/删除）。 */
+/** 今日区行：今日勾选框 + 标题（完成划线/停用弱化，单行省略、点击看全文）+ 副行日期 + 启用开关 + ⋯（修改/删除）。
+ *  勾选框启用条件（2026-10-04 扩展）：轮到 可勾可取消；不轮到不可勾（FR-003 / specs/006 FR-005），
+ *  但「今天已完成」的不轮到行可取消——过期补勾的撤销路径（取消即回过期区），只关不清自来账。 */
 @Composable
 private fun TodoItemRow(
     row: TodoRow,
@@ -522,7 +526,7 @@ private fun TodoItemRow(
         Checkbox(
             checked = row.doneToday,
             onCheckedChange = { onToggleDone() },
-            enabled = enabled && row.dueToday, // 停用或不轮到都不可勾（FR-003 / specs/006 FR-005）
+            enabled = enabled && (row.dueToday || row.doneToday), // 停用不可勾；不轮到仅已完成的可取消
             colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary),
         )
         Column(
@@ -549,8 +553,9 @@ private fun TodoItemRow(
                 overflow = TextOverflow.Ellipsis,
             )
             // 副行（specs/007）：创建日（老条目「—」）；"启用但不轮到"追加「今天不用做」——
-            // 停用行的不可勾原因由开关表达，避免双重误导；010 起已设提醒追加「提醒 HH:mm」
-            val notDueLabel = if (enabled && !row.dueToday) {
+            // 停用行的不可勾原因由开关表达，避免双重误导；已完成的今天行不追加（划线已表达，
+            // 迟到补勾的不轮到行再说"今天不用做"自相矛盾）；010 起已设提醒追加「提醒 HH:mm」
+            val notDueLabel = if (enabled && !row.dueToday && !row.doneToday) {
                 " · " + stringResource(R.string.todos_not_due_today)
             } else {
                 ""
@@ -605,14 +610,17 @@ private fun TodoItemRow(
     }
 }
 
-/** 过期区行（specs/007；2026-10 重复类也入区）：标题 + 副行错过的轮到日（哪天失败的）+ ⋯。
+/** 过期区行（specs/007；2026-10 重复类入区 + 可补勾）：完成框 + 标题 + 副行错过的轮到日 + ⋯。
+ *  完成框（2026-10-04 二次修订，推翻 007「无迟到补勾」）：过期了也可以点完成——写
+ *  lastCompletedDate=今天并给完成事件打「过期补完」标记（统计显式区分，补勾不冒充准时）；
+ *  勾掉即离开过期区（今天轮到的留在今日区划线态、不轮到的灰显划线到下次轮到）。
  *  菜单按类型分叉：单次=「改为今天」（重写有效期日回今日区、当天可勾）/「删除」；重复类=
- *  「修改」（补救路径不是改日期——是今天轮到时在今日区勾掉，编辑入口留着改文本/规则）/「删除」。
- *  无勾选框（迟到补勾=自欺，用户拍板否决；重复类当日完成走今日区）、无启用开关（过期无"明天"
- *  语义，开关只剩误导）。 */
+ *  「修改」（dueDate 不参与重复类判定，「改为今天」无语义——直接勾完成即补）/「删除」。
+ *  无启用开关（过期无"明天"语义，开关只剩误导）。 */
 @Composable
 private fun TodoExpiredRow(
     row: TodoRow,
+    onToggleDone: () -> Unit,
     onShowDetail: () -> Unit,
     onRevive: () -> Unit,
     onRename: () -> Unit,
@@ -625,6 +633,12 @@ private fun TodoExpiredRow(
             .padding(horizontal = Spacing.md, vertical = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 补勾框恒未选中态：已补完的条目当场离开过期区，这里没有「已勾的过期行」
+        Checkbox(
+            checked = false,
+            onCheckedChange = { onToggleDone() },
+            colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary),
+        )
         Column(
             modifier = Modifier
                 .weight(1f)

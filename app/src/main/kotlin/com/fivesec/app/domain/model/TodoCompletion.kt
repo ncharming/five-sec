@@ -15,6 +15,10 @@ import androidx.room.PrimaryKey
  * "勾-取消-再勾"永不重复计数（该表不在 interception_events 的只增不删红线内，红线只保护拦截事件）。
  *
  * [todoText] 是勾选当时的文本快照：条目事后被删除/改名，历史统计仍按当时的样子展示，不失联。
+ *
+ * [wasExpired]（2026-10-04 二次修订）：这条完成是不是「过期补完」——从过期区的完成入口勾掉时为
+ * true（补的是错过的轮到日），从今日区/提醒页的正常入口勾掉为 false。统计侧据此把「过期补完」
+ * 与「正常完成」显式分列，补勾不冒充准时。同日重勾以最后一次入口为准（REPLACE 覆盖）。
  */
 @Entity(
     tableName = "todo_completions",
@@ -25,4 +29,5 @@ data class TodoCompletion(
     val todoId: Long,
     val todoText: String,
     val completedDate: String, // yyyy-MM-dd（DateUtil.todayString 口径；定长零填充，字典序=时间序）
+    val wasExpired: Boolean = false, // 过期补完标记（Room v11 列；存量行迁移回填 false）
 )

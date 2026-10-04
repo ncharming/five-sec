@@ -93,11 +93,14 @@
 ### Functional Requirements
 
 - **FR-001**: 新表 todo_completions MUST 只含 id/todoId/todoText/completedDate 四列，(todoId, completedDate) 唯一索引；MUST 仅由 TodoRepository.setCompleted 单点写入：勾选 upsert、取消删除。
+  > **2026-10-04 修订（现行口径）**：新增第五列 wasExpired（Room v10→v11，MIGRATION_10_11）——过期区补勾入口写 1、正常入口（今日区/提醒页）写 0，同日重勾以最后入口为准；存量行迁移回填 0（历史无从考证，不伪造）。
 - **FR-002**: 迁移 v7→v8 MUST 建表建索引、零破坏既有四表；MUST 配手建 v7 库迁移测试；MUST NOT 触碰 interception_events（红线）。
+  > 2026-10-04：迁移链另含 v10→v11（wasExpired 列，手建 v10 库测试守住）。
 - **FR-003**: 今日任务卡三数口径 MUST 为：任务 = isEnabled && isDue(今天)（与覆盖层 D/T 同口径）；完成 = 其中 lastCompletedDate==今天；过期 = isExpired 条目数（含停用；单次 + 2026-10 修订起重复类，与待办页过期区同口径）。
 - **FR-004**: 统计主页 MUST 保持今日拦截三列卡与连击卡原样，新增今日任务三列卡与两张单行入口卡；历史区块 MUST NOT 留在主页。
 - **FR-005**: 两个二级页 MUST 与主页用页内状态切换实现（返回箭头 + BackHandler），底部 Tab 栏 MUST 保留；档位（日/周/月/年）与周期选择 MUST 两页共享。
 - **FR-006**: 任务历史页 MUST 只展完成数维度：周期总完成次数 + 按条目完成次数（降序）；MUST NOT 展示历史完成率/应做数/过期数（不可知，不伪造）。
+  > **2026-10-04 修订（现行口径）**：过期补完是完成事件的固有属性、非历史过期数——今日卡过期行 MUST 并列展示「今日补完 m」（今日 wasExpired 事件数）；历史页总次数卡 MUST 在补完 >0 时展示「其中过期补完 M 次」拆分、条目卡 MUST 标出各自的过期补完次数。迟到完成不冒充准时，也不被藏起来。
 - **FR-007**: 条目卡 MUST 使用事件行的文本快照（todoText），删除的条目历史 MUST NOT 失联。
 - **FR-008**: 年档位可选范围 MUST 取拦截最早事件与完成最早日期的更早者；查询区间沿用半开 [start, end) 的日期字符串比较（yyyy-MM-dd 字典序=时间序）。
 - **FR-009**: 时间口径 MUST 沿用 TimeProvider 注入 + ZoneId 参数；统计页今日锚点沿用 VM 构造时捕获的现状；MUST NOT 引入网络/预聚合表/新权限。
