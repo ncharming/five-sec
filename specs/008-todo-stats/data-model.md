@@ -52,5 +52,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS `index_todo_completions_todoId_completedDate`
 - **今日任务三数**：`TodoTodayStatsCalculator.compute(rows, today)` 纯函数——
   任务 = rows.count { isEnabled && isDue(规则…, today) }（= 覆盖层 D/T 分母）；
   完成 = 其中 lastCompletedDate == today；
-  过期 = rows.count { isExpired(…) }（一次性过期，含停用）。
+  过期 = rows.count { isExpired(…) }（单次 + 2026-10 修订起重复类错过最近轮到日，含停用；与待办页过期区同口径）。
 - **周期选择**：StatsPeriod 复用；年可选范围 = min(拦截最早事件毫秒, dateStringToMillis(完成最早日期))。

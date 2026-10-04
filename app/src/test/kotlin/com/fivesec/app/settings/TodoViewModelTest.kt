@@ -29,10 +29,11 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * TodoViewModel 测试（specs/005；006 重复规则；007 两区分区）：
+ * TodoViewModel 测试（specs/005；006 重复规则；007 两区分区；2026-10 重复类过期双区展示）：
  * 今日勾选按 VM 持有的 today 口径转发（与 uiState 派生口径同源）、refreshToday 跨日重算
  * （完成态+灰显态+过期分区）、add 空白忽略与 200 字截断、dueToday 按规则派生、setRecurrence/add/revive
- * 规则转发、两区分组（过期按有效期日升序）、僵尸行过滤（已完成一次性跨日不进任何区）、副行日期口径。
+ * 规则转发、两区分组（过期按错过日升序）、重复类过期流转（错过昨天双区展示/今天不轮到只在过期区/
+ * 今天完成即离开过期区）、僵尸行过滤（已完成一次性跨日不进任何区）、副行日期口径。
  * Repository 写操作 fire-and-forget，fake 记录后轮询断言（同 HintListViewModelTest 模式）。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -176,15 +177,16 @@ class TodoViewModelTest {
         val hitBit = TodoRecurrence.bitOf(LocalDate.parse(todayStr).dayOfWeek)
         val missBit = TodoRecurrence.bitOf(LocalDate.parse(todayStr).dayOfWeek.plus(1))
         dao.state.value = listOf(
-            Todo(id = 1, text = "周几命中", repeatType = TodoRecurrence.REPEAT_WEEKLY, repeatDays = hitBit),
-            Todo(id = 2, text = "周几未命中", repeatType = TodoRecurrence.REPEAT_WEEKLY, repeatDays = missBit),
-            Todo(id = 3, text = "间隔从未完成", repeatType = TodoRecurrence.REPEAT_INTERVAL, intervalDays = 3),
+            Todo(id = 1, text = "周几命中", repeatType = TodoRecurrence.REPEAT_WEEKLY, repeatDays = hitBit, createdAt = todayStr),
+            Todo(id = 2, text = "周几未命中", repeatType = TodoRecurrence.REPEAT_WEEKLY, repeatDays = missBit, createdAt = todayStr),
+            Todo(id = 3, text = "间隔从未完成", repeatType = TodoRecurrence.REPEAT_INTERVAL, intervalDays = 3, createdAt = todayStr),
             Todo(
                 id = 4,
                 text = "间隔完成当天",
                 repeatType = TodoRecurrence.REPEAT_INTERVAL,
                 intervalDays = 3,
                 lastCompletedDate = todayStr,
+                createdAt = todayStr,
             ),
         )
         advanceUntilIdleAndFlush()
@@ -206,16 +208,20 @@ class TodoViewModelTest {
                 text = "只在今天轮到",
                 repeatType = TodoRecurrence.REPEAT_WEEKLY,
                 repeatDays = TodoRecurrence.bitOf(LocalDate.parse(day1).dayOfWeek),
+                lastCompletedDate = day1, // 当天勾掉：次日既不灰显为错过、也照常回未完成
+                createdAt = day1,
             ),
         )
         advanceUntilIdleAndFlush()
         assertEquals(true, viewModel.uiState.value.todayRows.single().dueToday)
 
-        // 次日同一时刻：跨日重算后不再轮到（灰显）
+        // 次日同一时刻：跨日重算后不再轮到（灰显），但当天完成过 → 不进过期区
         nowMillis += 24 * 60 * 60 * 1000L
         viewModel.refreshToday()
         advanceUntilIdleAndFlush()
-        assertEquals(false, viewModel.uiState.value.todayRows.single().dueToday)
+        val ui = viewModel.uiState.value
+        assertEquals(false, ui.todayRows.single().dueToday)
+        assertEquals(0, ui.expiredRows.size)
     }
 
     @Test
@@ -238,21 +244,102 @@ class TodoViewModelTest {
     // ── 两区分组与一次性（specs/007） ──
 
     @Test
-    fun `两区分组_过期一次性归过期区并按有效期日升序`() = runTest(dispatcher) {
+    fun `两区分组_过期条目归过期区并按错过日升序`() = runTest(dispatcher) {
         nowMillis = 1_789_000_000_000L
         viewModel.refreshToday() // VM 的 today 构造时按 nowMillis=0 定格，拨钟后必须刷新口径
         val todayStr = DateUtil.todayString(nowMillis)
+        val yesterdayStr = LocalDate.parse(todayStr).minusDays(1).toString()
         dao.state.value = listOf(
-            Todo(id = 1, text = "每天条目", repeatType = TodoRecurrence.REPEAT_DAILY),
+            Todo(id = 1, text = "每天条目今天建", repeatType = TodoRecurrence.REPEAT_DAILY, createdAt = todayStr),
             Todo(id = 2, text = "昨天失败", repeatType = TodoRecurrence.REPEAT_ONCE, createdAt = "2026-01-02", dueDate = "2026-01-02"),
             Todo(id = 3, text = "前天失败", repeatType = TodoRecurrence.REPEAT_ONCE, createdAt = "2026-01-01", dueDate = "2026-01-01"),
             Todo(id = 4, text = "今天的一次性", repeatType = TodoRecurrence.REPEAT_ONCE, createdAt = todayStr, dueDate = todayStr),
+            Todo(id = 5, text = "每天条目错过昨天", repeatType = TodoRecurrence.REPEAT_DAILY, createdAt = "2026-01-03"),
         )
         advanceUntilIdleAndFlush()
 
         val ui = viewModel.uiState.value
-        assertEquals(listOf(1L, 4L), ui.todayRows.map { it.todo.id }) // 今日区：重复类 + 当天一次性，id 升序
-        assertEquals(listOf(3L, 2L), ui.expiredRows.map { it.todo.id }) // 过期区：有效期日升序（最早失败在前）
+        // 今日区：今天建的每天条目 + 当天一次性 + 过期但今天轮到的每天条目（id5 双区展示），id 升序
+        assertEquals(listOf(1L, 4L, 5L), ui.todayRows.map { it.todo.id })
+        // 过期区：错过日升序（01-01 < 01-02 < 昨天）；重复类错过的=昨天、单次=有效期日
+        assertEquals(listOf(3L, 2L, 5L), ui.expiredRows.map { it.todo.id })
+        assertEquals(yesterdayStr, ui.expiredRows.last().dateLabel)
+    }
+
+    @Test
+    fun `重复类过期_每天错过昨天双区展示_今天完成即离开过期区`() = runTest(dispatcher) {
+        nowMillis = 1_789_000_000_000L
+        viewModel.refreshToday()
+        val todayStr = DateUtil.todayString(nowMillis)
+        val yesterdayStr = LocalDate.parse(todayStr).minusDays(1).toString()
+
+        // 昨天就在册、从未完成：今天过期（错过昨天），但每天规则今天轮到 → 双区展示、今日区可勾
+        dao.state.value = listOf(
+            Todo(id = 1, text = "提肛", repeatType = TodoRecurrence.REPEAT_DAILY, createdAt = yesterdayStr),
+        )
+        advanceUntilIdleAndFlush()
+        var ui = viewModel.uiState.value
+        assertEquals(listOf(1L), ui.todayRows.map { it.todo.id })
+        assertEquals(true, ui.todayRows.single().dueToday)
+        assertEquals(listOf(1L), ui.expiredRows.map { it.todo.id })
+        assertEquals(yesterdayStr, ui.expiredRows.single().dateLabel) // 过期区副行=哪天失败的
+
+        // 今天勾掉（补救）：lastCompletedDate=今天 → 离开过期区，今日区保留划线态
+        dao.state.value = listOf(
+            Todo(id = 1, text = "提肛", repeatType = TodoRecurrence.REPEAT_DAILY, lastCompletedDate = todayStr, createdAt = yesterdayStr),
+        )
+        advanceUntilIdleAndFlush()
+        ui = viewModel.uiState.value
+        assertEquals(listOf(1L), ui.todayRows.map { it.todo.id })
+        assertEquals(true, ui.todayRows.single().doneToday)
+        assertEquals(0, ui.expiredRows.size)
+    }
+
+    @Test
+    fun `重复类过期_今日不轮到只在过期区不进今日区`() = runTest(dispatcher) {
+        nowMillis = 1_789_000_000_000L
+        viewModel.refreshToday()
+        val todayStr = DateUtil.todayString(nowMillis)
+        // 三天前的周几（≠今天）轮到过一次、至今未做：错过=三天前，今天不轮到 → 只在过期区
+        val missedDay = LocalDate.parse(todayStr).minusDays(3)
+        val missedBit = TodoRecurrence.bitOf(missedDay.dayOfWeek)
+        dao.state.value = listOf(
+            Todo(
+                id = 1,
+                text = "每周一次",
+                repeatType = TodoRecurrence.REPEAT_WEEKLY,
+                repeatDays = missedBit,
+                createdAt = missedDay.minusDays(1).toString(),
+            ),
+        )
+        advanceUntilIdleAndFlush()
+
+        val ui = viewModel.uiState.value
+        assertEquals(0, ui.todayRows.size)
+        assertEquals(listOf(1L), ui.expiredRows.map { it.todo.id })
+        assertEquals(missedDay.toString(), ui.expiredRows.single().dateLabel)
+    }
+
+    @Test
+    fun `重复类过期_每天条目跨日从今日区流转为双区展示`() = runTest(dispatcher) {
+        nowMillis = 1_789_000_000_000L
+        val day1 = DateUtil.todayString(nowMillis)
+        dao.state.value = listOf(
+            Todo(id = 1, text = "当天没做完", repeatType = TodoRecurrence.REPEAT_DAILY, createdAt = day1),
+        )
+        advanceUntilIdleAndFlush()
+        assertEquals(listOf(1L), viewModel.uiState.value.todayRows.map { it.todo.id })
+        assertEquals(0, viewModel.uiState.value.expiredRows.size) // 创建当天没有「过去的轮到日」
+
+        // 次日同一时刻：错过了昨天 → 过期区记失败账；每天规则今天轮到 → 今日区照常可勾（双区）
+        nowMillis += 24 * 60 * 60 * 1000L
+        viewModel.refreshToday()
+        advanceUntilIdleAndFlush()
+        val ui = viewModel.uiState.value
+        assertEquals(listOf(1L), ui.todayRows.map { it.todo.id })
+        assertEquals(true, ui.todayRows.single().dueToday)
+        assertEquals(listOf(1L), ui.expiredRows.map { it.todo.id })
+        assertEquals(day1, ui.expiredRows.single().dateLabel)
     }
 
     @Test
@@ -270,7 +357,7 @@ class TodoViewModelTest {
                 dueDate = "2026-01-01",
             ),
             Todo(id = 2, text = "今天完成的一次性", repeatType = TodoRecurrence.REPEAT_ONCE, lastCompletedDate = todayStr, createdAt = todayStr, dueDate = todayStr),
-            Todo(id = 3, text = "每天条目", repeatType = TodoRecurrence.REPEAT_DAILY),
+            Todo(id = 3, text = "每天条目", repeatType = TodoRecurrence.REPEAT_DAILY, createdAt = todayStr),
         )
         advanceUntilIdleAndFlush()
 
@@ -280,14 +367,17 @@ class TodoViewModelTest {
     }
 
     @Test
-    fun `副行日期_今日区创建日老条目占位_过期区有效期日`() = runTest(dispatcher) {
+    fun `副行日期_今日区创建日老条目占位_过期区错过的轮到日`() = runTest(dispatcher) {
         nowMillis = 1_789_000_000_000L
         viewModel.refreshToday() // 同上：拨钟后刷新 VM 的 today 口径
         val todayStr = DateUtil.todayString(nowMillis)
+        val yesterdayStr = LocalDate.parse(todayStr).minusDays(1).toString()
         dao.state.value = listOf(
             Todo(id = 1, text = "新条目", createdAt = todayStr),
-            Todo(id = 2, text = "老条目", createdAt = ""), // v7 迁移回填空串
-            Todo(id = 3, text = "过期条目", repeatType = TodoRecurrence.REPEAT_ONCE, createdAt = "2026-01-02", dueDate = "2026-01-02"),
+            // 老条目（v7 迁移回填空串创建日）昨天照常完成 → 不进过期区，副行占位「—」
+            Todo(id = 2, text = "老条目", createdAt = "", lastCompletedDate = yesterdayStr),
+            Todo(id = 3, text = "过期单次", repeatType = TodoRecurrence.REPEAT_ONCE, createdAt = "2026-01-02", dueDate = "2026-01-02"),
+            Todo(id = 4, text = "过期每天条目", repeatType = TodoRecurrence.REPEAT_DAILY, createdAt = "2026-01-02"),
         )
         advanceUntilIdleAndFlush()
 
@@ -295,7 +385,11 @@ class TodoViewModelTest {
         val labels = ui.todayRows.associate { it.todo.id to it.dateLabel }
         assertEquals(todayStr, labels[1L])
         assertEquals(TodoViewModel.UNKNOWN_DATE, labels[2L])
-        assertEquals("2026-01-02", ui.expiredRows.single().dateLabel) // 过期区看"哪天失败的"
+        assertEquals(true, ui.todayRows.any { it.todo.id == 4L }) // 过期每天条目今天轮到 → 双区展示
+        // 过期区看"哪天失败的"：单次=有效期日、重复类=最近错过的轮到日
+        val expiredLabels = ui.expiredRows.associate { it.todo.id to it.dateLabel }
+        assertEquals("2026-01-02", expiredLabels[3L])
+        assertEquals(yesterdayStr, expiredLabels[4L])
     }
 
     @Test

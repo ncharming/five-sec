@@ -31,9 +31,9 @@ StatsScreen（rememberSaveable 存当前页；BackHandler 非主页时回主页�
 
 | 数 | 定义 | 反例（MUST NOT 计入） |
 |---|---|---|
-| 任务 x | isEnabled && isDue(今天)——与覆盖层 D/T 分母同源谓词 | 停用条目；间隔完成当天（灰显期）；过期条目；未来 dueDate 一次性 |
+| 任务 x | isEnabled && isDue(今天)——与覆盖层 D/T 分母同源谓词 | 停用条目；间隔完成当天（灰显期）；未来 dueDate 一次性；过期单次；过期但今天不轮到的重复类 |
 | 完成 y | x 中 lastCompletedDate == 今天 | 昨天完成的（跨日惰性失效） |
-| 过期 n | isExpired（一次性 && dueDate<今天 && 未完成），含停用 | 重复类条目（永不进过期口径） |
+| 过期 n | isExpired（单次 && dueDate<今天 && 未完成，或 2026-10 修订起重复类错过最近轮到日），含停用——与待办页过期区同口径 | 已完成条目（含今天完成的重复类：完成即补救） |
 
 ## 状态与交互契约
 

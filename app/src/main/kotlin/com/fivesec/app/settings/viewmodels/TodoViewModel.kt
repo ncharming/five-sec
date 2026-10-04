@@ -19,10 +19,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** 待办行展示模型：条目 + 今日完成态 + 今日是否轮到（不轮到 → 行灰显禁勾，specs/006）
- *  + 副行日期（今日区=创建日「—」兜底；过期区=有效期日，specs/007）。 */
+ *  + 副行日期（今日区=创建日「—」兜底；过期区=错过的轮到日「哪天失败的」，2026-10 修订）。 */
 data class TodoRow(val todo: Todo, val doneToday: Boolean, val dueToday: Boolean, val dateLabel: String)
 
-/** 待办页两区状态（specs/007）：今日区（一切未过期，id 升序）+ 过期区（一次性失败存量，有效期日升序）。 */
+/** 待办页两区状态（specs/007；2026-10 重复类也入过期区）：今日区（未过期 + 过期但今天轮到的
+ *  重复类——今天仍是补救日，维持 id 升序与灰显/停用机制）+ 过期区（一切过期条目，错过日升序）。 */
 data class TodoUiState(val todayRows: List<TodoRow>, val expiredRows: List<TodoRow>)
 
 /**
@@ -51,38 +52,60 @@ class TodoViewModel @Inject constructor(
             val todayRows = mutableListOf<TodoRow>()
             val expiredRows = mutableListOf<TodoRow>()
             list.forEach { todo ->
-                when {
-                    // 僵尸行：一次性已完成且完成日不是今天（跨日待清理）——不进任何区，等仓库物理删除
-                    todo.repeatType == TodoRecurrence.REPEAT_ONCE &&
-                        todo.lastCompletedDate.isNotEmpty() &&
-                        todo.lastCompletedDate != todayString -> Unit
+                // 僵尸行：一次性已完成且完成日不是今天（跨日待清理）——不进任何区，等仓库物理删除
+                val zombieOnce = todo.repeatType == TodoRecurrence.REPEAT_ONCE &&
+                    todo.lastCompletedDate.isNotEmpty() &&
+                    todo.lastCompletedDate != todayString
 
-                    TodoRecurrence.isExpired(todo.repeatType, todo.dueDate, todo.lastCompletedDate, todayString) ->
+                if (!zombieOnce) {
+                    // 过期判定统一源（2026-10-04 修订）：重复类错过轮到日也过期——过期了就一定进过期区
+                    val missed = TodoRecurrence.lastMissedDueDate(
+                        todo.repeatType,
+                        todo.repeatDays,
+                        todo.intervalDays,
+                        todo.lastCompletedDate,
+                        todo.dueDate,
+                        todo.createdAt,
+                        todayString,
+                    )
+                    if (missed != null) {
                         expiredRows += TodoRow(
                             todo = todo,
                             doneToday = false,
                             dueToday = false,
-                            dateLabel = todo.dueDate, // 过期区副行=有效期日（哪天失败的）
+                            dateLabel = missed, // 过期区副行=错过的轮到日（哪天失败的；单次即有效期日）
                         )
-
-                    else -> todayRows += TodoRow(
-                        todo = todo,
-                        doneToday = todo.lastCompletedDate == todayString,
-                        dueToday = TodoRecurrence.isDue(
-                            todo.repeatType,
-                            todo.repeatDays,
-                            todo.intervalDays,
-                            todo.lastCompletedDate,
-                            todo.dueDate,
-                            todayString,
-                        ),
-                        dateLabel = todo.createdAt.ifEmpty { UNKNOWN_DATE }, // 老条目（v7 前）无创建日 → 「—」
+                    }
+                    // 双区归属：过期单次不回今日区（无迟到补勾，007 口径）；过期重复类仅当今天
+                    // 轮到时回今日区可勾（拖延只顺延——今天就是补救日，勾掉即离开过期区），
+                    // 今天不轮到则只在过期区；未过期条目照旧全量进今日区（含停用/不轮到灰显）。
+                    val dueToday = TodoRecurrence.isDue(
+                        todo.repeatType,
+                        todo.repeatDays,
+                        todo.intervalDays,
+                        todo.lastCompletedDate,
+                        todo.dueDate,
+                        todayString,
                     )
+                    val backToToday = when {
+                        missed == null -> true
+                        todo.repeatType == TodoRecurrence.REPEAT_ONCE -> false
+                        else -> dueToday
+                    }
+                    if (backToToday) {
+                        todayRows += TodoRow(
+                            todo = todo,
+                            doneToday = todo.lastCompletedDate == todayString,
+                            dueToday = dueToday,
+                            dateLabel = todo.createdAt.ifEmpty { UNKNOWN_DATE }, // 老条目（v7 前）无创建日 → 「—」
+                        )
+                    }
                 }
             }
             TodoUiState(
                 todayRows = todayRows,
-                expiredRows = expiredRows.sortedBy { it.todo.dueDate }, // 有效期日升序=最早失败在前；同日稳定保 id 序
+                // 错过日升序=最早失败在前（单次=有效期日、重复类=最近错过的轮到日）；同日稳定保 id 序
+                expiredRows = expiredRows.sortedBy { it.dateLabel },
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, TodoUiState(emptyList(), emptyList()))
 

@@ -13,10 +13,14 @@ import java.time.temporal.ChronoUnit
  * 真机行为逐位一致（005 已验证的同模式）。
  *
  * 滚动间隔语义（006 用户拍板口径）：从未完成恒轮到（锚点不参与）；完成后以最近完成日整日起算，
- * 第 N 天复活；到期后持续轮到直到完成——拖延只顺延、不"错过就没"。
+ * 第 N 天复活；到期后持续轮到直到完成——拖延只顺延、不"错过就没"（今天永远是补救日）。
  *
  * 一次性语义（007 用户拍板口径）：只在有效期日（dueDate）当天轮到；跨日未完成 = 过期（进过期分类，
  * 不可补勾）；已完成的一次性不算过期（那是"完成待清理"，由仓库惰性物理删除收尾）。
+ *
+ * 过期口径（2026-10-04 用户修订，取代 007 的「重复类不进过期分类」）：重复类错过各自最近一个
+ * 轮到日同样过期（详见 [lastMissedDueDate]）——过期了就一定显示在过期区；与「拖延只顺延」并存
+ * 不矛盾：过期是失败的事实账，顺延是今天的活路（今天轮到仍可勾，勾掉即离开过期区）。
  */
 object TodoRecurrence {
 
@@ -105,23 +109,99 @@ object TodoRecurrence {
     }
 
     /**
-     * 是否已过期（specs/007）：仅一次性条目可过期——有效期日已过且未完成。
+     * 是否已过期（specs/007；2026-10-04 用户修订口径）：存在「轮到了却没完成」且尚未补救的过去
+     * 轮到日（= [lastMissedDueDate] 非空）——**过期了就一定显示在过期区**。
      *
-     * 重复类恒 false（「拖延只顺延」，错过就等下次轮到，不进过期分类）；已完成的一次性恒 false
-     * （完成待清理由仓库惰性删除收尾，过期分类只收"失败"）。防御：dueDate 空/非法按未过期处理
-     * （脏数据不让条目凭空消失，暂由今日区兜底展示）。
+     * 口径演变：007 原拍板「重复类恒不过期（拖延只顺延）」，2026-10-04 废止——每天/每周几/每 N 天
+     * 错过各自最近一个轮到日即过期；单次口径不变（有效期日 < 今天且未完成）。已完成的不算过期
+     * （单次=完成待清理由仓库惰性删除收尾；重复类=完成日覆盖了错过日即视为已补救）。过期是相对
+     * 今天的推导态、不看启用开关（停用不豁免失败，007 口径延续）。防御：today/dueDate 脏值按
+     * 未过期兜底（脏数据不让条目凭空消失，暂由今日区兜底展示）。
      */
     fun isExpired(
         repeatType: Int,
-        dueDate: String,
+        repeatDays: Int,
+        intervalDays: Int,
         lastCompletedDate: String,
+        dueDate: String,
+        createdAt: String,
         today: String,
-    ): Boolean {
-        if (repeatType != REPEAT_ONCE) return false
-        if (lastCompletedDate.isNotEmpty()) return false
-        val due = dueDate.toLocalDateOrNull() ?: return false
-        val todayDate = today.toLocalDateOrNull() ?: return false
-        return due < todayDate
+    ): Boolean = lastMissedDueDate(
+        repeatType,
+        repeatDays,
+        intervalDays,
+        lastCompletedDate,
+        dueDate,
+        createdAt,
+        today,
+    ) != null
+
+    /**
+     * 最近一次错过的轮到日（yyyy-MM-dd；null = 无未补救的错过）——过期判定与过期区副行
+     * 「哪天失败的」的统一数据源（单次即有效期日）。
+     *
+     * 各规则「过去的轮到日」怎么找（与 [isDue] 严格同源，否则过期区说失败、列表说没轮到）：
+     *  - 单次：有效期日 dueDate（< 今天才有「过去」可言）。
+     *  - 每天（含未知类型兜底）：昨天——须条目昨天已存在（createdAt ≤ 昨天；v7 前老数据创建日
+     *    为空串，视同久已存在：昨天的轮到真实发生过，不因缺列抹掉失败）。
+     *  - 每周几：过去 7 天内最近的选中周几（同样须 ≥ createdAt）；空集永不轮到 → 永无错过。
+     *  - 每 N 天：已完成 → 计划复活日 = 最近完成日 + N（复活日 < 今天 = 该轮错过；到期后持续
+     *    轮到的顺延期按计划复活日归因「哪天失败的」）；从未完成 = 恒轮到（isDue 同分支），同每天
+     *    按昨天。
+     *
+     * 收口：候选日须晚于 lastCompletedDate——在候选日当天或之后完成过 = 已补救（含「今天完成
+     * 顺带清掉昨天的错过」：重复类今天仍是补救日，这是「拖延只顺延」留给今天的活路）。
+     * 防御：today 非法 → null（宁可不警示不崩溃）；lastCompletedDate 非法 → 视同从未完成。
+     */
+    fun lastMissedDueDate(
+        repeatType: Int,
+        repeatDays: Int,
+        intervalDays: Int,
+        lastCompletedDate: String,
+        dueDate: String,
+        createdAt: String,
+        today: String,
+    ): String? {
+        val todayDate = today.toLocalDateOrNull() ?: return null
+        val last = lastCompletedDate.toLocalDateOrNull() // 空/非法 = 从未完成（宁可多警示）
+        val candidate: LocalDate? = when (repeatType) {
+            REPEAT_ONCE -> {
+                if (last != null) return null // 已完成的单次不算过期（完成待清理由仓库惰性删除收尾）
+                val due = dueDate.toLocalDateOrNull() ?: return null
+                if (due < todayDate) due else null // 当天=今天轮到、未来=时钟回拨防御，都不过期
+            }
+
+            REPEAT_WEEKLY -> {
+                val created = createdAt.toLocalDateOrNull() ?: LocalDate.MIN
+                var found: LocalDate? = null
+                for (offset in 1L..7L) { // 过去 7 天恰好每个周几各一次；今天本身不算（那是「今天轮到」）
+                    val day = todayDate.minusDays(offset)
+                    if (day < created) break // 再往前都在创建之前，不可能轮到过
+                    if (repeatDays and (1 shl (day.dayOfWeek.value - 1)) != 0) {
+                        found = day
+                        break
+                    }
+                }
+                found
+            }
+
+            REPEAT_INTERVAL -> if (last != null) {
+                val revival = last.plusDays(intervalDays.coerceAtLeast(1).toLong()) // N 收敛与 isDue 同口径
+                if (revival < todayDate) revival else null // 复活日当天=今天轮到，不算错过
+            } else {
+                yesterdayIfExists(createdAt, todayDate) // 从未完成 = 恒轮到（isDue 同分支）
+            }
+
+            else -> yesterdayIfExists(createdAt, todayDate) // 每天（未知类型兜底与每天同档）
+        }
+        return candidate?.takeIf { last == null || it > last }?.toString()
+    }
+
+    /** 昨天是否为一条已存在的轮到日（每天/从未完成的间隔共用：条目昨天在册即轮到过）。 */
+    private fun yesterdayIfExists(createdAt: String, today: LocalDate): LocalDate? {
+        val created = createdAt.toLocalDateOrNull() ?: LocalDate.MIN // 老数据无创建日：视同久已存在
+        val yesterday = today.minusDays(1)
+        return if (yesterday >= created) yesterday else null
     }
 
     private fun String.toLocalDateOrNull(): LocalDate? = runCatching { LocalDate.parse(this) }.getOrNull()

@@ -212,38 +212,167 @@ class TodoRecurrenceTest {
         )
     }
 
-    // ── 过期判定（specs/007-oneoff-todos） ──
+    // ── 过期判定（specs/007 单次；2026-10-04 修订：重复类错过轮到日也过期） ──
+    // 签名与 lastMissedDueDate 同构，缺省值覆盖大多数用例；2026-09-23=今天（周三锚点）。
+
+    private fun expired(
+        repeatType: Int,
+        repeatDays: Int = 0,
+        intervalDays: Int = 0,
+        lastCompletedDate: String = "",
+        dueDate: String = "",
+        createdAt: String = "",
+        today: String = "2026-09-23",
+    ): Boolean = TodoRecurrence.isExpired(
+        repeatType, repeatDays, intervalDays, lastCompletedDate, dueDate, createdAt, today,
+    )
+
+    private fun missedDueDate(
+        repeatType: Int,
+        repeatDays: Int = 0,
+        intervalDays: Int = 0,
+        lastCompletedDate: String = "",
+        dueDate: String = "",
+        createdAt: String = "",
+        today: String = "2026-09-23",
+    ): String? = TodoRecurrence.lastMissedDueDate(
+        repeatType, repeatDays, intervalDays, lastCompletedDate, dueDate, createdAt, today,
+    )
 
     @Test
-    fun `过期_有效期日已过且未完成`() {
-        assertTrue(TodoRecurrence.isExpired(TodoRecurrence.REPEAT_ONCE, "2026-09-22", "", "2026-09-23"))
-        assertTrue(TodoRecurrence.isExpired(TodoRecurrence.REPEAT_ONCE, "2026-01-01", "", "2026-12-31"))
+    fun `过期_单次有效期日已过且未完成`() {
+        assertTrue(expired(TodoRecurrence.REPEAT_ONCE, dueDate = "2026-09-22"))
+        assertTrue(expired(TodoRecurrence.REPEAT_ONCE, dueDate = "2026-01-01", today = "2026-12-31"))
+        assertEquals("2026-09-22", missedDueDate(TodoRecurrence.REPEAT_ONCE, dueDate = "2026-09-22"))
     }
 
     @Test
-    fun `过期_有效期日当天与未来都不过期`() {
-        assertFalse(TodoRecurrence.isExpired(TodoRecurrence.REPEAT_ONCE, "2026-09-23", "", "2026-09-23"))
-        assertFalse(TodoRecurrence.isExpired(TodoRecurrence.REPEAT_ONCE, "2026-09-24", "", "2026-09-23")) // 时钟回拨防御
+    fun `过期_单次当天与未来都不过期`() {
+        assertFalse(expired(TodoRecurrence.REPEAT_ONCE, dueDate = "2026-09-23"))
+        assertFalse(expired(TodoRecurrence.REPEAT_ONCE, dueDate = "2026-09-24")) // 时钟回拨防御
     }
 
     @Test
-    fun `过期_已完成的一次性不算过期`() {
+    fun `过期_已完成的单次不算过期`() {
         // 完成待清理由仓库惰性删除收尾；过期分类只收"失败"（specs/007 拍板口径）
-        assertFalse(TodoRecurrence.isExpired(TodoRecurrence.REPEAT_ONCE, "2026-09-22", "2026-09-22", "2026-09-23"))
+        assertFalse(expired(TodoRecurrence.REPEAT_ONCE, lastCompletedDate = "2026-09-22", dueDate = "2026-09-22"))
     }
 
     @Test
-    fun `过期_重复类恒不过期`() {
-        // 「拖延只顺延」：错过就等下次轮到，不进过期分类（specs/007 拍板口径）
-        assertFalse(TodoRecurrence.isExpired(TodoRecurrence.REPEAT_DAILY, "", "", "2026-09-23"))
-        assertFalse(TodoRecurrence.isExpired(TodoRecurrence.REPEAT_WEEKLY, "", "", "2026-09-23"))
-        assertFalse(TodoRecurrence.isExpired(TodoRecurrence.REPEAT_INTERVAL, "", "", "2026-09-23"))
+    fun `过期_单次dueDate空或脏数据按未过期兜底`() {
+        assertFalse(expired(TodoRecurrence.REPEAT_ONCE, dueDate = ""))
+        assertFalse(expired(TodoRecurrence.REPEAT_ONCE, dueDate = "garbage"))
+        assertFalse(expired(TodoRecurrence.REPEAT_ONCE, dueDate = "2026-09-22", today = "not-a-date"))
     }
 
     @Test
-    fun `过期_dueDate空或脏数据按未过期兜底`() {
-        assertFalse(TodoRecurrence.isExpired(TodoRecurrence.REPEAT_ONCE, "", "", "2026-09-23"))
-        assertFalse(TodoRecurrence.isExpired(TodoRecurrence.REPEAT_ONCE, "garbage", "", "2026-09-23"))
-        assertFalse(TodoRecurrence.isExpired(TodoRecurrence.REPEAT_ONCE, "2026-09-22", "", "not-a-date"))
+    fun `过期_每天昨天未完成即过期_错过日为昨天`() {
+        // 2026-10-04 修订：重复类过期了就一定显示在过期区——每天规则昨天轮到没做=失败
+        assertTrue(expired(TodoRecurrence.REPEAT_DAILY, createdAt = "2026-09-20"))
+        assertEquals("2026-09-22", missedDueDate(TodoRecurrence.REPEAT_DAILY, createdAt = "2026-09-20"))
+    }
+
+    @Test
+    fun `过期_每天昨天完成或今天完成都不过期`() {
+        // 昨天完成：昨天的轮到已兑现；今天完成：今天就是补救日（拖延只顺延留给今天的活路）
+        assertFalse(expired(TodoRecurrence.REPEAT_DAILY, lastCompletedDate = "2026-09-22", createdAt = "2026-09-20"))
+        assertFalse(expired(TodoRecurrence.REPEAT_DAILY, lastCompletedDate = "2026-09-23", createdAt = "2026-09-20"))
+    }
+
+    @Test
+    fun `过期_每天创建当天不算过期`() {
+        // 昨天条目还不存在，昨天的轮到没有发生过
+        assertFalse(expired(TodoRecurrence.REPEAT_DAILY, createdAt = "2026-09-23"))
+    }
+
+    @Test
+    fun `过期_每天老数据无创建日视同久已存在`() {
+        // v7 前老条目 createdAt 空串：昨天的轮到真实发生过，不因缺列抹掉失败
+        assertTrue(expired(TodoRecurrence.REPEAT_DAILY, createdAt = ""))
+        assertEquals("2026-09-22", missedDueDate(TodoRecurrence.REPEAT_DAILY, createdAt = ""))
+    }
+
+    @Test
+    fun `过期_每周几错过最近的选中日即过期`() {
+        // 周一规则、今天周三：最近错过的轮到日=09-21（周一）
+        val mondayOnly = TodoRecurrence.bitOf(DayOfWeek.MONDAY)
+        assertTrue(expired(TodoRecurrence.REPEAT_WEEKLY, repeatDays = mondayOnly, createdAt = "2026-09-19"))
+        assertEquals("2026-09-21", missedDueDate(TodoRecurrence.REPEAT_WEEKLY, repeatDays = mondayOnly, createdAt = "2026-09-19"))
+    }
+
+    @Test
+    fun `过期_每周几在错过日完成过不算过期`() {
+        val mondayOnly = TodoRecurrence.bitOf(DayOfWeek.MONDAY)
+        assertFalse(
+            expired(TodoRecurrence.REPEAT_WEEKLY, repeatDays = mondayOnly, lastCompletedDate = "2026-09-21", createdAt = "2026-09-19"),
+        )
+    }
+
+    @Test
+    fun `过期_每周几今天命中但上周同日错过仍过期`() {
+        // 周三规则、今天周三未做：上周三（09-16）的轮到已错过——过期区记失败账，今日区今天仍可勾
+        val wedOnly = TodoRecurrence.bitOf(DayOfWeek.WEDNESDAY)
+        assertTrue(expired(TodoRecurrence.REPEAT_WEEKLY, repeatDays = wedOnly, createdAt = "2026-09-15"))
+        assertEquals("2026-09-16", missedDueDate(TodoRecurrence.REPEAT_WEEKLY, repeatDays = wedOnly, createdAt = "2026-09-15"))
+    }
+
+    @Test
+    fun `过期_每周几创建于最近命中日之后无错过`() {
+        // 周三规则、今天周三创建：上周三不存在，今天这次还没错过
+        val wedOnly = TodoRecurrence.bitOf(DayOfWeek.WEDNESDAY)
+        assertFalse(expired(TodoRecurrence.REPEAT_WEEKLY, repeatDays = wedOnly, createdAt = "2026-09-23"))
+    }
+
+    @Test
+    fun `过期_每周几空集永不轮到永不错过`() {
+        // 脏数据防御（表单已拦空集）：不轮到就谈不上错过
+        assertFalse(expired(TodoRecurrence.REPEAT_WEEKLY, repeatDays = 0, createdAt = "2026-09-01"))
+    }
+
+    @Test
+    fun `过期_每N天复活日已过未完成即过期_归因计划复活日`() {
+        // 09-18 完成、每 3 天：计划 09-21 复活，今天 09-23 已过仍未做 → 失败日=09-21（非 09-22）
+        assertTrue(
+            expired(TodoRecurrence.REPEAT_INTERVAL, intervalDays = 3, lastCompletedDate = "2026-09-18", createdAt = "2026-09-18"),
+        )
+        assertEquals(
+            "2026-09-21",
+            missedDueDate(TodoRecurrence.REPEAT_INTERVAL, intervalDays = 3, lastCompletedDate = "2026-09-18", createdAt = "2026-09-18"),
+        )
+    }
+
+    @Test
+    fun `过期_每N天复活日当天与未到复活日都不过期`() {
+        // 09-20 完成、每 3 天 → 09-23 复活：当天=今天轮到；09-21 完成 → 09-24 才复活
+        assertFalse(
+            expired(TodoRecurrence.REPEAT_INTERVAL, intervalDays = 3, lastCompletedDate = "2026-09-20", createdAt = "2026-09-20"),
+        )
+        assertFalse(
+            expired(TodoRecurrence.REPEAT_INTERVAL, intervalDays = 3, lastCompletedDate = "2026-09-21", createdAt = "2026-09-21"),
+        )
+    }
+
+    @Test
+    fun `过期_每N天从未完成同每天按昨天_创建当天不算`() {
+        assertTrue(expired(TodoRecurrence.REPEAT_INTERVAL, intervalDays = 3, createdAt = "2026-09-19"))
+        assertEquals("2026-09-22", missedDueDate(TodoRecurrence.REPEAT_INTERVAL, intervalDays = 3, createdAt = "2026-09-19"))
+        assertFalse(expired(TodoRecurrence.REPEAT_INTERVAL, intervalDays = 3, createdAt = "2026-09-23"))
+    }
+
+    @Test
+    fun `过期_重复类today非法与lastCompletedDate脏值防御`() {
+        assertFalse(expired(TodoRecurrence.REPEAT_DAILY, createdAt = "2026-09-20", today = "not-a-date"))
+        // lastCompletedDate 非法视同从未完成（宁可多警示），照常按昨天判过期
+        assertTrue(expired(TodoRecurrence.REPEAT_DAILY, lastCompletedDate = "garbage", createdAt = "2026-09-20"))
+    }
+
+    @Test
+    fun `过期_间隔N死值防御按1天起算不崩`() {
+        // 正常路径 N 恒为 2..365（表单与仓库双层收敛）；死值不炸、与 isDue 的 coerceAtLeast(1) 同口径
+        assertFalse(expired(TodoRecurrence.REPEAT_INTERVAL, intervalDays = 0, lastCompletedDate = "2026-09-22", createdAt = "2026-09-22"))
+        assertEquals(
+            "2026-09-22",
+            missedDueDate(TodoRecurrence.REPEAT_INTERVAL, intervalDays = 0, lastCompletedDate = "2026-09-21", createdAt = "2026-09-21"),
+        )
     }
 }

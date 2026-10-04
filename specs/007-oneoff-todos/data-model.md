@@ -22,9 +22,15 @@
 isDue(repeatType, repeatDays, intervalDays, lastCompletedDate, dueDate, today): Boolean
 // REPEAT_ONCE 分支：dueDate 合法且 == today → true；空/非法/不等 → false（宁可不提醒）
 
-isExpired(repeatType, dueDate, lastCompletedDate, today): Boolean
-// 仅今天 && dueDate 合法 && dueDate < today && lastCompletedDate 为空
-// 重复类恒 false；已完成的一次性不算过期（那是"完成待清理"，不是"失败"）
+lastMissedDueDate(repeatType, repeatDays, intervalDays, lastCompletedDate, dueDate, createdAt, today): String?
+// 2026-10-04 修订后的过期统一源：最近一次「轮到了却没完成」且未补救的日子（null=不过期）
+// 单次=有效期日（< 今天）；每天/从未完成的间隔=昨天（createdAt ≤ 昨天，老数据空创建日视同久已存在）；
+// 周几=过去 7 天内最近的选中日（≥ createdAt，空集永无）；已完成的间隔=完成日+N 的复活日（< 今天）。
+// 收口：候选日须 > lastCompletedDate（在候选日当天或之后完成过=已补救）。
+
+isExpired(repeatType, repeatDays, intervalDays, lastCompletedDate, dueDate, createdAt, today): Boolean
+// = lastMissedDueDate(...) != null——单次口径不变；重复类错过最近轮到日同样过期（2026-10 修订，
+// 取代旧「重复类恒 false」）；已完成的不算过期（单次=完成待清理，重复类=完成日已覆盖错过日）
 ```
 
 日期一律字符串口径（yyyy-MM-dd 字典序=时间序），解析失败防御为 false/isExpired 按未过期处理；时区责任在 today 产出方（TimeProvider + ZoneId），本文件零时钟读取。
@@ -34,6 +40,10 @@ isExpired(repeatType, dueDate, lastCompletedDate, today): Boolean
 ```
 新建(仅今天) ──当天──┬─ 勾选完成 ──跨日──→ 惰性物理删除（两区都不出现）
                      └─ 未完成 ──跨日──→ 过期区（可：改为今天→回当天态 / 删除）
+
+重复类（2026-10 修订）──错过最近轮到日──→ 过期区（记失败账）
+  ├─ 今天仍轮到（每天/到期间隔/今日命中周几）→ 双区展示：今日区照常可勾，勾掉即离开过期区
+  └─ 今天不轮到 → 只在过期区（可：修改 / 删除；下次轮到日自动回今日区双区展示）
 ```
 
 ## 惰性清理（仓库层，无后台任务）

@@ -17,7 +17,7 @@
 
 ### User Story 1 - 今日任务三数卡（Priority: P1)
 
-用户打开统计页，在今日拦截卡的下方看到「任务 x / 完成 y / 过期 n」三列卡：x 是今天轮到且启用的待办数（与拦截覆盖层 D/T 分母完全同口径），y 是其中已勾选的，n 是过期待办区的条目数。三个数互不重叠、各说各话。
+用户打开统计页，在今日拦截卡的下方看到「任务 x / 完成 y / 过期 n」三列卡：x 是今天轮到且启用的待办数（与拦截覆盖层 D/T 分母完全同口径），y 是其中已勾选的，n 是过期待办区的条目数。三个数各说各话；2026-10 过期口径修订后允许一类受控重叠——过期的重复类今天轮到时同时计入任务与过期（今天仍要做、之前确实错过了），两数各自为真。
 
 **Why this priority**: 用户第一诉求——待办功能（005/006/007）落地后，完成情况必须可见，否则清单只是清单。
 
@@ -94,7 +94,7 @@
 
 - **FR-001**: 新表 todo_completions MUST 只含 id/todoId/todoText/completedDate 四列，(todoId, completedDate) 唯一索引；MUST 仅由 TodoRepository.setCompleted 单点写入：勾选 upsert、取消删除。
 - **FR-002**: 迁移 v7→v8 MUST 建表建索引、零破坏既有四表；MUST 配手建 v7 库迁移测试；MUST NOT 触碰 interception_events（红线）。
-- **FR-003**: 今日任务卡三数口径 MUST 为：任务 = isEnabled && isDue(今天)（与覆盖层 D/T 同口径）；完成 = 其中 lastCompletedDate==今天；过期 = isExpired 条目数（含停用一次性，007 口径）。
+- **FR-003**: 今日任务卡三数口径 MUST 为：任务 = isEnabled && isDue(今天)（与覆盖层 D/T 同口径）；完成 = 其中 lastCompletedDate==今天；过期 = isExpired 条目数（含停用；单次 + 2026-10 修订起重复类，与待办页过期区同口径）。
 - **FR-004**: 统计主页 MUST 保持今日拦截三列卡与连击卡原样，新增今日任务三列卡与两张单行入口卡；历史区块 MUST NOT 留在主页。
 - **FR-005**: 两个二级页 MUST 与主页用页内状态切换实现（返回箭头 + BackHandler），底部 Tab 栏 MUST 保留；档位（日/周/月/年）与周期选择 MUST 两页共享。
 - **FR-006**: 任务历史页 MUST 只展完成数维度：周期总完成次数 + 按条目完成次数（降序）；MUST NOT 展示历史完成率/应做数/过期数（不可知，不伪造）。

@@ -13,8 +13,8 @@ import com.fivesec.app.util.TodoRecurrence
  * 组内保持传入序（今日区 = id 升序，由 VM 分区保证）。
  *
  * 防御：未知 repeatType（脏值）不丢行、排在四类正序之后——与 isDue/overlayPriority 的
- * 「脏值不让条目凭空消失」同一思路。过期区（全是单次）语义是「失败存量」而非规则分类，
- * 不参与分组（specs/007 两卡分区不变）。
+ * 「脏值不让条目凭空消失」同一思路。过期区（单次 + 2026-10 起重复类错过轮到日）语义是
+ * 「失败存量」而非规则分类，不参与分组（specs/007 两卡分区不变）。
  */
 object TodoRuleGroups {
 

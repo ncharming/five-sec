@@ -92,13 +92,15 @@ import java.time.DayOfWeek
 
 /**
  * 待办页（specs/005-daily-todos；006 增重复规则；007 两区分区，首页默认 Tab）。
- * 分区（specs/007）：「今日待办」卡（一切未过期条目，维持 id 升序与灰显/停用机制）+
- * 「过期待办 (n)」卡（一次性失败存量，有效期日升序；无过期整卡不显示）。
+ * 分区（specs/007；2026-10-04 修订）：「今日待办」卡（未过期条目 + 过期但今天轮到的重复类——
+ * 维持 id 升序与灰显/停用机制）+「过期待办 (n)」卡（一切过期条目：单次失败存量 + 重复类错过的
+ * 轮到日，按错过日升序；无过期整卡不显示）。过期的重复类若今天轮到会双区同时出现：过期区记
+ * 失败账，今日区保住「今天勾掉即补救」的活路（拖延只顺延）；今天不轮到则只在过期区。
  * 今日卡内按重复规则分组（TodoRuleGroups 纯投影）：组序=编辑弹窗四段（每天→每周→每N天→
  * 单次），不同星期集合/不同 N 各自成组（组名自描述，如「每周一、三」），读侧分类与编辑侧
  * 词汇表一致；过期区语义是「失败存量」而非规则分类，不参与分组。
- * 每行标题下副行纯日期（今日区=创建日「—」兜底、过期区=有效期日）；过期行无勾选框/开关，
- * 仅「改为今天 / 删除」——失败可重试，但无迟到补勾（用户拍板口径）。
+ * 每行标题下副行纯日期（今日区=创建日「—」兜底、过期区=错过的轮到日）；过期行无勾选框/开关，
+ * 单次「改为今天 / 删除」、重复类「修改 / 删除」——失败可重试，但无迟到补勾（用户拍板口径）。
  * 视觉沿用四页统一语言（PageHeader + 白卡行骨架 + FiveSecDialog 弹窗）；名额行已移除——
  * 容量语义由「满员底部提示 + 添加兜底弹窗」承载。标题 ≤200 字：列表单行省略，点条目看只读全文弹窗。
  * 只读约定：拦截覆盖层上的待办卡片由本页数据派生（快照只含轮到条目），勾选只发生在本页（FR-005）。
@@ -146,8 +148,8 @@ fun TodoScreen(
         }
     }
 
-    // 跨日重算：从后台回前台时刷新今日口径（昨天勾的今天自动回未完成、一次性跨日进过期区）；
-    // 顺带重查提醒权限缺口（授权/降级状态可能在系统设置里被用户改掉）
+    // 跨日重算：从后台回前台时刷新今日口径（昨天勾的今天自动回未完成、跨日未完成的进过期区——
+    // 单次有效期日过、重复类错过昨天/最近轮到日）；顺带重查提醒权限缺口（授权/降级状态可能在系统设置里被用户改掉）
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -242,35 +244,38 @@ fun TodoScreen(
                     modifier = Modifier.padding(Spacing.xl),
                 )
             } else {
-                // ── 今日待办卡：一切未过期条目（含停用/不轮到/今日一次性），卡内按重复规则分组 ──
-                SectionLabel(stringResource(R.string.todos_section_today))
-                CardSurface(Modifier.padding(horizontal = Spacing.lg)) {
-                    TodoRuleGroups.groupByRule(uiState.todayRows).forEachIndexed { groupIndex, group ->
-                        if (groupIndex > 0) {
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                            )
-                        }
-                        RuleGroupHeader(ruleGroupLabel(group))
-                        group.rows.forEachIndexed { index, row ->
-                            if (index > 0) {
+                // ── 今日待办卡：未过期 + 过期但今天轮到的重复类（含停用/不轮到/今日一次性），卡内按重复规则分组 ──
+                // 行空时整卡不显示（与过期卡对称）：过期重复类今天不轮到时全部沉到过期区，空今日卡只剩噪音
+                if (uiState.todayRows.isNotEmpty()) {
+                    SectionLabel(stringResource(R.string.todos_section_today))
+                    CardSurface(Modifier.padding(horizontal = Spacing.lg)) {
+                        TodoRuleGroups.groupByRule(uiState.todayRows).forEachIndexed { groupIndex, group ->
+                            if (groupIndex > 0) {
                                 HorizontalDivider(
                                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                                 )
                             }
-                            TodoItemRow(
-                                row = row,
-                                onToggleDone = { viewModel.setCompleted(row.todo.id, !row.doneToday) },
-                                onToggleEnabled = { viewModel.setEnabled(row.todo.id, it) },
-                                onShowDetail = { detailTarget = row },
-                                onRename = { editTarget = row },
-                                onDelete = { deleteTarget = row },
-                            )
+                            RuleGroupHeader(ruleGroupLabel(group))
+                            group.rows.forEachIndexed { index, row ->
+                                if (index > 0) {
+                                    HorizontalDivider(
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                    )
+                                }
+                                TodoItemRow(
+                                    row = row,
+                                    onToggleDone = { viewModel.setCompleted(row.todo.id, !row.doneToday) },
+                                    onToggleEnabled = { viewModel.setEnabled(row.todo.id, it) },
+                                    onShowDetail = { detailTarget = row },
+                                    onRename = { editTarget = row },
+                                    onDelete = { deleteTarget = row },
+                                )
+                            }
                         }
                     }
                 }
 
-                // ── 过期待办卡：一次性失败存量（specs/007；无过期整卡不显示） ──
+                // ── 过期待办卡：一切过期条目（specs/007 单次 + 2026-10 重复类；无过期整卡不显示） ──
                 if (uiState.expiredRows.isNotEmpty()) {
                     SectionLabel(
                         stringResource(R.string.todos_section_expired, uiState.expiredRows.size),
@@ -286,6 +291,7 @@ fun TodoScreen(
                                 row = row,
                                 onShowDetail = { detailTarget = row },
                                 onRevive = { viewModel.revive(row.todo.id) },
+                                onRename = { editTarget = row },
                                 onDelete = { deleteTarget = row },
                             )
                         }
@@ -599,13 +605,17 @@ private fun TodoItemRow(
     }
 }
 
-/** 过期区行（specs/007）：标题 + 副行有效期日（哪天失败的）+ ⋯（改为今天/删除）。
- *  无勾选框（迟到补勾=自欺，用户拍板否决）、无启用开关（过期无"明天"语义，开关只剩误导）。 */
+/** 过期区行（specs/007；2026-10 重复类也入区）：标题 + 副行错过的轮到日（哪天失败的）+ ⋯。
+ *  菜单按类型分叉：单次=「改为今天」（重写有效期日回今日区、当天可勾）/「删除」；重复类=
+ *  「修改」（补救路径不是改日期——是今天轮到时在今日区勾掉，编辑入口留着改文本/规则）/「删除」。
+ *  无勾选框（迟到补勾=自欺，用户拍板否决；重复类当日完成走今日区）、无启用开关（过期无"明天"
+ *  语义，开关只剩误导）。 */
 @Composable
 private fun TodoExpiredRow(
     row: TodoRow,
     onShowDetail: () -> Unit,
     onRevive: () -> Unit,
+    onRename: () -> Unit,
     onDelete: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -630,7 +640,8 @@ private fun TodoExpiredRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                // 有效期日（specs/007：过期归因看"哪天失败的"）；010 提醒角标照常展示（配置可见性，非会响承诺）
+                // 错过的轮到日（specs/007：过期归因看"哪天失败的"；单次=有效期日、重复类=最近错过的轮到日）；
+                // 010 提醒角标照常展示（配置可见性，非会响承诺）
                 row.dateLabel + (
                     if (row.todo.reminderTime.isNotEmpty()) {
                         " · " + stringResource(R.string.todos_reminder_inline, row.todo.reminderTime)
@@ -652,13 +663,24 @@ private fun TodoExpiredRow(
                 )
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.todos_menu_revive)) },
-                    onClick = {
-                        menuOpen = false
-                        onRevive()
-                    },
-                )
+                if (row.todo.repeatType == TodoRecurrence.REPEAT_ONCE) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.todos_menu_revive)) },
+                        onClick = {
+                            menuOpen = false
+                            onRevive()
+                        },
+                    )
+                } else {
+                    // 重复类过期行：dueDate 不参与判定，「改为今天」无语义——给「修改」保住编辑入口
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.todos_menu_rename)) },
+                        onClick = {
+                            menuOpen = false
+                            onRename()
+                        },
+                    )
+                }
                 DropdownMenuItem(
                     text = {
                         Text(
