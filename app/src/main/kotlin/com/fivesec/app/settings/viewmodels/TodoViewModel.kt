@@ -33,7 +33,7 @@ data class TodoUiState(val todayRows: List<TodoRow>, val expiredRows: List<TodoR
  * `today` 是 VM 持有的 StateFlow（私有可写 + [today] 只读暴露）而非每次现取：完成态、"轮到"、
  * 过期分区都在 combine 里按它求值，ON_RESUME 调 [refreshToday] 覆盖"应用常驻后台跨日"的场景——
  * 不引入任何定时器。
- * 僵尸行（一次性已完成且完成日≠今天）在此过滤兜底：物理删除由仓库惰性清理收尾，两道防线。
+ * 僵尸行（一次性已完成、完成日≥有效期日且≠今天）在此过滤兜底：物理删除由仓库惰性清理收尾，两道防线。
  * 可测试性：时间一律经注入的 [TimeProvider]（仓库约定，禁在纯逻辑直接取系统时钟）。
  */
 @HiltViewModel
@@ -52,10 +52,14 @@ class TodoViewModel @Inject constructor(
             val todayRows = mutableListOf<TodoRow>()
             val expiredRows = mutableListOf<TodoRow>()
             list.forEach { todo ->
-                // 僵尸行：一次性已完成且完成日不是今天（跨日待清理）——不进任何区，等仓库物理删除
+                // 僵尸行：一次性的「自己的」已完成且完成日不是今天（跨日待清理）——不进任何区，等仓库物理删除。
+                // 完成日须 ≥ dueDate（有效期日当天或之后的完成才是这条单次的完成）：早于 dueDate 的完成日是
+                // 切换前旧重复规则留下的锚点（切单次不清锚点、dueDate 重写为当天），该行是「今天轮到、未完成」，
+                // 误判僵尸会让它两区凭空消失（与 TodoDao.purgeCompletedOneOffs 的 DELETE 谓词同口径，2026-10 修复）
                 val zombieOnce = todo.repeatType == TodoRecurrence.REPEAT_ONCE &&
                     todo.lastCompletedDate.isNotEmpty() &&
-                    todo.lastCompletedDate != todayString
+                    todo.lastCompletedDate != todayString &&
+                    todo.lastCompletedDate >= todo.dueDate
 
                 if (!zombieOnce) {
                     // 过期判定统一源（2026-10-04 修订）：重复类错过轮到日也过期——过期了就一定进过期区

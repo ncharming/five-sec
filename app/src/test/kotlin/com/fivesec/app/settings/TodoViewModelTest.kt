@@ -33,7 +33,8 @@ import org.junit.Test
  * 今日勾选按 VM 持有的 today 口径转发（与 uiState 派生口径同源）、refreshToday 跨日重算
  * （完成态+灰显态+过期分区）、add 空白忽略与 200 字截断、dueToday 按规则派生、setRecurrence/add/revive
  * 规则转发、两区分组（过期按错过日升序）、重复类过期流转（错过昨天双区展示/今天不轮到只在过期区/
- * 今天完成即离开过期区）、僵尸行过滤（已完成一次性跨日不进任何区）、副行日期口径。
+ * 今天完成即离开过期区）、僵尸行过滤（已完成一次性跨日不进任何区；2026-10 修复：完成日须≥
+ * 有效期日——切单次前旧规则的完成锚点不误判）、副行日期口径。
  * Repository 写操作 fire-and-forget，fake 记录后轮询断言（同 HintListViewModelTest 模式）。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -375,6 +376,42 @@ class TodoViewModelTest {
         val ui = viewModel.uiState.value
         assertEquals(listOf(2L, 3L), ui.todayRows.map { it.todo.id }) // 今天完成的照常展示（划线态）
         assertEquals(0, ui.expiredRows.size) // 完成的不是失败，不进过期区；僵尸行（id=1）两区都不进
+    }
+
+    @Test
+    fun `切单次不判僵尸_完成日早于有效期日的旧规则锚点保留今日区`() = runTest(dispatcher) {
+        nowMillis = 1_789_000_000_000L
+        viewModel.refreshToday() // 拨钟后刷新 VM 的 today 口径
+        val todayStr = DateUtil.todayString(nowMillis)
+        val yesterdayStr = LocalDate.parse(todayStr).minusDays(1).toString()
+        dao.state.value = listOf(
+            // 昨天（旧每天规则）完成、今天切「单次」：锚点（昨天）早于有效期日（今天）→ 不是这条
+            // 单次自己的完成，不判僵尸——今日区展示、当天轮到、未完成（2026-10 修复前两区凭空消失）
+            Todo(
+                id = 1,
+                text = "旧完成切单次",
+                repeatType = TodoRecurrence.REPEAT_ONCE,
+                lastCompletedDate = yesterdayStr,
+                createdAt = yesterdayStr,
+                dueDate = todayStr,
+            ),
+            // 对照：完成日==有效期日且≠今天 → 仍是僵尸（跨日待清理，两区不进）
+            Todo(
+                id = 2,
+                text = "昨天完成的一次性",
+                repeatType = TodoRecurrence.REPEAT_ONCE,
+                lastCompletedDate = yesterdayStr,
+                createdAt = "2026-01-01",
+                dueDate = yesterdayStr,
+            ),
+        )
+        advanceUntilIdleAndFlush()
+
+        val ui = viewModel.uiState.value
+        assertEquals(listOf(1L), ui.todayRows.map { it.todo.id })
+        assertEquals(true, ui.todayRows.single().dueToday) // 转仅今天=当天（当天即轮到）
+        assertEquals(false, ui.todayRows.single().doneToday) // 昨天的锚点不算今天完成
+        assertEquals(0, ui.expiredRows.size)
     }
 
     @Test

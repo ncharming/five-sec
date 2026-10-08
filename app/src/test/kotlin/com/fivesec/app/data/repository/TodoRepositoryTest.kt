@@ -27,7 +27,8 @@ import org.junit.Test
  * 009 覆盖层空态文案的判定源）、覆盖层排序（类型优先级 仅今天→每N天→
  * 每周几→每天，同类型创建日倒序、同日按 id 倒序、老空串垫底）、完成态按日期惰性求值、
  * 入口校验（空白/200 字/周几空集/间隔收敛）、上限 20、定向 UPDATE 转发、dueDate/createdAt 写入口径、
- * revive、惰性清理（已完成一次性跨日物理删除）、完成事件（勾选 upsert 含文本快照/取消删当日/重勾不重复）。
+ * revive、惰性清理（已完成一次性跨日物理删除；2026-10 修复口径：完成日须≥有效期日——切换前
+ * 旧规则锚点不误删、过期补勾跨日照删）、完成事件（勾选 upsert 含文本快照/取消删当日/重勾不重复）。
  * 快照收集与惰性清理走真实后台协程，用轮询 await 观测就绪；DAO 用 StateFlow 手控 fake
  * （写操作模拟 Room 重发，DELETE 同步作用于 state 以复现自稳定回路）。
  * 时钟：固定 2026-09-23T12:00:00Z（正午锚点，±12 时区内日期不变，CI UTC 可跑）。
@@ -112,14 +113,18 @@ class TodoRepositoryTest {
         override suspend fun findByIds(ids: List<Long>): List<Todo> =
             state.value.filter { it.id in ids }.sortedBy { it.id }
 
-        /** 模拟 Room 的 DELETE 语义：同步作用于 state（触发重发 → 收集器再跑一次无匹配行，自稳定）。 */
+        /** 模拟 Room 的 DELETE 语义：同步作用于 state（触发重发 → 收集器再跑一次无匹配行，自稳定）。
+         *  先改 state 后记录调用：await purgeCalls 时状态写入已就绪，survival 断言无竞态窗口。
+         *  谓词镜像真实 SQL——完成日须 ≥ 有效期日（2026-10 修复：切换前旧规则的完成锚点不算
+         *  「这条单次自己的完成」，否则切单次即被误删）。 */
         override suspend fun purgeCompletedOneOffs(today: String) = synchronized(this) {
-            purgeCalls += today
             state.value = state.value.filterNot {
                 it.repeatType == TodoRecurrence.REPEAT_ONCE &&
                     it.lastCompletedDate.isNotEmpty() &&
-                    it.lastCompletedDate != today
+                    it.lastCompletedDate != today &&
+                    it.lastCompletedDate >= it.dueDate
             }
+            purgeCalls += today
         }
 
         override suspend fun count(): Int = state.value.size
@@ -577,6 +582,43 @@ class TodoRepositoryTest {
 
         val texts = dao.state.value.map { it.text }
         assertEquals(listOf("今天完成的一次性", "昨天没完成的一次性", "昨天完成的每天"), texts)
+    }
+
+    @Test
+    fun `惰性清理_切换前旧规则完成锚点早于有效期日_切单次后不被误删`() = runTest {
+        val dao = FakeTodoDao()
+        // 昨天（旧每天规则）完成 → 锚点=2026-09-22；今天切「单次」→ dueDate=今天（09-23）：
+        // 完成日早于有效期日 = 不是这条单次自己的完成 → 存活（今天轮到、未完成）。
+        // 2026-10 修复前：旧谓词只看「完成≠今天」→ 切换单次瞬间被物理删除（列表凭空消失）。
+        dao.state.value = listOf(
+            Todo(id = 7, text = "旧完成切单次", repeatType = TodoRecurrence.REPEAT_DAILY, lastCompletedDate = "2026-09-22", createdAt = "2026-09-20"),
+        )
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
+        awaitUntil { dao.purgeCalls.isNotEmpty() } // 首次发射的 purge 先跑完（每天行无效果）
+
+        assertTrue(repo.setRecurrence(7, TodoRule.ONCE).isSuccess)
+        awaitUntil { dao.purgeCalls.size >= 2 } // 切换触发的发射也已 purge 过
+
+        val row = dao.state.value.single()
+        assertEquals(TodoRecurrence.REPEAT_ONCE, row.repeatType)
+        assertEquals(today, row.dueDate) // 转仅今天=当天（当天即轮到）
+        assertEquals("2026-09-22", row.lastCompletedDate) // 不清锚点，且不因此被误删
+    }
+
+    @Test
+    fun `惰性清理_过期补勾完成日晚于有效期日_跨日仍物理删除`() = runTest {
+        val dao = FakeTodoDao()
+        // 有效期日 09-21 过期未完成 → 09-22 从过期区补勾（完成日 > 有效期日，仍是这条单次自己的完成）
+        // → 今天（09-23）跨日清理照常（修复收窄的是「早于有效期日」的锚点，不放过真完成）
+        dao.state.value = listOf(
+            Todo(id = 8, text = "过期补勾的一次性", repeatType = TodoRecurrence.REPEAT_ONCE, dueDate = "2026-09-21", lastCompletedDate = "2026-09-22", createdAt = "2026-09-21"),
+        )
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
+
+        awaitUntil { dao.purgeCalls.isNotEmpty() }
+        awaitUntil { dao.state.value.none { it.id == 8L } }
+
+        assertTrue(dao.state.value.isEmpty())
     }
 
     // ── 完成事件双写（specs/008） ──

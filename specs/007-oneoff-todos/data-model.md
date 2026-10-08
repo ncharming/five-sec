@@ -44,14 +44,20 @@ isExpired(repeatType, repeatDays, intervalDays, lastCompletedDate, dueDate, crea
 重复类（2026-10 修订）──错过最近轮到日──→ 过期区（记失败账）
   ├─ 今天仍轮到（每天/到期间隔/今日命中周几）→ 双区展示：今日区照常可勾，勾掉即离开过期区
   └─ 今天不轮到 → 只在过期区（可：修改 / 删除；下次轮到日自动回今日区双区展示）
+
+重复类（带历史完成锚点）──切「仅今天」──→ 当天态：dueDate=今天、当天轮到可勾；锚点保留但
+  完成日早于有效期日 → 不是「这条单次自己的完成」，不判僵尸、不清理（2026-10 修复：此前该
+  迁移被误判为已完成的一次性 → 待办从两区凭空消失且被物理删除）
 ```
 
 ## 惰性清理（仓库层，无后台任务）
 
 `TodoDao.purgeCompletedOneOffs(today)`：
-`DELETE FROM todos WHERE repeatType = 3 AND lastCompletedDate != '' AND lastCompletedDate != :today`
+`DELETE FROM todos WHERE repeatType = 3 AND lastCompletedDate != '' AND lastCompletedDate != :today AND lastCompletedDate >= dueDate`
 
-触发点：TodoRepository 内 observeAll 收集器每次发射后顺手执行（DELETE 触发 Room 重发 → 再收集 → 无匹配行，自稳定）。UI 侧双保险：VM 派生过滤「一次性 && 已完成 && 完成日≠今天」的行，物理删除前不露僵尸行。todos 表可删（历史红线只保护 interception_events）。
+「已完成」口径（2026-10 修复：切换规则误删）：完成日须**不早于**有效期日（yyyy-MM-dd 定宽字典序=时间序）——有效期日当天或之后的完成（正常跨日清理、过期补勾次日后清理）才是「这条单次自己的完成」；早于 dueDate 的完成日是切换前旧重复规则留下的锚点（updateRecurrence 不清锚点、dueDate 重写为当天），该行在新规则下是「今天轮到、未完成」，不得删除。
+
+触发点：TodoRepository 内 observeAll 收集器每次发射后顺手执行（DELETE 触发 Room 重发 → 再收集 → 无匹配行，自稳定）。UI 侧双保险：VM 派生过滤同一口径（一次性 && 完成日≥有效期日 && ≠今天）的行，物理删除前不露僵尸行。todos 表可删（历史红线只保护 interception_events）。
 
 ## 写入点（不变量汇总）
 

@@ -64,10 +64,16 @@ interface TodoDao {
      * 惰性清理（specs/007）：已完成的一次性待办，完成日不是今天 → 物理删除（无后台任务，
      * 由仓库在 observeAll 收集路径顺手调用；DELETE 触发 Room 重发后二次执行无匹配行，自稳定）。
      * 只作用于 todos 表——interception_events「只增不删」红线不受影响。
+     *
+     * 「已完成」的准确口径（2026-10 修复：切换单次误删）：完成日须**不早于**有效期日
+     * （lastCompletedDate >= dueDate，yyyy-MM-dd 定宽字典序=时间序）——有效期日当天或之后的完成才是
+     * 「这条单次自己的完成」（正常跨日清理/过期补勾次日后清理都命中）；早于 dueDate 的完成日是切换前
+     * 旧重复规则留下的锚点（updateRecurrence 不清锚点、dueDate 重写为当天），该行在新规则下是
+     * 「今天轮到、未完成」，命中旧谓词会从两区凭空消失且被物理删除。
      */
     @Query(
         "DELETE FROM todos WHERE repeatType = ${TodoRecurrence.REPEAT_ONCE} " +
-            "AND lastCompletedDate != '' AND lastCompletedDate != :today",
+            "AND lastCompletedDate != '' AND lastCompletedDate != :today AND lastCompletedDate >= dueDate",
     )
     suspend fun purgeCompletedOneOffs(today: String)
 
