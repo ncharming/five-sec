@@ -57,8 +57,9 @@ class AppListViewModelTest {
     @Test
     fun `添加应用后出现在清单中`() = runTest(dispatcher) {
         viewModel.add("com.sina.weibo", now = 1_000)
-        advanceUntilIdle()
-        val apps = viewModel.targetApps.first()
+        // 等待目标态而非读瞬时快照：Room 发射是真实异步（IO 线程回投主线程），
+        // runTest 的虚拟时间不等真实 IO——快照读法在慢机上偶发读到初始空表（CI 偶发失败根因）
+        val apps = viewModel.targetApps.first { list -> list.any { it.packageName == "com.sina.weibo" } }
         assertTrue(apps.any { it.packageName == "com.sina.weibo" })
     }
 
@@ -75,9 +76,9 @@ class AppListViewModelTest {
     fun `切换单应用开关`() = runTest(dispatcher) {
         repository.insertAll(listOf(TargetApp("tv.danmaku.bili", appName = "哔哩哔哩", isEnabled = true, isDefault = true, addedAt = 0)))
         viewModel.setEnabled("tv.danmaku.bili", enabled = false)
-        advanceUntilIdle()
-        val bili = viewModel.targetApps.first().first { it.packageName == "tv.danmaku.bili" }
-        assertEquals(false, bili.isEnabled)
+        // 同上：条件等待开关生效的发射到达，不依赖 advanceUntilIdle 与真实 IO 的时序竞速
+        val apps = viewModel.targetApps.first { list -> list.any { it.packageName == "tv.danmaku.bili" && !it.isEnabled } }
+        assertEquals(false, apps.first { it.packageName == "tv.danmaku.bili" }.isEnabled)
     }
 
     @Test
