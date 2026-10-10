@@ -36,7 +36,11 @@ class InterceptionRepository @Inject constructor(
     private var resistedCount: Int = 0
 
     init {
-        mirrorScope.launch { reseedResistedMirror() }
+        // 播种属尽力而为（与 FiveSecApp.ensureSeeded 同一防御口径，runCatching 静默）：
+        // 生产上瞬时失败→镜像从 0 起算、进程重启播种自愈；进程/测试收尾时 db 可能已关，
+        // 此时后台查询抛异常若不吞掉，Robolectric 会把非测试线程的未捕获异常归罪当前用例
+        // （CI 慢机上 init 协程滑过 tearDown 的 db.close() 才执行——run #91 偶发失败根因）
+        mirrorScope.launch { runCatching { reseedResistedMirror() } }
     }
 
     /** 记录一次拦截事件。事件表只增不删，所有统计均实时聚合。 */
