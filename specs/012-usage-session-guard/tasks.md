@@ -20,4 +20,4 @@
 - [x] 10. 统计：StatsViewModel.appRangeStats 加会话聚合源（AppRangeStatsUi.stayMillis）；StatsScreen 应用卡「停留 N 分钟」（⌈⌉ 取整，>0 才显示）
 - [x] 11. 迁移测试 v11→v12（手建 v11 库：加 wasExpired 的 todo_completions → 打开 v12 → 断言守护列默认 1、usage_sessions 可写、五表零丢失）+ UsageSessionDaoTest 聚合/半开区间
 - [x] 12. README（工作原理/统计段）+ AGENTS（目录树、术语表：会话/回弹/使用时长守护、DB v12）同步
-- [ ] 13. 本地 `:app:assembleDebug` + `:app:testDebugUnitTest` 全绿 → commit（Conventional Commits 中文主题）推 master → CI 绿 → tasks 勾选收尾
+- [x] 13. 本地 `:app:assembleDebug` + `:app:testDebugUnitTest` 全绿 → commit（Conventional Commits 中文主题）推 master → CI 绿（run #91 暴露 011 遗留的播种后台协程竞速，ee40727 runCatching 修复；run #92 success）→ tasks 勾选收尾
