@@ -11,4 +11,4 @@
 - [x] 9. 文案：strings.xml 新增 blocking_resisted / blocking_resisted_count / stats_resist_rate_label / stats_resist_rate_none / stats_hour_distribution / stats_hour_total / stats_hour_peak / stats_hour_label
 - [x] 10. 文档：README（工作原理第 4 步成功态、统计段抵制率与时段分布）+ AGENTS.md（术语表：成功态/抵制率/时段分布；blocking/ 包描述）+ tasks.md 勾选
 - [x] 11. 验证：`./gradlew :app:assembleDebug` + `:app:testDebugUnitTest` 全绿（243 tests, 0 failed）；quickstart.md 手测场景过（待真机）
-- [ ] 12. commit（Conventional Commits 中文主题）推 master，CI 绿
+- [x] 12. commit（Conventional Commits 中文主题）推 master，CI 绿（run #88 暴露既有 AppListViewModelTest 偶发空快照问题，e7b4c5b 修为条件等待；run #89 success）
