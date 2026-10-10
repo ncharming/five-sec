@@ -1,6 +1,7 @@
 package com.fivesec.app.settings.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +44,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -63,6 +66,7 @@ import com.fivesec.app.ui.components.AppIcon
 import com.fivesec.app.ui.components.CardSurface
 import com.fivesec.app.ui.components.PageHeader
 import com.fivesec.app.ui.theme.Spacing
+import com.fivesec.app.util.ResistRate
 import kotlin.math.roundToInt
 
 /**
@@ -89,6 +93,7 @@ fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
     val todoToday by viewModel.todoToday.collectAsStateWithLifecycle()
     val appStats by viewModel.appRangeStats.collectAsStateWithLifecycle()
     val todoRangeStats by viewModel.todoRangeStats.collectAsStateWithLifecycle()
+    val hourDistribution by viewModel.hourDistribution.collectAsStateWithLifecycle()
     val selectedRange by viewModel.selectedRange.collectAsStateWithLifecycle()
     val availablePeriods by viewModel.availablePeriods.collectAsStateWithLifecycle()
     val selectedPeriod by viewModel.selectedPeriod.collectAsStateWithLifecycle()
@@ -117,6 +122,7 @@ fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
                             onSelectRange = viewModel::selectRange,
                             onSelectPeriod = viewModel::selectPeriod,
                         )
+                        HourDistributionCard(buckets = hourDistribution)
                         appStats.forEach { s -> AppRangeStatCard(s) }
                     }
                 }
@@ -295,6 +301,30 @@ private fun TodayInterceptCard(stats: StatsUi, onClick: () -> Unit) {
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                 modifier = Modifier.padding(top = Spacing.md),
             )
+            // 抵制率（specs/011）：结果指标一等公民——取消/(取消+打开)，INTERRUPTED 不进分母
+            // （未做出选择不算一次抵制机会）；分母 0（尚无选择）显示「—」而非 0%
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = Spacing.sm),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.stats_resist_rate_label),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    ResistRate.percent(stats.canceled, stats.opened)
+                        ?.let { "$it%" }
+                        ?: stringResource(R.string.stats_resist_rate_none),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = Spacing.sm),
+                )
+            }
             Text(
                 stringResource(R.string.stats_today_outcomes, stats.canceled, stats.opened),
                 style = MaterialTheme.typography.bodySmall,
@@ -302,7 +332,7 @@ private fun TodayInterceptCard(stats: StatsUi, onClick: () -> Unit) {
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = Spacing.sm),
+                    .padding(top = Spacing.xs),
             )
         }
     }
@@ -499,6 +529,88 @@ private fun RangeSelector(
                         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                         selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     ),
+                )
+            }
+        }
+    }
+}
+
+/** 时段分布卡（specs/011）：24 桶柱状图回答「几点最容易破防」。含全部结局事件（与拦截总数
+ *  同口径）；零数据照常渲染（全零柱 + 基线 +「共 0 次」，无峰值行）；峰值柱品牌绿实色、
+ *  其余 35% 透明度，峰值并列取最靠前时刻。 */
+@Composable
+private fun HourDistributionCard(buckets: List<Int>, modifier: Modifier = Modifier) {
+    val total = buckets.sum()
+    val max = buckets.maxOrNull() ?: 0
+    val peakHour = if (max > 0) buckets.indexOfFirst { it == max } else null
+
+    CardSurface(modifier) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(Spacing.lg),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.stats_hour_distribution),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    stringResource(R.string.stats_hour_total, total),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            val barColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+            val peakColor = MaterialTheme.colorScheme.primary
+            val baselineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            Canvas(
+                Modifier
+                    .fillMaxWidth()
+                    .height(96.dp)
+                    .padding(top = Spacing.md),
+            ) {
+                val gap = 2.dp.toPx()
+                val barWidth = (size.width - gap * (buckets.size - 1)) / buckets.size
+                buckets.forEachIndexed { index, count ->
+                    if (count <= 0) return@forEachIndexed
+                    val barHeight = size.height * count / max
+                    drawRect(
+                        color = if (index == peakHour) peakColor else barColor,
+                        topLeft = Offset(index * (barWidth + gap), size.height - barHeight),
+                        size = Size(barWidth, barHeight),
+                    )
+                }
+                drawLine(
+                    color = baselineColor,
+                    start = Offset(0f, size.height),
+                    end = Offset(size.width, size.height),
+                    strokeWidth = 1.dp.toPx(),
+                )
+            }
+            // 5 点轴标：两端带「时」后缀，中间纯数字
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = Spacing.xs),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                val labelStyle = MaterialTheme.typography.labelSmall
+                val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                Text(stringResource(R.string.stats_hour_label, 0), style = labelStyle, color = labelColor)
+                Text("6", style = labelStyle, color = labelColor)
+                Text("12", style = labelStyle, color = labelColor)
+                Text("18", style = labelStyle, color = labelColor)
+                Text(stringResource(R.string.stats_hour_label, 23), style = labelStyle, color = labelColor)
+            }
+            if (peakHour != null) {
+                Text(
+                    stringResource(R.string.stats_hour_peak, peakHour, max),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = Spacing.sm),
                 )
             }
         }

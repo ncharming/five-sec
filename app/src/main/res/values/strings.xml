@@ -28,6 +28,10 @@
     <string name="blocking_todos_empty_none">还没有今日待办 · 打开「五秒」添加</string>
     <string name="blocking_todos_empty_none_due">今天没有轮到的待办</string>
 
+    <!-- 拦截反馈（specs/011）：取消成功态 -->
+    <string name="blocking_resisted">✓ 已抵制</string>
+    <string name="blocking_resisted_count">今日第 %1$d 次抵制</string>
+
     <!-- Intercept（合并页：拦截总开关 + 无障碍状态 + 应用清单，specs/005-daily-todos） -->
     <string name="intercept_title">拦截</string>
     <string name="intercept_subtitle">给无意识的刷手机加一道减速带</string>
@@ -166,6 +170,13 @@
     <string name="stats_expired_count">过期 %1$d</string>
     <string name="stats_late_completed_today">今日补完 %1$d</string>
     <string name="stats_today_outcomes">取消 %1$d · 打开 %2$d</string>
+    <!-- 拦截反馈（specs/011）：抵制率 + 时段分布 -->
+    <string name="stats_resist_rate_label">抵制率</string>
+    <string name="stats_resist_rate_none">—</string>
+    <string name="stats_hour_distribution">时段分布</string>
+    <string name="stats_hour_total">共 %1$d 次</string>
+    <string name="stats_hour_peak">峰值 %1$d 时 · %2$d 次</string>
+    <string name="stats_hour_label">%1$d时</string>
     <string name="stats_entry_intercept_history">应用拦截统计</string>
     <string name="stats_entry_todo_history">任务完成统计</string>
     <string name="stats_todo_period_total">本期完成</string>

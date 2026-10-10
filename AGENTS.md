@@ -43,13 +43,13 @@ adb shell pm grant com.fivesec.app android.permission.WRITE_SECURE_SETTINGS
 
 ```
 interception/   拦截决策与无障碍服务（AppBlockerAccessibilityService → InterceptionController → CooldownGate）
-blocking/       拦截覆盖层 UI + 5 秒状态机 + 今日待办卡片（BlockingOverlay → BlockingViewModel；009 起卡片四态常驻=唯一缓冲内容）
+blocking/       拦截覆盖层 UI + 5 秒状态机 + 取消成功态 + 今日待办卡片（BlockingOverlay → BlockingViewModel；009 起卡片四态常驻=唯一缓冲内容；011 起取消后 Resisted 态展示「已抵制·今日第 N 次」0.8s 再落终态——反馈在选择之后，不碰缓冲区契约）
 reminder/       待办到点提醒（010）：TodoReminderPlanner 纯逻辑（零 Android import）+ 单一「下一响」AlarmManager 闹钟（Scheduler/Coordinator/Receiver/BootReceiver）+ 响铃前台服务（ReminderAlarmService——铃声/震动唯一持有方，不依赖页面拉起）+ 全屏提醒页（TodoReminderActivity：完整内容 + 每条「完成」）；与拦截链路零交集、不写任何事件表
 settings/       用户界面：ui/（Home 3-Tab 骨架 待办/统计/设置 → Todo/Stats/Intercept Screen，另有 Onboarding；009 移除提示语 Tab 与 HintList）+ viewmodels/
-data/           db/（Room：AppDatabase v10 + DAO，hints 物理表保留不声明）、datastore/（SettingsDataStore）、repository/、seed/
+data/           db/（Room：AppDatabase v11 + DAO，hints 物理表保留不声明）、datastore/（SettingsDataStore）、repository/、seed/
 domain/model/   纯 Kotlin 领域模型（TargetApp、InterceptionEvent、InterceptionOutcome、Exercise、Todo、TodayTodo/TodayTodosSnapshot、AppSettings）
-di/             AppModule：唯一的 Hilt @Module（DB、DAO、迁移链 1→10、TimeProvider、应用级 CoroutineScope）
-util/           叶子工具：TimeProvider、DateUtil、PackageUtil、AppBrandColorExtractor、AccessibilityPermissionHelper
+di/             AppModule：唯一的 Hilt @Module（DB、DAO、迁移链 1→11、TimeProvider、应用级 CoroutineScope）
+util/           叶子工具：TimeProvider、DateUtil、PackageUtil、AppBrandColorExtractor、AccessibilityPermissionHelper、TodoRecurrence、ResistRate（011）、HourDistribution（011）
 ui/theme/       Compose 主题 token（与 colors.xml 的 brand_* 同源）
 ```
 
@@ -126,7 +126,7 @@ ui/theme/       Compose 主题 token（与 colors.xml 的 brand_* 同源）
 - **提示语功能已退役（specs/009，已落地）**：待办是拦截缓冲层的唯一内容，提示语相关代码（HintListScreen/HintListViewModel/HintRepository/DataStoreHintCursorStore/内置开关）已删除——不要为「找回功能」重建，也不要为「清理数据」复活读写：`hints` 物理表只读保留（Room v9 空迁移，无 DAO、不声明），DataStore 的 `hint_cycle_cursor`/`builtin_hints_enabled` 键停用残留不清理；改拦截页内容层时以待办卡为核心，空态区分「无启用条目=引导添加」与「今日不轮到=告知」，完整口径读 specs/009-retire-hints/spec.md。
 - 动无障碍服务事件逻辑前，先读 `AppBlockerAccessibilityService` 的事件处理注释并跑 `InterceptionControllerTest`；三个放行标记有优先级语义：`userOpenedPkg` > `suppressedPkg` > 去抖冷却，切到别的目标应用会清除 `userOpenedPkg`。
 - 带注释的防御性写法不要「简化」掉：如 `StatsRange.availablePeriods` 生成月份周期必须先 `withDayOfMonth(1)` 再 `withMonth(m)`——31 号直接换月会在短月抛异常。
-- 拦截流程时序是固定契约：「取消/打断」先 `GLOBAL_ACTION_HOME` 再延迟 250ms 撤 overlay，顺序反了目标应用会闪现；「打开」时目标一直在 overlay 后面运行，撤掉即见，不重复发 LaunchIntent。
+- 拦截流程时序是固定契约：「取消/打断」先 `GLOBAL_ACTION_HOME` 再延迟 250ms 撤 overlay，顺序反了目标应用会闪现（011 起取消的成功态 0.8s 展示发生在 HOME 之前——覆盖层全程遮挡，顺序契约不变）；「打开」时目标一直在 overlay 后面运行，撤掉即见，不重复发 LaunchIntent。
 - 国产 ROM（ColorOS 等）后台清理无障碍服务是常态而非 bug：无 `WRITE_SECURE_SETTINGS` 授权时只能引导用户手动开，别试图用其他手段拉起服务；Android 13+ 受限设置会拦住无障碍开关，需引导「无障碍 → 已安装的应用 → 允许受限设置」；Android 17「高级保护模式」可能整体禁用第三方无障碍服务（README 平台限制）。
 - `.specify/memory/constitution.md` 是未填充的占位模板——spec-kit 的 Constitution Check 恒为 PASS，不要把「宪法」当真实门禁。
 - 本地 pwsh/cmd 控制台以 GBK 解码 UTF-8 源文件时中文会显示乱码，文件本身没问题；读写源码一律按 UTF-8。
@@ -140,6 +140,9 @@ ui/theme/       Compose 主题 token（与 colors.xml 的 brand_* 同源）
 - **抑制（Suppression）**：选「打开」后临时放行该应用的重启，防止回到目标应用时二次拦截；`userOpenedPkg`（使用期间永久放行）与 `suppressedPkg`（立即生效）是服务内两个不同字段。
 - **去抖（Debounce）**：`TYPE_WINDOW_STATE_CHANGED` 连发防重复弹窗，窗口 `DEBOUNCE_MS=800`；两者都实现在纯类 `CooldownGate`，常量在 `InterceptionController`。
 - **覆盖层（Overlay）**：`TYPE_ACCESSIBILITY_OVERLAY` 全屏窗口，由无障碍服务绘制，始终浅色。
+- **成功态（Resisted，011）**：选「取消」后覆盖层的正反馈瞬态——「✓ 已抵制 + 今日第 N 次抵制」+ 60ms 短震，展示 `RESIST_DISPLAY_MS=800` 后落 `Finished(CANCELED)`；Resisted 是「已决定」态（此后 open/cancel 无效、打断只提前收尾仍记 CANCELED），事件语义（exerciseCompleted=true）不变。今日序号来自 `InterceptionRepository` 进程内内存镜像（init 从事件表播种 + 每次取消 +1 + 跨日归零；镜像可领先事件表 ≤1 次，进程重启播种自动对齐）。
+- **抵制率（011）**：今日取消/(今日取消+今日打开)，INTERRUPTED 不进分母（未完成选择≠一次抵制机会）；分母 0 显示「—」（无选择≠0% 抵制）。纯函数 `util/ResistRate`，展示在统计主页今日拦截卡双 Hero 之下。
+- **时段分布（011）**：拦截二级页 24 桶（0–23 时，本地时区）柱状图，计入全部结局（与拦截总数同口径），峰值柱高亮、并列取最前；分桶纯函数 `util/HourDistribution`（显式 ZoneId、Kotlin 端聚合——SQLite localtime 随运行环境漂移不可测），数据源 `observeTimestampsBetween` 半开区间。
 - **待办（Todo）**：**核心功能、拦截缓冲层的唯一内容**（009 起提示语退役）。清单条目 = 内容 ≤200 字（2026-09 起支持真实多行：编辑弹窗存 \n 不再折叠为空格，保存 trim 首尾空白行，字数含换行符）+ 启用开关 + `lastCompletedDate` + 重复规则三列 + `createdAt`/`dueDate`（007）/`reminderTime`（010，HH:mm 空=无提醒默认关），上限 20 条（今日区+过期区共享）；今日卡内按重复规则分组展示（`settings/ui/TodoRuleGroups` 纯投影：每天→每周→每N天→单次与编辑弹窗四段同序，分组键=规则三列原值——不同星期集合/不同 N 各自成组，组名自描述；过期区不参与分组）；完成判定 = `lastCompletedDate == 今天`（惰性重置，无清理任务）；重复规则四选一：每天（默认）/ 按星期几（位掩码 bit0=周一…bit6=周日）/ 每 N 天（2–365 滚动，锚点=`lastCompletedDate`，切换规则不清锚点）/ 单次（007：只在有效期日轮到，当天完成跨日清理、未完成跨日进过期区、无迟到补勾）——判定纯逻辑在 `util/TodoRecurrence`；**过期口径（2026-10-04 用户修订，取代 007 的「重复类不进过期区」）：过期了就一定显示在过期区**——每天/从未完成的每N天=错过昨天（createdAt ≤ 昨天）、周几=错过过去 7 天内最近的选中日、已完成的每N天=错过完成日+N 的复活日（统一源 `TodoRecurrence.lastMissedDueDate`，不看启用开关）；过期重复类今天轮到时双区展示（今日区照常可勾、今天勾掉即离开过期区），今天不轮到只在过期区（可修改/删除，无「改为今天」——dueDate 不参与重复类判定）；**过期行可直接点完成补勾（2026-10-04 二次修订，推翻 007「无迟到补勾」）：补勾事件带 `wasExpired` 过期补完标记，统计侧显式区分迟到完成；误勾可在今日区取消（已完成的非轮到行可取消，取消即回过期区）**；过期区副行=错过的轮到日、按错过日升序；不轮到的日子待办页灰显禁勾、覆盖层卡片与 D/T 分母只含「轮到且启用」条目（`todayTodos` 快照过滤兑现——过期重复类今天轮到照常上卡片）；每次勾选写 `todo_completions` 完成事件（008：当天同条唯一、取消即删；过期区补勾带 `wasExpired` 标记，统计页今日卡「今日补完」与历史页「其中过期补完」显式分列），统计页有任务完成统计；**到点主动提醒（010，可选）**：到点无需进 APP/触发拦截/点通知——响铃前台服务即时响（ALARM 流铃声循环+震动，息屏亮屏都响；息屏 FSI 弹全屏页、亮屏服务补拉页），只在「轮到且启用且当天未完成」的日子响（`reminder/TodoReminderPlanner` 与 `isDue` 同源）、同刻多条聚合一次响、已过时刻绝不补响、提醒本身不写任何事件表不进统计（详见 specs/010）；覆盖层只读展示（前 3 条、每条取首个非空行截前 12 字——多行投影纯逻辑在 `blocking/TodoCardText`、全完成显 ✓ 行、今日无「轮到且启用」条目时空态常驻——009 落地：无启用=引导添加、有启用但今日不轮到=告知，卡片不再隐藏），勾选在待办页与提醒页（010 扩展；列表单行省略、点条目弹只读全文弹窗按行渲染）。
 - **循环游标（HintCursor）**：提示语展示为「内置（资源数组顺序）+ 池（id 升序）」单一序列的循环，游标持久化在 DataStore（`hint_cycle_cursor`），进程重启续接；序列增删后取模继续，不承诺严格不重不漏。004 的栈式一次性提示已退役（存量行经 MIGRATION_4_5 改挂 pool）；009 拍板并于 2026-09 落地整条提示语链路退役——待办为唯一缓冲内容、`hints` 物理表只读保留（Room v9 空迁移，无 DAO）、游标与内置开关停用（DataStore 残留键不清理），提示语展示与轮换逻辑已随代码删除。
 - **档位/周期（StatsRange/StatsPeriod）**：统计页 日/周/月/年 自然周期（周一起算、不含未来周期；月=当年 1 月至今，年=最早事件年至今）；顶部今日四数（拦截/取消/打开/连续天数，008 起并进统计主页「今日拦截」卡）与档位无关。

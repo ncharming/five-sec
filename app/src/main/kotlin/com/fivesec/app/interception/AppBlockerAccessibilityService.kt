@@ -91,6 +91,8 @@ class AppBlockerAccessibilityService : AccessibilityService() {
                 context = this,
                 appLabel = appLabel,
                 todos = todos,
+                // 今日抵制序号（specs/011）：求值时才取当天——覆盖层跨零点的极端场景也归零正确
+                resistCountProvider = { repository.nextResistedOrdinal(DateUtil.todayString(timeProvider.now())) },
                 onFinished = { outcome -> onBlockingFinished(pkg, outcome) },
             )
             currentOverlay = overlay

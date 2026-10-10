@@ -5,6 +5,8 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -41,15 +43,21 @@ import kotlinx.coroutines.launch
  *
  * 配色取自 res/values/colors.xml 的 brand_* token，与 Compose Color.kt 同源，保证品牌一致。
  * 始终浅色：覆盖层弹出在第三方 app 之上，非本 app 主题上下文。
+ *
+ * 取消成功态（specs/011 拦截反馈三件套）：选「取消」后倒计时行变「✓ 已抵制」、新增计数副行
+ * 「今日第 N 次抵制」+ 60ms 单次震动，展示约 0.8s 才进终态——正反馈发生在**选择之后**，
+ * 不触碰「待办卡唯一缓冲内容」契约（009）。[resistCountProvider] 由服务注入（仓库内存镜像），
+ * 求值时取当天日期，跨零点的极端场景序号也归零正确。
  */
 class BlockingOverlay(
     context: Context,
     appLabel: String,
     todos: TodayTodosSnapshot,
+    resistCountProvider: () -> Int = { 1 },
     private val onFinished: (InterceptionOutcome) -> Unit,
 ) {
     private val ctx: Context = context
-    private val viewModel = BlockingViewModel(appLabel)
+    private val viewModel = BlockingViewModel(appLabel, resistCountProvider)
     private val windowManager = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -110,6 +118,13 @@ class BlockingOverlay(
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
+    }
+    // 成功态计数副行（specs/011）：「今日第 N 次抵制」，仅 Resisted/Finished(CANCELED) 可见
+    private val resistCountLine = TextView(ctx).apply {
+        setTextColor(onSurfaceVariantColor)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        gravity = Gravity.CENTER
+        visibility = View.GONE
     }
     // 打开按钮：14dp 圆角实心（渲染时按解锁态在品牌绿/禁用灰间切换）
     private val openBtnBg = GradientDrawable().apply {
@@ -208,6 +223,7 @@ class BlockingOverlay(
             addView(todoBlock, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(spacer(dp(28)))
             addView(countdownLine)
+            addView(resistCountLine, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
             addView(spacer(dp(28)))
             addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
@@ -243,15 +259,28 @@ class BlockingOverlay(
     }
 
     private fun render(state: BlockingViewModel.UiState) {
+        // 成功态（specs/011）：Resisted 及其后的 Finished(CANCELED) 都保持成功文案——
+        // 终态后服务还要 HOME→250ms 撤层，闪回「✓ 请选择」会破坏奖励瞬间
+        val resisted = state is BlockingViewModel.UiState.Resisted ||
+            (state is BlockingViewModel.UiState.Finished && state.outcome == InterceptionOutcome.CANCELED)
+        // 按钮可选项式：仅解锁态可选；Finished(CANCELED) 与成功态同灰——撤层窗口内不闪回绿色
         val unlocked = state is BlockingViewModel.UiState.ChoiceUnlocked ||
-            state is BlockingViewModel.UiState.Finished
+            (state is BlockingViewModel.UiState.Finished && state.outcome != InterceptionOutcome.CANCELED)
         // 倒计时融进行内文案：解锁前「请先思考 N 秒」（0 收敛为 1，避免闪现「0 秒」）；
-        // 解锁后「✓ 请选择」——大数字位的 ✓ 语义迁到本行
+        // 解锁后「✓ 请选择」——大数字位的 ✓ 语义迁到本行；选取消后「✓ 已抵制」（011 成功态）
         countdownLine.text = when {
+            resisted -> ctx.getString(R.string.blocking_resisted)
             unlocked -> ctx.getString(R.string.blocking_choose)
             state is BlockingViewModel.UiState.CountingDown ->
                 ctx.getString(R.string.blocking_wait, state.remaining.coerceAtLeast(1))
             else -> ctx.getString(R.string.blocking_wait, Exercise.DURATION_SECONDS)
+        }
+        if (state is BlockingViewModel.UiState.Resisted) {
+            resistCountLine.text = ctx.getString(R.string.blocking_resisted_count, state.count)
+            resistCountLine.visibility = View.VISIBLE
+            vibrateResisted()
+        } else if (!resisted) {
+            resistCountLine.visibility = View.GONE
         }
 
         // 倒计时期间功能禁用；颜色按 M3 规范区分启用/禁用态（替代原先 alpha 写法）
@@ -268,6 +297,16 @@ class BlockingOverlay(
         }
 
         if (state is BlockingViewModel.UiState.Finished) finish(state.outcome)
+    }
+
+    /** 成功态一次性 60ms 短震（specs/011）：「轻拍肩」等级，与提醒的闹钟式长震严格区分；
+     *  无振动器/被系统拒绝时静默降级——奖励缺失不能阻断回桌面。 */
+    private fun vibrateResisted() {
+        try {
+            val vibrator = ctx.getSystemService(Vibrator::class.java) ?: return
+            vibrator.vibrate(VibrationEffect.createOneShot(RESIST_VIBRATE_MS, VibrationEffect.DEFAULT_AMPLITUDE))
+        } catch (_: Exception) {
+        }
     }
 
     private fun finish(outcome: InterceptionOutcome) {
@@ -303,5 +342,8 @@ class BlockingOverlay(
 
         /** 未完成条目前缀符号（与 "✓" 同属覆盖层符号常量，不入资源）。 */
         private const val TODO_BULLET = "○ "
+
+        /** 成功态震动时长（specs/011）。 */
+        private const val RESIST_VIBRATE_MS = 60L
     }
 }

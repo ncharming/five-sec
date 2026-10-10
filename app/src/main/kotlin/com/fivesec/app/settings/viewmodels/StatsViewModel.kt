@@ -8,6 +8,7 @@ import com.fivesec.app.data.repository.TodoRepository
 import com.fivesec.app.util.AppBrandColorExtractor
 import com.fivesec.app.util.DateUtil
 import com.fivesec.app.util.FALLBACK_BRAND_ARGB
+import com.fivesec.app.util.HourDistribution
 import com.fivesec.app.util.TimeProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -189,5 +190,17 @@ class StatsViewModel @Inject constructor(
                 }
             }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** 所选周期内拦截事件的 24 小时分布（specs/011 时段分布卡）：0–23 时桶、本地时区，
+     *  含全部结局（与「拦截次数」总数同口径）。分桶是显式 ZoneId 的纯函数
+     *  （[HourDistribution]）；周期切换经 flatMapLatest 重订阅，与 appRangeStats 同模式。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val hourDistribution: StateFlow<List<Int>> =
+        selectedPeriod
+            .flatMapLatest { period ->
+                interceptionRepository.observeTimestampsBetween(period.startMillis, period.endMillis)
+                    .map { HourDistribution.of(it, zone).toList() }
+            }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, List(HourDistribution.BUCKETS) { 0 })
 
 }

@@ -153,4 +153,33 @@ class InterceptionEventDaoTest {
         assertEquals(emptyList<String>(), dao.observeActiveDays().first())
         assertEquals(null, dao.observeEarliestTimestamp().first())
     }
+
+    @Test
+    fun `按结局一次性计数只含当日事件（specs-011 镜像播种）`() = runTest {
+        val startOfToday = 1_000L
+        dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 900, exerciseCompleted = true, outcome = InterceptionOutcome.CANCELED))
+        dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 1_000, exerciseCompleted = true, outcome = InterceptionOutcome.CANCELED))
+        dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 1_100, exerciseCompleted = true, outcome = InterceptionOutcome.CANCELED))
+        dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 1_200, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
+
+        assertEquals(2, dao.countByOutcomeSince(startOfToday, InterceptionOutcome.CANCELED)) // 900 早于日界不计、1000 恰在日界计入、1100 计入
+        assertEquals(1, dao.countByOutcomeSince(startOfToday, InterceptionOutcome.OPENED))
+        assertEquals(0, dao.countByOutcomeSince(startOfToday, InterceptionOutcome.INTERRUPTED))
+    }
+
+    @Test
+    fun `时间戳区间查询半开区间且升序（specs-011 时段分布）`() = runTest {
+        dao.insert(InterceptionEvent(packageName = "tv.danmaku.bili", timestamp = 30, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
+        dao.insert(InterceptionEvent(packageName = "tv.danmaku.bili", timestamp = 10, exerciseCompleted = true, outcome = InterceptionOutcome.CANCELED))
+        dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 20, exerciseCompleted = false, outcome = InterceptionOutcome.INTERRUPTED))
+
+        assertEquals(listOf(10L, 20L, 30L), dao.observeTimestampsBetween(rangeStart = 10, rangeEnd = 31).first())
+        assertEquals(listOf(20L), dao.observeTimestampsBetween(rangeStart = 11, rangeEnd = 21).first()) // 排他下界
+        assertEquals(listOf(30L), dao.observeTimestampsBetween(rangeStart = 21, rangeEnd = 40).first()) // 排他上界
+    }
+
+    @Test
+    fun `空表时时间戳查询照常发射空列表`() = runTest {
+        assertEquals(emptyList<Long>(), dao.observeTimestampsBetween(0, Long.MAX_VALUE).first())
+    }
 }

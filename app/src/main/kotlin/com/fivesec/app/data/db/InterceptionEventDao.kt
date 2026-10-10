@@ -39,6 +39,15 @@ interface InterceptionEventDao {
     /** 最早拦截事件时间；无事件时为 null。用于生成年份筛选的可选范围。 */
     @Query("SELECT MIN(timestamp) FROM interception_events")
     fun observeEarliestTimestamp(): Flow<Long?>
+
+    /** 一次性统计：[startOfDay, ∞) 内指定结局的事件数（specs/011：今日抵制镜像播种，suspend 非观察）。 */
+    @Query("SELECT COUNT(*) FROM interception_events WHERE timestamp >= :startOfDay AND outcome = :outcome")
+    suspend fun countByOutcomeSince(startOfDay: Long, outcome: InterceptionOutcome): Int
+
+    /** 周期内全部事件时间戳升序（specs/011 时段分布数据源）：半开区间 [rangeStart, rangeEnd)，
+     *  小时分桶在 Kotlin 端按显式 ZoneId 做（SQLite localtime 随运行环境漂移，不可测）。 */
+    @Query("SELECT timestamp FROM interception_events WHERE timestamp >= :rangeStart AND timestamp < :rangeEnd ORDER BY timestamp ASC")
+    fun observeTimestampsBetween(rangeStart: Long, rangeEnd: Long): Flow<List<Long>>
 }
 
 /** 周期范围内按应用聚合的查询结果投影（非持久化实体）。 */
