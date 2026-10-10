@@ -27,6 +27,7 @@ class SettingsDataStore @Inject constructor(
         val GLOBAL_ENABLED = booleanPreferencesKey("interception_globally_enabled")
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_completed")
         val RETENTION_DAYS = intPreferencesKey("stats_retention_days")
+        val SESSION_GUARD_MINUTES = intPreferencesKey("session_guard_minutes") // specs/012：全局回弹间隔
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -34,6 +35,9 @@ class SettingsDataStore @Inject constructor(
             globalInterceptionEnabled = p[Keys.GLOBAL_ENABLED] ?: true,
             onboardingCompleted = p[Keys.ONBOARDING_DONE] ?: false,
             statsRetentionDays = p[Keys.RETENTION_DAYS] ?: 90,
+            // 夹取防御：异常写入（如直改文件）不会让间隔跳出合法区间
+            sessionGuardMinutes = (p[Keys.SESSION_GUARD_MINUTES] ?: DEFAULT_SESSION_GUARD_MINUTES)
+                .coerceIn(MIN_SESSION_GUARD_MINUTES, MAX_SESSION_GUARD_MINUTES),
         )
     }
 
@@ -45,5 +49,17 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setOnboardingCompleted(done: Boolean) {
         context.dataStore.edit { it[Keys.ONBOARDING_DONE] = done }
+    }
+
+    suspend fun setSessionGuardMinutes(minutes: Int) {
+        context.dataStore.edit {
+            it[Keys.SESSION_GUARD_MINUTES] = minutes.coerceIn(MIN_SESSION_GUARD_MINUTES, MAX_SESSION_GUARD_MINUTES)
+        }
+    }
+
+    companion object {
+        const val DEFAULT_SESSION_GUARD_MINUTES = 15
+        const val MIN_SESSION_GUARD_MINUTES = 5
+        const val MAX_SESSION_GUARD_MINUTES = 60
     }
 }

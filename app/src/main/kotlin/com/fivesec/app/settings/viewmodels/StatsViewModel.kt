@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.fivesec.app.data.repository.InterceptionRepository
 import com.fivesec.app.data.repository.TargetAppRepository
 import com.fivesec.app.data.repository.TodoRepository
+import com.fivesec.app.data.repository.UsageSessionRepository
 import com.fivesec.app.util.AppBrandColorExtractor
 import com.fivesec.app.util.DateUtil
 import com.fivesec.app.util.FALLBACK_BRAND_ARGB
@@ -44,6 +45,8 @@ data class AppRangeStatsUi(
     val interceptions: Int,
     val opened: Int,
     val canceled: Int,
+    /** 周期内会话停留总毫秒（specs/012，墙钟口径）：0=无会话（UI 不显示停留行）。 */
+    val stayMillis: Long = 0L,
 )
 
 @HiltViewModel
@@ -51,6 +54,7 @@ class StatsViewModel @Inject constructor(
     private val interceptionRepository: InterceptionRepository,
     private val targetAppRepository: TargetAppRepository,
     private val todoRepository: TodoRepository,
+    private val usageSessionRepository: UsageSessionRepository,
     private val brandColorExtractor: AppBrandColorExtractor,
     private val timeProvider: TimeProvider,
 ) : ViewModel() {
@@ -147,8 +151,9 @@ class StatsViewModel @Inject constructor(
         _selectedPeriod.value = period
     }
 
-    /** 每个目标应用在所选自然周期内的统计（拦截/打开/取消）+ 品牌色，供统计页渲染卡片。
-     *  周期切换时重新订阅查询；页面停留跨周期不自动刷新（沿用现状）。 */
+    /** 每个目标应用在所选自然周期内的统计（拦截/打开/取消）+ 停留时长 + 品牌色，供统计页渲染卡片。
+     *  周期切换时重新订阅查询；页面停留跨周期不自动刷新（沿用现状）。
+     *  stayMillis（specs/012）：会话按 endedAt 归期聚合（半开区间），墙钟口径。 */
     @OptIn(ExperimentalCoroutinesApi::class)
     val appRangeStats: StateFlow<List<AppRangeStatsUi>> =
         selectedPeriod
@@ -156,9 +161,11 @@ class StatsViewModel @Inject constructor(
                 combine(
                     targetAppRepository.observeAll(),
                     interceptionRepository.observeCountsByPackageBetween(period.startMillis, period.endMillis),
+                    usageSessionRepository.observeDurationByPackageBetween(period.startMillis, period.endMillis),
                     brandColors,
-                ) { targets, counts, colors ->
+                ) { targets, counts, durations, colors ->
                     val byPkg = counts.associateBy { it.packageName }
+                    val stayByPkg = durations.associateBy { it.packageName }
                     targets.map { t ->
                         val c = byPkg[t.packageName]
                         AppRangeStatsUi(
@@ -168,6 +175,7 @@ class StatsViewModel @Inject constructor(
                             interceptions = c?.total ?: 0,
                             opened = c?.opened ?: 0,
                             canceled = c?.canceled ?: 0,
+                            stayMillis = stayByPkg[t.packageName]?.totalMillis ?: 0L,
                         )
                     }
                 }

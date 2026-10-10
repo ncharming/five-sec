@@ -11,18 +11,21 @@ import com.fivesec.app.domain.model.InterceptionOutcome
 import com.fivesec.app.domain.model.TargetApp
 import com.fivesec.app.domain.model.Todo
 import com.fivesec.app.domain.model.TodoCompletion
+import com.fivesec.app.domain.model.UsageSession
+import com.fivesec.app.domain.model.UsageSessionEndReason
 
 @Database(
-    entities = [TargetApp::class, InterceptionEvent::class, Todo::class, TodoCompletion::class],
-    version = 11, // v11：todo_completions 新增 wasExpired 列（2026-10 过期补完标记，统计区分迟到完成）
+    entities = [TargetApp::class, InterceptionEvent::class, Todo::class, TodoCompletion::class, UsageSession::class],
+    version = 12, // v12：target_apps 加 sessionGuardEnabled + 新表 usage_sessions（specs/012 使用时长守护）
     exportSchema = false,
 )
-@TypeConverters(InterceptionOutcomeConverter::class)
+@TypeConverters(InterceptionOutcomeConverter::class, UsageSessionEndReasonConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun targetAppDao(): TargetAppDao
     abstract fun interceptionEventDao(): InterceptionEventDao
     abstract fun todoDao(): TodoDao
     abstract fun todoCompletionDao(): TodoCompletionDao
+    abstract fun usageSessionDao(): UsageSessionDao
 }
 
 // 从版本1迁移到版本2：添加 appName 字段和 AppStatistics 表
@@ -161,10 +164,39 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
     }
 }
 
+// 从版本11迁移到版本12：使用时长守护（specs/012）——target_apps 新增 sessionGuardEnabled 列
+// （每应用守护开关，存量回填 1=开：升级用户零感知，除多了回弹行为本身）+ 新建 usage_sessions
+// 会话事件表（append-only，结束时单行 INSERT）。纯 ADD COLUMN + CREATE TABLE：零数据迁移语句、
+// 零丢失；列定义必须与 Room 为实体生成的 schema 逐字一致（AppDatabaseMigrationTest 手建 v11 库守住）。
+// 五表零触碰（interception_events 红线照旧：回弹不写拦截事件）。
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE target_apps ADD COLUMN sessionGuardEnabled INTEGER NOT NULL DEFAULT 1")
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS `usage_sessions` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`packageName` TEXT NOT NULL, " +
+                "`startedAt` INTEGER NOT NULL, " +
+                "`endedAt` INTEGER NOT NULL, " +
+                "`durationMillis` INTEGER NOT NULL, " +
+                "`guardShownCount` INTEGER NOT NULL, " +
+                "`endReason` TEXT NOT NULL)"
+        )
+    }
+}
+
 class InterceptionOutcomeConverter {
     @TypeConverter
     fun toName(outcome: InterceptionOutcome): String = outcome.name
 
     @TypeConverter
     fun fromName(name: String): InterceptionOutcome = InterceptionOutcome.valueOf(name)
+}
+
+class UsageSessionEndReasonConverter {
+    @TypeConverter
+    fun toName(reason: UsageSessionEndReason): String = reason.name
+
+    @TypeConverter
+    fun fromName(name: String): UsageSessionEndReason = UsageSessionEndReason.valueOf(name)
 }

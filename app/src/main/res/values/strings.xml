@@ -32,6 +32,12 @@
     <string name="blocking_resisted">✓ 已抵制</string>
     <string name="blocking_resisted_count">今日第 %1$d 次抵制</string>
 
+    <!-- 使用时长守护回弹层（specs/012，二次减速带：无倒计时，按钮立即可点） -->
+    <string name="guard_title">已在 %1$s 停留 %2$d 分钟</string>
+    <string name="guard_subtitle">休息一下，看看今天还有什么没做</string>
+    <string name="guard_continue">继续 %1$d 分钟</string>
+    <string name="guard_end">结束</string>
+
     <!-- Intercept（合并页：拦截总开关 + 无障碍状态 + 应用清单，specs/005-daily-todos） -->
     <string name="intercept_title">拦截</string>
     <string name="intercept_subtitle">给无意识的刷手机加一道减速带</string>
@@ -41,6 +47,13 @@
     <string name="settings_a11y_hint_on">拦截正常生效中</string>
     <string name="settings_a11y_title_off">无障碍服务未开启</string>
     <string name="settings_a11y_hint_off">点击一键开启 · 开启后拦截才会生效</string>
+
+    <!-- 使用时长守护（specs/012）：全局回弹间隔卡 + 每应用开关（在应用行 ⋯ 菜单） -->
+    <string name="settings_guard_title">使用时长守护</string>
+    <string name="settings_guard_hint">打开应用连续停留满设定时长后再次提醒</string>
+    <string name="settings_guard_interval">回弹间隔</string>
+    <string name="settings_guard_minutes">%1$d 分钟</string>
+    <string name="settings_guard_picker_title">回弹间隔</string>
 
     <!-- Todos（specs/005-daily-todos，首页默认 Tab） -->
     <string name="todos_title">待办</string>
@@ -125,6 +138,7 @@
     <string name="app_list_limit_reached">最多可添加3个应用，请移除不常用应用后重试</string>
     <string name="app_list_package_name">包名：%1$s</string>
     <string name="app_list_menu_remove">移除应用</string>
+    <string name="app_list_menu_guard">时长守护</string>
     <string name="app_list_enabled_count">已启用 %1$d 个应用</string>
     <string name="app_list_capacity">%1$d/%2$d</string>
     <string name="app_list_state_on">拦截中</string>
@@ -160,6 +174,7 @@
     <string name="stats_metric_intercepted">拦截</string>
     <string name="stats_metric_opened">打开</string>
     <string name="stats_metric_canceled">取消</string>
+    <string name="stats_stay_minutes">停留 %1$d 分钟</string>
 
     <!-- Stats / 任务完成统计（specs/008-todo-stats） -->
     <!-- 统计主页双 Hero 卡重构（用户拍板视觉稿 2026-09） -->

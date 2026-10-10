@@ -5,8 +5,6 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.os.VibrationEffect
-import android.os.Vibrator
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -88,27 +86,9 @@ class BlockingOverlay(
         gravity = Gravity.CENTER
     }
 
-    // ── 今日待办紧凑卡片（specs/005-daily-todos）：标题行 + 条目行，内容在构造时一次定格 ──
-    // 居中（2026-09 用户拍板）：卡片内标题与条目改为与卡片外提示语/倒计时/按钮统一居中
-    // （原 specs/007 左对齐口径废止——覆盖层整体只有一个对齐语言）
-    private val todoTitle = TextView(ctx).apply {
-        setTextColor(onSurfaceColor)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-        typeface = Typeface.DEFAULT_BOLD
-        gravity = Gravity.CENTER
-    }
-    private val todoItems = TextView(ctx).apply {
-        setTextColor(onSurfaceVariantColor)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-        gravity = Gravity.CENTER
-        setLineSpacing(dp(4).toFloat(), 1f)
-    }
-    private val todoBlock = LinearLayout(ctx).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER
-        addView(todoTitle, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        addView(todoItems, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
-    }
+    // ── 今日待办紧凑卡片（specs/005→012）：共享组件 OverlayTodoCard——四态渲染口径
+    //    全应用一份（012 起回弹层同源），本层只负责挂载与构造时定格快照 ──
+    private val todoCard = OverlayTodoCard(ctx, onSurfaceColor, onSurfaceVariantColor, primaryColor)
 
     // ── 倒计时行（布局优化）：原 72sp 大数字块已删（腾 ~144dp 给待办卡），倒计时数字
     //    融进本行升格为主视觉——「请先思考 N 秒」（22sp 加粗品牌绿）；解锁后变「✓ 请选择」
@@ -150,7 +130,7 @@ class BlockingOverlay(
     private val root: View = buildRoot()
 
     init {
-        applyTodos(todos)
+        todoCard.render(todos)
     }
 
     private fun dp(v: Int): Int =
@@ -168,42 +148,6 @@ class BlockingOverlay(
     private fun spacer(h: Int): View =
         View(ctx).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, h) }
 
-    /** 待办卡片内容填充（specs/009 contracts/todo-card-overlay.md §B 四态渲染表）：
-     *  卡片常驻——空态不再整块隐藏（009 起待办是覆盖层唯一缓冲内容）；空态二分由快照 anyEnabled 驱动，
-     *  判定不进视图层。 */
-    private fun applyTodos(todos: TodayTodosSnapshot) {
-        val items = todos.items
-        if (items.isEmpty()) {
-            todoTitle.text = if (todos.anyEnabled) {
-                ctx.getString(R.string.blocking_todos_empty_none_due) // 有启用条目但今日无一轮到
-            } else {
-                ctx.getString(R.string.blocking_todos_empty_none) // 一条启用的都没有：引导去添加
-            }
-            todoTitle.setTextColor(onSurfaceVariantColor)
-            todoItems.visibility = View.GONE
-            return
-        }
-        val done = items.count { it.isDone }
-        val pending = items.filterNot { it.isDone }
-        if (pending.isEmpty()) {
-            todoTitle.text = ctx.getString(R.string.blocking_todos_all_done)
-            todoTitle.setTextColor(primaryColor)
-            todoItems.visibility = View.GONE
-            return
-        }
-        todoTitle.text = ctx.getString(R.string.blocking_todos_title, done, items.size)
-        todoTitle.setTextColor(onSurfaceColor)
-        todoItems.visibility = View.VISIBLE
-        val shown = pending.take(TODO_MAX_LINES)
-        val text = shown.joinToString("\n") { TODO_BULLET + TodoCardText.project(it.text) }
-        val overflow = pending.size - shown.size
-        todoItems.text = if (overflow > 0) {
-            text + "\n" + ctx.getString(R.string.blocking_todos_more, overflow)
-        } else {
-            text
-        }
-    }
-
     private fun buildRoot(): View {
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -220,7 +164,7 @@ class BlockingOverlay(
             setPadding(dp(24), dp(24), dp(24), dp(24))
             addView(titleText)
             addView(spacerBeforeTodos) // 待办卡片前导 spacer（常驻）：标题与待办卡之间 12dp，四态恒定
-            addView(todoBlock, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(todoCard.view, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(spacer(dp(28)))
             addView(countdownLine)
             addView(resistCountLine, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
@@ -278,7 +222,7 @@ class BlockingOverlay(
         if (state is BlockingViewModel.UiState.Resisted) {
             resistCountLine.text = ctx.getString(R.string.blocking_resisted_count, state.count)
             resistCountLine.visibility = View.VISIBLE
-            vibrateResisted()
+            OverlayFeedback.vibrateOneShot(ctx, RESIST_VIBRATE_MS) // 成功态一次性 60ms 短震（specs/011，见 OverlayFeedback 类注）
         } else if (!resisted) {
             resistCountLine.visibility = View.GONE
         }
@@ -297,16 +241,6 @@ class BlockingOverlay(
         }
 
         if (state is BlockingViewModel.UiState.Finished) finish(state.outcome)
-    }
-
-    /** 成功态一次性 60ms 短震（specs/011）：「轻拍肩」等级，与提醒的闹钟式长震严格区分；
-     *  无振动器/被系统拒绝时静默降级——奖励缺失不能阻断回桌面。 */
-    private fun vibrateResisted() {
-        try {
-            val vibrator = ctx.getSystemService(Vibrator::class.java) ?: return
-            vibrator.vibrate(VibrationEffect.createOneShot(RESIST_VIBRATE_MS, VibrationEffect.DEFAULT_AMPLITUDE))
-        } catch (_: Exception) {
-        }
     }
 
     private fun finish(outcome: InterceptionOutcome) {
@@ -336,13 +270,6 @@ class BlockingOverlay(
     }
 
     companion object {
-        /** 待办条目最多展示行数（用户拍板：排序后只展示前 3 条——一次性/间隔类优先露出，
-         *  剩余折叠进 blocking_todos_more），超出折叠。 */
-        private const val TODO_MAX_LINES = 3
-
-        /** 未完成条目前缀符号（与 "✓" 同属覆盖层符号常量，不入资源）。 */
-        private const val TODO_BULLET = "○ "
-
         /** 成功态震动时长（specs/011）。 */
         private const val RESIST_VIBRATE_MS = 60L
     }

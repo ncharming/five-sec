@@ -2,6 +2,7 @@ package com.fivesec.app.interception
 
 import com.fivesec.app.data.datastore.SettingsDataStore
 import com.fivesec.app.data.repository.TargetAppRepository
+import com.fivesec.app.domain.model.TargetApp
 import com.fivesec.app.util.TimeProvider
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,17 +31,24 @@ class InterceptionController @Inject constructor(
 
     @Volatile private var globalEnabled: Boolean = true
     @Volatile private var enabledTargets: Set<String> = emptySet()
+    // 全量目标快照（specs/012）：会话守护按应用配置查询；enabledTargets 仍供 evaluate 纯判断
+    @Volatile private var targets: Map<String, TargetApp> = emptyMap()
+    @Volatile private var sessionGuardMinutes: Int = SettingsDataStore.DEFAULT_SESSION_GUARD_MINUTES
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     init {
         scope.launch {
             targetAppRepository.observeAll().collect { apps ->
+                targets = apps.associateBy { it.packageName }
                 enabledTargets = apps.filter { it.isEnabled }.map { it.packageName }.toSet()
             }
         }
         scope.launch {
             settingsDataStore.globalEnabled.collect { globalEnabled = it }
+        }
+        scope.launch {
+            settingsDataStore.settings.collect { sessionGuardMinutes = it.sessionGuardMinutes }
         }
     }
 
@@ -54,6 +62,16 @@ class InterceptionController @Inject constructor(
 
     /** 判断应用是否在拦截目标列表中 */
     fun isTarget(pkg: String): Boolean = pkg in enabledTargets
+
+    /**
+     * 该应用的会话守护配置（specs/012）：守护关（或已不在清单）返回 null——会话照记、永不回弹；
+     * 开启返回全局回弹间隔分钟数。跨线程快照读（@Volatile），主线程事件回调安全。
+     */
+    fun sessionGuardMinutes(pkg: String): Int? =
+        if (targets[pkg]?.sessionGuardEnabled == true) sessionGuardMinutes else null
+
+    /** 全局回弹间隔（回弹层「继续 N 分钟」按钮文案用，与开关无关）。 */
+    fun sessionGuardMinutesGlobal(): Int = sessionGuardMinutes
 
     companion object {
         const val DEBOUNCE_MS = 800L

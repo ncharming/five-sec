@@ -11,4 +11,6 @@ data class TargetApp(
     val isEnabled: Boolean = true,
     val isDefault: Boolean = false,
     val addedAt: Long,
+    // 使用时长守护开关（specs/012，v12 列，默认开）：关=该应用会话永不回弹（记录照写）
+    val sessionGuardEnabled: Boolean = true,
 )

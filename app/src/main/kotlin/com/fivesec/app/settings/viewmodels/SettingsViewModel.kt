@@ -29,4 +29,9 @@ class SettingsViewModel @Inject constructor(
     fun setGlobalEnabled(enabled: Boolean) {
         viewModelScope.launch { settingsDataStore.setGlobalEnabled(enabled) }
     }
+
+    /** 全局回弹间隔（specs/012）：夹取在仓库 setter 内兜底，这里直接透传。 */
+    fun setSessionGuardMinutes(minutes: Int) {
+        viewModelScope.launch { settingsDataStore.setSessionGuardMinutes(minutes) }
+    }
 }

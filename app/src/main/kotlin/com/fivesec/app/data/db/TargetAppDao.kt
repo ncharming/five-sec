@@ -26,4 +26,8 @@ interface TargetAppDao {
 
     @Query("UPDATE target_apps SET isEnabled = :enabled WHERE packageName = :packageName")
     suspend fun setEnabled(packageName: String, enabled: Boolean)
+
+    // 每应用会话守护开关（specs/012）：关=该应用会话永不回弹（会话记录照写）
+    @Query("UPDATE target_apps SET sessionGuardEnabled = :enabled WHERE packageName = :packageName")
+    suspend fun setSessionGuardEnabled(packageName: String, enabled: Boolean)
 }

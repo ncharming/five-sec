@@ -102,6 +102,7 @@ fun InterceptScreen(
     val apps by appListViewModel.targetApps.collectAsStateWithLifecycle()
     var showPicker by remember { mutableStateOf(false) }
     var showLimitDialog by remember { mutableStateOf(false) }
+    var showIntervalPicker by remember { mutableStateOf(false) } // 回弹间隔预设弹窗（specs/012）
     // 搜索词提升到页面级：FiveSecDialog 在退场动画期间仍持有内容，重开时由"+"按钮重置
     var searchQuery by remember { mutableStateOf("") }
     val isFull = apps.size >= TargetAppRepository.MAX_APPS
@@ -225,6 +226,7 @@ fun InterceptScreen(
                             interceptionPaused = !globalEnabled, // 总开关关闭：整行降透明度（仅视觉联动）
                             onToggle = { appListViewModel.setEnabled(app.packageName, it) },
                             onRemove = { appListViewModel.remove(app.packageName) },
+                            onToggleGuard = { appListViewModel.setSessionGuard(app.packageName, !app.sessionGuardEnabled) },
                         )
                     }
                 }
@@ -249,6 +251,54 @@ fun InterceptScreen(
                         stringResource(R.string.app_list_full_hint, TargetAppRepository.MAX_APPS),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                    )
+                }
+            }
+
+            // ── 使用时长守护卡（specs/012）：全局回弹间隔；每应用开关在应用行 ⋯ 菜单 ──
+            GuardCard(
+                minutes = settings.sessionGuardMinutes,
+                onPickInterval = { showIntervalPicker = true },
+            )
+        }
+    }
+
+    // 回弹间隔预设弹窗（specs/012）：固定档位直选，不做自由输入——配置面到「一个数字」为止
+    FiveSecDialog(
+        visible = showIntervalPicker,
+        onDismissRequest = { showIntervalPicker = false },
+        title = stringResource(R.string.settings_guard_picker_title),
+        confirmButton = {
+            Button(onClick = { showIntervalPicker = false }) {
+                Text(stringResource(R.string.common_done))
+            }
+        },
+    ) {
+        SESSION_GUARD_PRESETS.forEach { preset ->
+            val selected = preset == settings.sessionGuardMinutes
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        settingsViewModel.setSessionGuardMinutes(preset)
+                        showIntervalPicker = false
+                    }
+                    .padding(vertical = Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.settings_guard_minutes, preset),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                if (selected) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }
@@ -459,6 +509,7 @@ private fun AppRow(
     interceptionPaused: Boolean,
     onToggle: (Boolean) -> Unit,
     onRemove: () -> Unit,
+    onToggleGuard: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(
@@ -526,6 +577,29 @@ private fun AppRow(
                     onClick = {}, // 仅展示，不可点击
                     enabled = false,
                 )
+                // 时长守护开关（specs/012）：B 站学习等场景单关——会话记录照写，只停回弹
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(R.string.app_list_menu_guard),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    },
+                    trailingIcon = {
+                        if (app.sessionGuardEnabled) {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    },
+                    onClick = {
+                        menuOpen = false
+                        onToggleGuard()
+                    },
+                )
                 DropdownMenuItem(
                     text = {
                         Text(
@@ -547,3 +621,64 @@ private fun AppRow(
         )
     }
 }
+
+/**
+ * 使用时长守护卡（specs/012）：说明 + 「回弹间隔」行——点击弹预设档位直选弹窗（见页面级
+ * FiveSecDialog）。只管全局间隔；每应用开关在应用行 ⋯ 菜单（配置面刻意止步于此：一个数字 + 每应用一个布尔）。
+ */
+@Composable
+private fun GuardCard(
+    minutes: Int,
+    onPickInterval: () -> Unit,
+) {
+    CardSurface(Modifier.padding(horizontal = Spacing.lg)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.lg, vertical = Spacing.lg),
+        ) {
+            Text(
+                stringResource(R.string.settings_guard_title),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                stringResource(R.string.settings_guard_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onPickInterval)
+                .padding(horizontal = Spacing.lg, vertical = Spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(R.string.settings_guard_interval),
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                stringResource(R.string.settings_guard_minutes, minutes),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Icon(
+                Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+/** 回弹间隔预设档位（specs/012）：5–60 分钟直选，不做自由输入；区间夹取由 SettingsDataStore 兜底。 */
+private val SESSION_GUARD_PRESETS = listOf(5, 10, 15, 20, 30, 45, 60)

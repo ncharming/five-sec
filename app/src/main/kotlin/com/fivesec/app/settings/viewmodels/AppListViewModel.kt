@@ -69,4 +69,9 @@ class AppListViewModel @Inject constructor(
     fun setEnabled(packageName: String, enabled: Boolean) {
         viewModelScope.launch { targetAppRepository.setEnabled(packageName, enabled) }
     }
+
+    /** 每应用会话守护开关（specs/012）：关=该应用会话永不回弹（会话记录照写）。 */
+    fun setSessionGuard(packageName: String, enabled: Boolean) {
+        viewModelScope.launch { targetAppRepository.setSessionGuardEnabled(packageName, enabled) }
+    }
 }

@@ -45,6 +45,10 @@ class TargetAppRepository @Inject constructor(
     suspend fun setEnabled(packageName: String, enabled: Boolean) =
         targetAppDao.setEnabled(packageName, enabled)
 
+    // 每应用会话守护开关（specs/012）：关=该应用会话永不回弹（会话记录照写）
+    suspend fun setSessionGuardEnabled(packageName: String, enabled: Boolean) =
+        targetAppDao.setSessionGuardEnabled(packageName, enabled)
+
     companion object {
         /** 拦截应用数量上限（添加校验与 UI 名额展示共用单一来源）。 */
         const val MAX_APPS = 3

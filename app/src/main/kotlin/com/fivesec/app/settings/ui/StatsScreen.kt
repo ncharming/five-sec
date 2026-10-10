@@ -718,7 +718,8 @@ private fun periodLabel(period: StatsPeriod): String = when (period.range) {
     StatsRange.DAY -> stringResource(R.string.stats_range_day)
 }
 
-/** 应用历史卡：白底 + 真实图标 + 名称 + 三列指标（统一风格，替代原彩色整卡）。 */
+/** 应用历史卡：白底 + 真实图标 + 名称 + 三列指标（统一风格，替代原彩色整卡）。
+ *  底部停留行（specs/012）：周期内会话墙钟时长，分钟向上取整，无会话不显示。 */
 @Composable
 private fun AppRangeStatCard(ui: AppRangeStatsUi, modifier: Modifier = Modifier) {
     CardSurface(modifier) {
@@ -746,6 +747,18 @@ private fun AppRangeStatCard(ui: AppRangeStatsUi, modifier: Modifier = Modifier)
             AppMetric(stringResource(R.string.stats_metric_canceled), ui.canceled.toString(), Modifier.weight(1f))
             AppMetric(stringResource(R.string.stats_metric_opened), ui.opened.toString(), Modifier.weight(1f))
         }
+        // 停留行：会话墙钟时长（specs/012）——「拦截 12 次」之外补「停留多久」的另一半真相
+        val stayMinutes = (ui.stayMillis + MILLIS_PER_MINUTE - 1) / MILLIS_PER_MINUTE
+        if (stayMinutes > 0) {
+            Text(
+                stringResource(R.string.stats_stay_minutes, stayMinutes),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = Spacing.lg, end = Spacing.lg, bottom = Spacing.lg),
+            )
+        }
     }
 }
 
@@ -765,3 +778,6 @@ private fun AppMetric(label: String, value: String, modifier: Modifier = Modifie
         )
     }
 }
+
+/** 停留行分钟取整单位（specs/012，与 UsageSessionTracker.MILLIS_PER_MINUTE 同值——UI 层不引 interception 包）。 */
+private const val MILLIS_PER_MINUTE = 60_000L
