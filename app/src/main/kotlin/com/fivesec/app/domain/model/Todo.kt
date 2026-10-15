@@ -1,5 +1,6 @@
 package com.fivesec.app.domain.model
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.fivesec.app.util.TodoRecurrence
@@ -19,8 +20,11 @@ import com.fivesec.app.util.TodoRecurrence
  * 与 [dueDate]（一次性规则「仅今天」的有效期日：==今天轮到、<今天未完成=过期、转回重复类清空；
  * 「改为今天」只重写此列）。两列分离是因为「复活可改写有效期」与「创建时间不可变」是两个不变量。
  *
- * 010 提醒列：[reminderTime]（HH:mm，空=无提醒）。只存时刻不存日期——日期语义由既有规则列推导
- * （重复类=每个轮到日该时刻、单次=dueDate 当天该时刻），完整时间点永不存在第二份。
+ * 010/013 提醒列：[reminderTimes]（HH:mm 逗号分隔的升序列表，空=无提醒）。只存时刻不存日期——
+ * 日期语义由既有规则列推导（重复类=每个轮到日各时刻、单次=dueDate 当天各时刻），完整时间点
+ * 永不存在第二份。013 起编码从单值扩展为多条：物理列名仍是 reminderTime（v10 的 ADD COLUMN
+ * 原名沿用，schema 零变更零迁移），旧数据单值即单元素列表，解析/校验/排程统一走
+ * `TodoReminderPlanner`；「单次」新建默认当天 20:00、21:00、22:00 三时刻（强制到期提醒）。
  */
 @Entity(tableName = "todos")
 data class Todo(
@@ -33,7 +37,8 @@ data class Todo(
     val intervalDays: Int = 0, // 间隔天数 N（2..365）；仅 repeatType=2 有语义
     val createdAt: String = "", // 创建日 yyyy-MM-dd；老数据（v7 前）为空串 → 展示「—」（不伪造迁移日）
     val dueDate: String = "", // 一次性有效期日 yyyy-MM-dd；仅 repeatType=3 有语义，其余恒空串
-    val reminderTime: String = "", // 提醒时刻 HH:mm（specs/010）；空串 = 无提醒（默认关，存量升级零感知）
+    @ColumnInfo(name = "reminderTime") // 列名钉住 010 原名：CSV 只是编码扩展，Room schema 零变更（identity hash 不动，无需升库）
+    val reminderTimes: String = "", // 提醒时刻列表（specs/010 单值；013 起多条 CSV，规范形=升序去重）；空串 = 无提醒
 )
 
 /**

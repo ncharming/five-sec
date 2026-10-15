@@ -84,14 +84,14 @@ class TodoRepository @Inject constructor(
 
     /** 新增：校验（trim/空白拒/200 字截断 + 规则兜底校验）+ 上限 20；失败返回中文文案的 Result。
      *  [rule] 缺省 = 每天（既有调用零改动）。createdAt=今天；仅今天规则 dueDate=今天、其余空串；
-     *  [reminderTime]（010）缺省空串=无提醒，非空须过 HH:mm 校验（表单 TimePicker 已产出合法值，双保险）。 */
-    suspend fun add(text: String, rule: TodoRule = TodoRule.DAILY, reminderTime: String = ""): Result<Unit> {
+     *  [reminderTimes]（010；013 起多条 CSV）缺省空串=无提醒，非空须每段 HH:mm 且 ≤3 段——
+     *  「单次」的三时刻默认由编辑弹窗切规则时预填（TodoReminderPlanner.timesOnRuleSwitch），
+     *  仓库只认传入值：用户在弹窗里清空后保存 = 明确不要提醒，不强制回填（默认≠不可关）。 */
+    suspend fun add(text: String, rule: TodoRule = TodoRule.DAILY, reminderTimes: String = ""): Result<Unit> {
         val normalized = normalize(text)
             ?: return Result.failure(IllegalArgumentException("待办内容不能为空"))
         val safeRule = normalizeRule(rule).getOrElse { return Result.failure(it) }
-        if (!TodoReminderPlanner.isValidReminderTime(reminderTime)) {
-            return Result.failure(IllegalArgumentException("提醒时刻格式须为 HH:mm"))
-        }
+        reminderTimesCheck(reminderTimes).getOrElse { return Result.failure(it) }
         if (todoDao.count() >= MAX_TODOS) {
             return Result.failure(IllegalStateException("最多可添加${MAX_TODOS}条待办，请删除后重试"))
         }
@@ -103,7 +103,7 @@ class TodoRepository @Inject constructor(
             intervalDays = safeRule.intervalDays,
             createdAt = today,
             dueDate = if (safeRule.repeatType == TodoRecurrence.REPEAT_ONCE) today else "",
-            reminderTime = reminderTime,
+            reminderTimes = TodoReminderPlanner.normalizeReminderTimes(reminderTimes),
         )
         return runCatching { todoDao.insert(todo); Unit }
     }
@@ -136,13 +136,21 @@ class TodoRepository @Inject constructor(
         todoDao.setDueDate(id, today())
     }
 
-    /** 提醒时刻设置/清除（010）：定向单列 UPDATE（与文本/规则更新同一并发安全口径）；
-     *  空串=清除；非法 HH:mm 拒绝（表单 TimePicker 已挡，仓库兜底）。 */
-    suspend fun setReminderTime(id: Long, time: String): Result<Unit> {
-        if (!TodoReminderPlanner.isValidReminderTime(time)) {
-            return Result.failure(IllegalArgumentException("提醒时刻格式须为 HH:mm"))
-        }
-        return runCatching { todoDao.updateReminderTime(id, time) }
+    /** 提醒时刻列表设置/清除（010；013 起多条）：定向单列 UPDATE（与文本/规则更新同一并发安全口径）；
+     *  空串=清除；非法段/超上限拒绝（表单 chips 已挡，仓库兜底）；落库前归一化（去重升序）——
+     *  库里的编码恒为规范形，读取侧（角标/排程/预填比对）不处理乱序形态。 */
+    suspend fun setReminderTimes(id: Long, times: String): Result<Unit> {
+        reminderTimesCheck(times).getOrElse { return Result.failure(it) }
+        return runCatching { todoDao.updateReminderTimes(id, TodoReminderPlanner.normalizeReminderTimes(times)) }
+    }
+
+    /** 提醒时刻编码校验（add/setReminderTimes 共用）：每段 HH:mm + 段数 ≤ 上限，中文文案分别报因。 */
+    private fun reminderTimesCheck(times: String): Result<Unit> = when {
+        TodoReminderPlanner.isValidReminderTimes(times) -> Result.success(Unit)
+        times.split(',').size > TodoReminderPlanner.MAX_REMINDER_TIMES ->
+            Result.failure(IllegalArgumentException("最多可设置${TodoReminderPlanner.MAX_REMINDER_TIMES}个提醒时刻"))
+
+        else -> Result.failure(IllegalArgumentException("提醒时刻格式须为 HH:mm"))
     }
 
     /** 库直读全量（010：开机/时间变更广播重排用——不信内存快照，收集器可能尚未就绪）。 */

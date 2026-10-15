@@ -732,14 +732,14 @@ class AppDatabaseMigrationTest {
         val byText = rows.associateBy { it.text }
         assertEquals(TodoRecurrence.REPEAT_DAILY, byText.getValue("每天条目").repeatType)
         assertEquals("2026-10-14", byText.getValue("今天寄快递").dueDate)
-        rows.forEach { assertEquals("", it.reminderTime) }
+        rows.forEach { assertEquals("", it.reminderTimes) }
 
-        // v10 打开后新列可正常读写：设置/读取/清除提醒时刻
+        // v10 打开后新列可正常读写：设置/读取/清除提醒时刻（013 起编码为多条 CSV，单值即单元素列表）
         val daily = rows.single { it.text == "每天条目" }
-        db.todoDao().updateReminderTime(daily.id, "18:30")
-        assertEquals("18:30", db.todoDao().observeAll().first().single { it.id == daily.id }.reminderTime)
-        db.todoDao().updateReminderTime(daily.id, "")
-        assertEquals("", db.todoDao().observeAll().first().single { it.id == daily.id }.reminderTime)
+        db.todoDao().updateReminderTimes(daily.id, "18:30")
+        assertEquals("18:30", db.todoDao().observeAll().first().single { it.id == daily.id }.reminderTimes)
+        db.todoDao().updateReminderTimes(daily.id, "")
+        assertEquals("", db.todoDao().observeAll().first().single { it.id == daily.id }.reminderTimes)
 
         // findByIds（提醒页装载路径）迁移后可用
         assertEquals(2, db.todoDao().findByIds(rows.map { it.id }).size)

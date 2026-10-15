@@ -79,7 +79,7 @@ class TodoViewModelTest {
             dueDateCalls += id to date
         }
 
-        override suspend fun updateReminderTime(id: Long, time: String) = Unit
+        override suspend fun updateReminderTimes(id: Long, times: String) = Unit
 
         override suspend fun findByIds(ids: List<Long>): List<Todo> =
             state.value.filter { it.id in ids }.sortedBy { it.id }

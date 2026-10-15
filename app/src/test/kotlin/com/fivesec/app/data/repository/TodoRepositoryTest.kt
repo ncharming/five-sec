@@ -6,6 +6,7 @@ import com.fivesec.app.data.db.TodoRangeCount
 import com.fivesec.app.domain.model.Todo
 import com.fivesec.app.domain.model.TodoCompletion
 import com.fivesec.app.domain.model.TodoRule
+import com.fivesec.app.reminder.TodoReminderPlanner
 import com.fivesec.app.util.TimeProvider
 import com.fivesec.app.util.TodoRecurrence
 import java.time.DayOfWeek
@@ -105,9 +106,9 @@ class TodoRepositoryTest {
 
         val reminderCalls = CopyOnWriteArrayList<Pair<Long, String>>()
 
-        override suspend fun updateReminderTime(id: Long, time: String) {
-            reminderCalls += id to time
-            state.value = state.value.map { if (it.id == id) it.copy(reminderTime = time) else it }
+        override suspend fun updateReminderTimes(id: Long, times: String) {
+            reminderCalls += id to times
+            state.value = state.value.map { if (it.id == id) it.copy(reminderTimes = times) else it }
         }
 
         override suspend fun findByIds(ids: List<Long>): List<Todo> =
@@ -701,46 +702,65 @@ class TodoRepositoryTest {
         assertTrue(completions.rows.isEmpty()) // 无快照可写，静默跳过
     }
 
-    // ── 提醒时刻（specs/010）──
+    // ── 提醒时刻（specs/010；013 起多条 CSV）──
 
     @Test
-    fun `setReminderTime合法时刻定向落列_空串清除_非法拒绝`() = runTest {
+    fun `setReminderTimes合法时刻定向落列_空串清除_归一化规范形`() = runTest {
         val dao = FakeTodoDao()
         dao.state.value = listOf(Todo(id = 1, text = "每天条目"))
         val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         // 设置：合法 HH:mm 落列（定向单列 UPDATE，其余列不动）
-        assertTrue(repo.setReminderTime(1, "18:30").isSuccess)
+        assertTrue(repo.setReminderTimes(1, "18:30").isSuccess)
         assertEquals(listOf(1L to "18:30"), dao.reminderCalls)
-        assertEquals("18:30", dao.state.value.single().reminderTime)
+        assertEquals("18:30", dao.state.value.single().reminderTimes)
+
+        // 多条：乱序/重复在仓库归一化为规范形（升序去重）——库里编码恒规范，读取侧不处理乱序形态
+        assertTrue(repo.setReminderTimes(1, "21:00,20:00,21:00").isSuccess)
+        assertEquals("20:00,21:00", dao.state.value.single().reminderTimes)
 
         // 清除：空串同样合法
-        assertTrue(repo.setReminderTime(1, "").isSuccess)
-        assertEquals("", dao.state.value.single().reminderTime)
+        assertTrue(repo.setReminderTimes(1, "").isSuccess)
+        assertEquals("", dao.state.value.single().reminderTimes)
 
-        // 非法格式拒绝且不落 DAO（表单 TimePicker 已挡，仓库兜底）
-        val bad = repo.setReminderTime(1, "25:99")
+        // 非法格式拒绝且不落 DAO（表单 chips 已挡，仓库兜底）
+        val bad = repo.setReminderTimes(1, "25:99")
         assertTrue(bad.isFailure)
-        assertEquals(listOf(1L to "18:30", 1L to ""), dao.reminderCalls)
+        assertEquals(listOf(1L to "18:30", 1L to "20:00,21:00", 1L to ""), dao.reminderCalls)
     }
 
     @Test
-    fun `add带提醒时刻落列_缺省空串_非法拒绝`() = runTest {
+    fun `setReminderTimes超上限拒绝不落DAO`() = runTest {
+        val dao = FakeTodoDao()
+        dao.state.value = listOf(Todo(id = 1, text = "每天条目"))
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
+
+        val bad = repo.setReminderTimes(1, "20:00,21:00,22:00,23:00")
+        assertTrue(bad.isFailure)
+        assertTrue(dao.reminderCalls.isEmpty())
+    }
+
+    @Test
+    fun `add带提醒时刻落列_多条归一化_缺省空串_非法拒绝`() = runTest {
         val dao = FakeTodoDao()
         val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
 
         // 带（新建即设提醒）
         assertTrue(repo.add("背单词", TodoRule.DAILY, "07:00").isSuccess)
-        assertEquals("07:00", dao.inserted.single().reminderTime)
+        assertEquals("07:00", dao.inserted.single().reminderTimes)
+
+        // 多条（013：单次默认三时刻经弹窗预填传入，仓库只认传入值——用户清空保存=明确不提醒）
+        assertTrue(repo.add("今天寄快递", TodoRule.ONCE, TodoReminderPlanner.DEFAULT_ONCE_REMINDER_TIMES_RAW).isSuccess)
+        assertEquals("20:00,21:00,22:00", dao.inserted[1].reminderTimes)
 
         // 缺省（既有调用零改动的默认关口径）
         assertTrue(repo.add("读10页书").isSuccess)
-        assertEquals("", dao.inserted[1].reminderTime)
+        assertEquals("", dao.inserted[2].reminderTimes)
 
         // 非法（仓库兜底，中文文案）
         val bad = repo.add("坏格式", TodoRule.DAILY, "8:30")
         assertTrue(bad.isFailure)
-        assertEquals(2, dao.inserted.size)
+        assertEquals(3, dao.inserted.size)
     }
 
     @Test

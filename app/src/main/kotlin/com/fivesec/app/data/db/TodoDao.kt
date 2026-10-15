@@ -52,9 +52,10 @@ interface TodoDao {
     @Query("UPDATE todos SET dueDate = :date WHERE id = :id")
     suspend fun setDueDate(id: Long, date: String)
 
-    /** 提醒时刻定向更新（specs/010）：单列 UPDATE，空串=清除提醒；绝不触碰文本/规则/完成态/启停。 */
-    @Query("UPDATE todos SET reminderTime = :time WHERE id = :id")
-    suspend fun updateReminderTime(id: Long, time: String)
+    /** 提醒时刻列表定向更新（specs/010；013 起多条 CSV）：单列 UPDATE，空串=清除提醒；
+     *  绝不触碰文本/规则/完成态/启停。列名沿用 reminderTime（编码扩展，schema 未变）。 */
+    @Query("UPDATE todos SET reminderTime = :times WHERE id = :id")
+    suspend fun updateReminderTimes(id: Long, times: String)
 
     /** 按 id 集合批量取（specs/010 提醒页装载：FSI 通知携带 ids → 打开时装载对应条目）。 */
     @Query("SELECT * FROM todos WHERE id IN (:ids) ORDER BY id ASC")

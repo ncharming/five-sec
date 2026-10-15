@@ -101,12 +101,14 @@
     <string name="todos_date_unknown">—</string>
     <string name="todos_menu_revive">改为今天</string>
 
-    <!-- Todos 到点提醒（specs/010-todo-reminders）：弹窗/行内/横幅/通知/全屏页全量文案 -->
+    <!-- Todos 到点提醒（specs/010-todo-reminders；013 起多条时刻 + 单次默认三时刻）：弹窗/行内/横幅/通知/全屏页全量文案 -->
     <string name="todos_reminder_section">提醒</string>
     <string name="todos_reminder_none">未设置 · 点击设置到点提醒</string>
-    <string name="todos_reminder_clear">清除</string>
+    <string name="todos_reminder_add">添加时刻</string>
+    <string name="todos_reminder_remove">移除</string>
+    <string name="todos_reminder_max">最多 %1$d 个提醒时刻</string>
     <string name="todos_reminder_pick_title">提醒时刻</string>
-    <string name="todos_reminder_once_hint">提醒只在有效期日当天响</string>
+    <string name="todos_reminder_once_hint">单次待办默认当天 %1$s 各提醒一次，可增删改</string>
     <string name="todos_reminder_inline">提醒 %1$s</string>
     <string name="todo_reminder_banner_notifications">未开启通知权限，到点提醒将无法显示</string>
     <string name="todo_reminder_banner_battery">未忽略电池优化，息屏时提醒可能被系统省电冻结</string>

@@ -1,19 +1,20 @@
-# Contract: 提醒 UI（specs/010）
+# Contract: 提醒 UI（specs/010；013 起多时刻 chips）
 
 ## 待办页（TodoScreen）新增三件套
 
-### 1. 新建/编辑弹窗提醒区（TodoEditDialog 扩展）
+### 1. 新建/编辑弹窗提醒区（TodoEditDialog 扩展；013 起多条 chips）
 
 - 位置：重复规则区之下，同构小节标题「提醒」。
-- 形态：一行两态——
-  - **未设置**：文本「未设置（点击设置提醒）」，点击弹 Material3 `TimePicker`（`rememberTimePickerState(is24Hour = true)`，已设值回填初始时分）；
-  - **已设置**：文本「18:30」+「清除」TextButton（关闭提醒回到未设置态）。
-- 确认回调扩展为 `onConfirm(text, rule, reminderTime)`：与文本/规则同弹窗一次性提交；编辑时「没改就不发 UPDATE」的既有口径同样适用（`reminderTime != todo.reminderTime` 才调 `setReminderTime`）。
-- 单次规则下提醒区提示语：提醒只在有效期日当天响（复用 dueDate 既有文案体系，见 strings）。
+- 形态（013）：
+  - **未设置**：文本「未设置 · 点击设置到点提醒」，点击弹 Material3 `TimePicker`（`rememberTimePickerState(is24Hour = true)`）新增首个时刻；
+  - **已设置**：时刻 chips（`InputChip`，点击该 chip 弹 TimePicker **编辑**该时刻，编辑态次按钮区多一个红色「移除」）+「添加时刻」`AssistChip`（满 `MAX_REMINDER_TIMES = 3` 时禁用并提示上限）；
+  - 切到「单次」规则且当前无时刻 → **预填默认 20:00/21:00/22:00 三时刻**（`TodoReminderPlanner.timesOnRuleSwitch` 纯逻辑）；离开「单次」且预填原封未动 → 还原为空；用户动手（增/删/改）过的时刻任何切换下原样保留。
+- 确认回调为 `onConfirm(text, rule, reminderTimes)`（CSV 编码）：与文本/规则同弹窗一次性提交；编辑时「没改就不发 UPDATE」的既有口径同样适用（`reminderTimes != todo.reminderTimes` 才调 `setReminderTimes`）。
+- 单次规则下提醒区提示语：默认当天三时刻各提醒一次，可增删改（时刻串由调用方拼装传入资源）。
 
 ### 2. 行内角标（今日区 + 过期区都显示）
 
-- 副行日期串后追加 ` · 提醒 HH:mm`（`todos_reminder_inline` 资源），仅 reminderTime 非空时。
+- 副行日期串后追加 ` · 提醒 20:00、21:00、22:00`（`todos_reminder_inline` 资源 + 顿号连接），仅 reminderTimes 非空时。
 - 过期区条目照常显示角标（它不会再响——过期单次不排程；角标是「配置可见性」不是「会响承诺」，与决策 12 一致）。
 
 ### 3. 权限横幅（页面顶部、PageHeader 之下）
@@ -38,7 +39,7 @@
 
 ## 文案清单（strings.xml，中文第一语言）
 
-新建/编辑弹窗：`todos_reminder_section`（提醒）、`todos_reminder_none`（未设置 · 点击设置）、`todos_reminder_clear`（清除）、`todos_reminder_once_hint`（提醒只在有效期日当天响）。
+新建/编辑弹窗：`todos_reminder_section`（提醒）、`todos_reminder_none`（未设置 · 点击设置）、`todos_reminder_add`（添加时刻，013）、`todos_reminder_remove`（移除，013）、`todos_reminder_max`（最多 %1$d 个提醒时刻，013）、`todos_reminder_once_hint`（单次默认三时刻提示，013 参数化）。
 行内：`todos_reminder_inline`（提醒 %1$s）。
 横幅：`todo_reminder_banner_notifications`、`todo_reminder_banner_exact`、`todo_reminder_banner_fsi`、`todo_reminder_banner_action`（去开启）。
 通知/全屏页：`todo_reminder_notification_title`（待办提醒）、`todo_reminder_notification_more`（等 %1$d 条）、`todo_reminder_notice_text`（你有到点的待办未处理）、`todo_reminder_screen_title`（到点提醒）、`todo_reminder_close`（关闭）。
