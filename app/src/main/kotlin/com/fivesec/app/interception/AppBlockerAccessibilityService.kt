@@ -66,6 +66,10 @@ class AppBlockerAccessibilityService : AccessibilityService() {
     private var sessionJob: Job? = null
     private val sessionTracker by lazy { UsageSessionTracker(timeProvider) }
 
+    // 今日已落库会话的停留总毫秒（specs/015 预算口径）：会话开启时异步预取——回弹最早也在
+    // N≥5 分钟后发生，读必就绪；预取失败回退 0（回弹层只按本场展示，宁可少说不虚报）
+    @Volatile private var todayStayBeforeMillis: Long = 0L
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString().orEmpty()
@@ -145,6 +149,8 @@ class AppBlockerAccessibilityService : AccessibilityService() {
                 overlay?.dismiss() // 目标一直在覆盖层后运行，移除即见
                 // 使用时长守护（specs/012）：选「打开」即开会话；守护关（null）只开记录不装计时
                 handleSessionActions(sessionTracker.onOpened(pkg, controller.sessionGuardMinutes(pkg)))
+                // 今日累计预取（specs/015 预算）：预算层展示=预取值+本场墙钟
+                prefetchTodayStay(pkg)
             }
             InterceptionOutcome.CANCELED, InterceptionOutcome.INTERRUPTED -> {
                 performGlobalAction(GLOBAL_ACTION_HOME)
@@ -180,6 +186,16 @@ class AppBlockerAccessibilityService : AccessibilityService() {
         }
     }
 
+    /** 今日已落库停留预取（specs/015）：尽力而为，失败回退 0——回弹层只按本场展示。 */
+    private fun prefetchTodayStay(pkg: String) {
+        appScope.launch {
+            runCatching {
+                todayStayBeforeMillis =
+                    usageSessionRepository.todayStayMillisBefore(pkg, DateUtil.startOfDayMillis(timeProvider.now()))
+            }.onFailure { todayStayBeforeMillis = 0L }
+        }
+    }
+
     /** 装回弹计时：真实墙钟 delay（无事件依赖——应用内停留期间无窗口事件是常态）。 */
     private fun armSessionTimer(minutes: Int) {
         sessionJob?.cancel()
@@ -199,12 +215,17 @@ class AppBlockerAccessibilityService : AccessibilityService() {
         if (currentOverlay != null || guardOverlay != null) return // 防御性互斥（与拦截层不并存）
         val appLabel = PackageUtil.label(packageManager, fired.packageName)
         val todos = todoRepository.todayTodos(DateUtil.todayString(timeProvider.now()))
+        // 今日累计（specs/015 预算）：预取的已落库部分 + 本场墙钟（自 startedAt，与标题分钟同源）
+        val todayStayMinutes =
+            (todayStayBeforeMillis + (timeProvider.now() - fired.startedAt)) / UsageSessionTracker.MILLIS_PER_MINUTE
         val overlay = UsageGuardOverlay(
             context = this,
             appLabel = appLabel,
             todos = todos,
             elapsedMinutes = fired.elapsedMinutes.toInt(),
             continueMinutes = controller.sessionGuardMinutesGlobal(),
+            budgetMinutes = controller.stayBudgetMinutes(),
+            todayStayMinutes = todayStayMinutes,
             onChoice = { continued -> onGuardChoice(fired.packageName, continued) },
             onUnavailable = {
                 guardOverlay = null

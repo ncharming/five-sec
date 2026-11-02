@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.fivesec.app.domain.model.AppSettings
+import com.fivesec.app.util.StayBudget
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,6 +29,7 @@ class SettingsDataStore @Inject constructor(
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_completed")
         val RETENTION_DAYS = intPreferencesKey("stats_retention_days")
         val SESSION_GUARD_MINUTES = intPreferencesKey("session_guard_minutes") // specs/012：全局回弹间隔
+        val STAY_BUDGET_MINUTES = intPreferencesKey("stay_budget_minutes") // specs/015：每日停留预算（0=不设）
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -38,6 +40,9 @@ class SettingsDataStore @Inject constructor(
             // 夹取防御：异常写入（如直改文件）不会让间隔跳出合法区间
             sessionGuardMinutes = (p[Keys.SESSION_GUARD_MINUTES] ?: DEFAULT_SESSION_GUARD_MINUTES)
                 .coerceIn(MIN_SESSION_GUARD_MINUTES, MAX_SESSION_GUARD_MINUTES),
+            // 同一夹取口径：0=不设，上限与守护间隔同量级（见 StayBudget）
+            stayBudgetMinutes = (p[Keys.STAY_BUDGET_MINUTES] ?: DEFAULT_STAY_BUDGET_MINUTES)
+                .coerceIn(0, StayBudget.MAX_BUDGET_MINUTES),
         )
     }
 
@@ -57,9 +62,19 @@ class SettingsDataStore @Inject constructor(
         }
     }
 
+    /** 每日停留预算（specs/015）：0=不设；夹取口径与读取侧一致。 */
+    suspend fun setStayBudgetMinutes(minutes: Int) {
+        context.dataStore.edit {
+            it[Keys.STAY_BUDGET_MINUTES] = minutes.coerceIn(0, StayBudget.MAX_BUDGET_MINUTES)
+        }
+    }
+
     companion object {
         const val DEFAULT_SESSION_GUARD_MINUTES = 15
         const val MIN_SESSION_GUARD_MINUTES = 5
         const val MAX_SESSION_GUARD_MINUTES = 60
+
+        /** 预算默认不设（specs/015 拍板：不给存量用户加未经同意的新约束感）。 */
+        const val DEFAULT_STAY_BUDGET_MINUTES = 0
     }
 }

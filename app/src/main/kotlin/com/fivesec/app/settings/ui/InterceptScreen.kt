@@ -107,6 +107,7 @@ fun InterceptScreen(
     var showPicker by remember { mutableStateOf(false) }
     var showLimitDialog by remember { mutableStateOf(false) }
     var showIntervalPicker by remember { mutableStateOf(false) } // 回弹间隔预设弹窗（specs/012）
+    var showBudgetPicker by remember { mutableStateOf(false) } // 每日停留预算预设弹窗（specs/015）
     // 搜索词提升到页面级：FiveSecDialog 在退场动画期间仍持有内容，重开时由"+"按钮重置
     var searchQuery by remember { mutableStateOf("") }
     val isFull = apps.size >= TargetAppRepository.MAX_APPS
@@ -278,10 +279,12 @@ fun InterceptScreen(
                 }
             }
 
-            // ── 使用时长守护卡（specs/012）：全局回弹间隔；每应用开关在应用行 ⋯ 菜单 ──
+            // ── 使用时长守护卡（specs/012）：全局回弹间隔 + 每日停留预算（specs/015）；每应用开关在应用行 ⋯ 菜单 ──
             GuardCard(
                 minutes = settings.sessionGuardMinutes,
+                budgetMinutes = settings.stayBudgetMinutes,
                 onPickInterval = { showIntervalPicker = true },
+                onPickBudget = { showBudgetPicker = true },
             )
         }
     }
@@ -311,6 +314,52 @@ fun InterceptScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+
+    // 每日停留预算预设弹窗（specs/015）：不设 + 五档直选，与回弹间隔同一交互模式
+    FiveSecDialog(
+        visible = showBudgetPicker,
+        onDismissRequest = { showBudgetPicker = false },
+        title = stringResource(R.string.settings_stay_budget),
+        confirmButton = {
+            Button(onClick = { showBudgetPicker = false }) {
+                Text(stringResource(R.string.common_done))
+            }
+        },
+    ) {
+        STAY_BUDGET_PRESETS.forEach { preset ->
+            val selected = preset == settings.stayBudgetMinutes
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        settingsViewModel.setStayBudgetMinutes(preset)
+                        showBudgetPicker = false
+                    }
+                    .padding(vertical = Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    if (preset == 0) {
+                        stringResource(R.string.settings_stay_budget_off)
+                    } else {
+                        stringResource(R.string.settings_stay_budget_minutes, preset)
+                    },
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                if (selected) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
         }
     }
 
@@ -675,12 +724,15 @@ private fun AppRow(
 
 /**
  * 使用时长守护卡（specs/012）：说明 + 「回弹间隔」行——点击弹预设档位直选弹窗（见页面级
- * FiveSecDialog）。只管全局间隔；每应用开关在应用行 ⋯ 菜单（配置面刻意止步于此：一个数字 + 每应用一个布尔）。
+ * FiveSecDialog）。每日停留预算行（specs/015）：同一卡内第二条配置行，点击弹「不设/30/60/90/
+ * 120/180」预设；只管全局；每应用开关在应用行 ⋯ 菜单（配置面刻意止步于此：两个数字 + 每应用一个布尔）。
  */
 @Composable
 private fun GuardCard(
     minutes: Int,
+    budgetMinutes: Int,
     onPickInterval: () -> Unit,
+    onPickBudget: () -> Unit,
 ) {
     CardSurface(Modifier.padding(horizontal = Spacing.lg)) {
         Column(
@@ -728,8 +780,41 @@ private fun GuardCard(
                 modifier = Modifier.size(20.dp),
             )
         }
+        // 每日停留预算行（specs/015）：0=不设（默认）——回弹层的全天用量仪表
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onPickBudget)
+                .padding(horizontal = Spacing.lg, vertical = Spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(R.string.settings_stay_budget),
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                if (budgetMinutes == 0) {
+                    stringResource(R.string.settings_stay_budget_off)
+                } else {
+                    stringResource(R.string.settings_stay_budget_minutes, budgetMinutes)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Icon(
+                Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 
 /** 回弹间隔预设档位（specs/012）：5–60 分钟直选，不做自由输入；区间夹取由 SettingsDataStore 兜底。 */
 private val SESSION_GUARD_PRESETS = listOf(5, 10, 15, 20, 30, 45, 60)
+
+/** 每日停留预算预设档位（specs/015）：0=不设 + 五档直选；夹取由 SettingsDataStore 兜底。 */
+private val STAY_BUDGET_PRESETS = listOf(0, 30, 60, 90, 120, 180)

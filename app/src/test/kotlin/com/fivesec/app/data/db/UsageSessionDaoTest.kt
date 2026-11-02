@@ -74,4 +74,19 @@ class UsageSessionDaoTest {
         val rows = db.usageSessionDao().observeDurationByPackageBetween(start = 200, end = 300).first()
         assertTrue(rows.isEmpty())
     }
+
+    /** specs/015 预算口径：今日累计 = 该包 endedAt ≥ 日界的会话时长和（按结束时刻归日，与统计同口径）。 */
+    @Test
+    fun `今日累计只含该包endedAt达日界的会话`() = runTest {
+        val pkgA = "com.ss.android.ugc.aweme"
+        val pkgB = "tv.danmaku.bili"
+        val startOfDay = 1_000_000L
+        db.usageSessionDao().insert(session(pkgA, startedAt = startOfDay - 500, endedAt = startOfDay - 100)) // 昨日结束：不计
+        db.usageSessionDao().insert(session(pkgA, startedAt = startOfDay - 100, endedAt = startOfDay))       // 恰在日界：计入（>=）
+        db.usageSessionDao().insert(session(pkgA, startedAt = startOfDay + 100, endedAt = startOfDay + 600)) // 今日：计入
+        db.usageSessionDao().insert(session(pkgB, startedAt = startOfDay, endedAt = startOfDay + 900))       // 别家应用：不串账
+
+        assertEquals(600L, db.usageSessionDao().sumDurationSince(pkgA, startOfDay))
+        assertEquals(0L, db.usageSessionDao().sumDurationSince("com.xingin.xhs", startOfDay)) // 无会话=0 非-null
+    }
 }

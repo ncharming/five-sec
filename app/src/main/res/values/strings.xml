@@ -38,6 +38,14 @@
     <string name="guard_continue">继续 %1$d 分钟</string>
     <string name="guard_end">结束</string>
 
+    <!-- 每日停留预算（specs/015）：回弹层今日累计 + 触线警示 -->
+    <string name="guard_today_stay">今日已停留 %1$d 分钟（预算 %2$d）</string>
+    <string name="guard_budget_reached">已达今日预算 %1$d 分钟</string>
+    <string name="guard_budget_exceeded">已超出预算 %1$d 分钟</string>
+    <string name="settings_stay_budget">每日停留预算</string>
+    <string name="settings_stay_budget_off">不设</string>
+    <string name="settings_stay_budget_minutes">%1$d 分钟</string>
+
     <!-- Intercept（合并页：拦截总开关 + 无障碍状态 + 应用清单，specs/005-daily-todos） -->
     <string name="intercept_title">拦截</string>
     <string name="intercept_subtitle">给无意识的刷手机加一道减速带</string>

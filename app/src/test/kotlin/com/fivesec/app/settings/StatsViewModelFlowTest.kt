@@ -274,5 +274,7 @@ class StatsViewModelFlowTest {
         override suspend fun insert(session: UsageSession) = Unit
         override fun observeDurationByPackageBetween(start: Long, end: Long): Flow<List<PackageDurationRow>> =
             MutableStateFlow(emptyList())
+
+        override suspend fun sumDurationSince(packageName: String, startOfDay: Long): Long = 0L
     }
 }

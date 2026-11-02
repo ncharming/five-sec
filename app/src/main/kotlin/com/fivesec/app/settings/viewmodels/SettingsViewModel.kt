@@ -36,6 +36,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsDataStore.setSessionGuardMinutes(minutes) }
     }
 
+    /** 每日停留预算（specs/015）：夹取同在 DataStore setter 内兜底。 */
+    fun setStayBudgetMinutes(minutes: Int) {
+        viewModelScope.launch { settingsDataStore.setStayBudgetMinutes(minutes) }
+    }
+
     companion object {
         /** 无 UI 订阅后流的存活余量（切 Tab/瞬断往返不清空画面、长离场即停）。 */
         private const val STOP_TIMEOUT_MS = 5_000L

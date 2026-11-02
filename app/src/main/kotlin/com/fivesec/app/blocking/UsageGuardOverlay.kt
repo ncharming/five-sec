@@ -15,6 +15,7 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.fivesec.app.R
 import com.fivesec.app.domain.model.TodayTodosSnapshot
+import com.fivesec.app.util.StayBudget
 
 /**
  * 使用时长守护回弹覆盖层（specs/012）：连续停留满设定时长后弹出的「二次减速带」——
@@ -22,6 +23,10 @@ import com.fivesec.app.domain.model.TodayTodosSnapshot
  * 品牌 token、居中、56dp 按钮、共享 [OverlayTodoCard] 待办卡），但性格更轻：**无 5 秒倒计时**
  * （入口减速带强制等待打断的是「进入」的自动性；回弹时用户已在主动使用，回弹是检查点不是闸门），
  * 按钮立即可点，弹出伴随一次 60ms 短震。
+ *
+ * 每日停留预算（specs/015）：[budgetMinutes] > 0 时副行升级为「今日已停留 X 分钟（预算 B）」；
+ * 累计触线（≥ 预算，[StayBudget]）时标题上方追加品牌红警示行并**再震一次**（弹出一次 + 触线一次）。
+ * 预算只是展示层强化——「继续」永远可用（FR-014）。
  *
  * 选择语义（回调 [onChoice]，选择后本层只负责通知、撤层由服务执行）：
  * 「继续 N 分钟」→ 撤层原地、重装计时；「结束」→ 服务执行 HOME→延迟 250ms 撤层（反闪现契约沿用，
@@ -35,11 +40,17 @@ class UsageGuardOverlay(
     todos: TodayTodosSnapshot,
     elapsedMinutes: Int,
     continueMinutes: Int,
+    budgetMinutes: Int = 0,
+    todayStayMinutes: Long = 0L,
     private val onChoice: (continued: Boolean) -> Unit,
     private val onUnavailable: () -> Unit,
 ) {
     private val ctx: Context = context
     private val windowManager = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+    // 预算参数存属性（specs/015）：构造参数（无 val）在成员函数不可见，buildRoot/show 都要用
+    private val budgetMin: Int = budgetMinutes
+    private val todayStayMin: Long = todayStayMinutes
 
     @Volatile private var added = false
     @Volatile private var finished = false
@@ -50,6 +61,7 @@ class UsageGuardOverlay(
     private val onSurfaceColor = ContextCompat.getColor(ctx, R.color.brand_on_surface)
     private val onSurfaceVariantColor = ContextCompat.getColor(ctx, R.color.brand_on_surface_variant)
     private val surfaceColor = ContextCompat.getColor(ctx, R.color.brand_surface)
+    private val errorColor = ContextCompat.getColor(ctx, R.color.brand_error)
 
     private val titleText = TextView(ctx).apply {
         text = ctx.getString(R.string.guard_title, appLabel, elapsedMinutes)
@@ -58,8 +70,22 @@ class UsageGuardOverlay(
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
     }
+
+    // 预算触线警示行（specs/015）：品牌红、置顶（标题之上），未触线不挂载
+    private val budgetWarningText = TextView(ctx).apply {
+        setTextColor(errorColor)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        typeface = Typeface.DEFAULT_BOLD
+        gravity = Gravity.CENTER
+    }
+
+    // 副行：未设预算=固定文案（specs/012 原样）；设了预算=「今日已停留 X（预算 B）」（specs/015）
     private val subtitleText = TextView(ctx).apply {
-        text = ctx.getString(R.string.guard_subtitle)
+        text = if (StayBudget.isSet(budgetMinutes)) {
+            ctx.getString(R.string.guard_today_stay, todayStayMinutes, budgetMinutes)
+        } else {
+            ctx.getString(R.string.guard_subtitle)
+        }
         setTextColor(onSurfaceVariantColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
         gravity = Gravity.CENTER
@@ -123,6 +149,21 @@ class UsageGuardOverlay(
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(24), dp(24), dp(24), dp(24))
+            // 触线警示行（specs/015）：置顶在标题之上；恰好触线与超出分文案（见 StayBudget）
+            if (StayBudget.isSet(budgetMin)) {
+                val over = StayBudget.overMinutes(todayStayMin, budgetMin)
+                if (over != null) {
+                    budgetWarningText.text = if (over == 0L) {
+                        ctx.getString(R.string.guard_budget_reached, budgetMin)
+                    } else {
+                        ctx.getString(R.string.guard_budget_exceeded, over)
+                    }
+                    addView(
+                        budgetWarningText,
+                        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
+                    )
+                }
+            }
             addView(titleText)
             addView(subtitleText, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
             addView(spacer(dp(12)))
@@ -159,6 +200,10 @@ class UsageGuardOverlay(
             return
         }
         OverlayFeedback.vibrateOneShot(ctx, GUARD_VIBRATE_MS)
+        // 触线二次短震（specs/015）：弹出一次 + 触线一次，两次反馈分属「到了检查点」与「今天用超了」
+        if (StayBudget.isSet(budgetMin) && StayBudget.overMinutes(todayStayMin, budgetMin) != null) {
+            OverlayFeedback.vibrateOneShot(ctx, BUDGET_VIBRATE_MS)
+        }
     }
 
     /** 单次选择守卫：回调一次后本层静默（双击/竞速不重复触发服务路径）。 */
@@ -185,5 +230,8 @@ class UsageGuardOverlay(
     companion object {
         /** 回弹弹出短震时长（specs/012）：「轻拍肩」，与成功态同级。 */
         private const val GUARD_VIBRATE_MS = 60L
+
+        /** 预算触线短震时长（specs/015）：与弹出震隔开一小段感知为两次。 */
+        private const val BUDGET_VIBRATE_MS = 120L
     }
 }

@@ -6,4 +6,4 @@
 - [x] 4. UI：`StatsMainPage` 复盘卡（卡头档位 chips + 四行指标 + 箭头跟数值/颜色跟语义），strings.xml 参数化文案
 - [x] 5. 测试：ReviewTrendTest 全绿；StatsViewModelFlowTest 补「复盘双窗口随档位切换」
 - [x] 6. 文档：README 统计节 + AGENTS 术语表补「复盘卡」；quickstart 手测场景
-- [ ] 7. `:app:assembleDebug` + `:app:testDebugUnitTest` 全绿，提交推送 master
+- [x] 7. `:app:assembleDebug` + `:app:testDebugUnitTest` 全绿，提交推送 master

@@ -19,4 +19,8 @@ class UsageSessionRepository @Inject constructor(
 
     fun observeDurationByPackageBetween(startMillis: Long, endMillis: Long): Flow<List<PackageDurationRow>> =
         usageSessionDao.observeDurationByPackageBetween(startMillis, endMillis)
+
+    /** 今日已落库会话的停留总毫秒（specs/015 预算：endedAt ≥ startOfDay，与统计归期同口径）。 */
+    suspend fun todayStayMillisBefore(packageName: String, startOfDay: Long): Long =
+        usageSessionDao.sumDurationSince(packageName, startOfDay)
 }

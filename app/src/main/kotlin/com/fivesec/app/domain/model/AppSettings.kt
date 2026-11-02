@@ -7,4 +7,6 @@ data class AppSettings(
     val statsRetentionDays: Int,
     // 全局回弹间隔（分钟，specs/012）：每应用守护开关在 target_apps，间隔只有这一个全局值
     val sessionGuardMinutes: Int = 15,
+    // 每日停留预算（分钟，specs/015）：0=不设（默认）；回弹层展示「今日累计」并触线警示——全局单值（刷的时间是同一条命）
+    val stayBudgetMinutes: Int = 0,
 )

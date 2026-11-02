@@ -34,6 +34,8 @@ class InterceptionController @Inject constructor(
     // 全量目标快照（specs/012）：会话守护按应用配置查询；enabledTargets 仍供 evaluate 纯判断
     @Volatile private var targets: Map<String, TargetApp> = emptyMap()
     @Volatile private var sessionGuardMinutes: Int = SettingsDataStore.DEFAULT_SESSION_GUARD_MINUTES
+    // 每日停留预算快照（specs/015）：0=不设；回弹层展示口径，跨线程主线程读安全
+    @Volatile private var stayBudgetMinutes: Int = SettingsDataStore.DEFAULT_STAY_BUDGET_MINUTES
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -48,7 +50,10 @@ class InterceptionController @Inject constructor(
             settingsDataStore.globalEnabled.collect { globalEnabled = it }
         }
         scope.launch {
-            settingsDataStore.settings.collect { sessionGuardMinutes = it.sessionGuardMinutes }
+            settingsDataStore.settings.collect {
+                sessionGuardMinutes = it.sessionGuardMinutes
+                stayBudgetMinutes = it.stayBudgetMinutes
+            }
         }
     }
 
@@ -72,6 +77,9 @@ class InterceptionController @Inject constructor(
 
     /** 全局回弹间隔（回弹层「继续 N 分钟」按钮文案用，与开关无关）。 */
     fun sessionGuardMinutesGlobal(): Int = sessionGuardMinutes
+
+    /** 每日停留预算（specs/015，全局单值，0=不设）：回弹层展示口径。 */
+    fun stayBudgetMinutes(): Int = stayBudgetMinutes
 
     companion object {
         const val DEBOUNCE_MS = 800L

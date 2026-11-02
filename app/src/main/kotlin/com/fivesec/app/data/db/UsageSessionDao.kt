@@ -19,6 +19,14 @@ interface UsageSessionDao {
             "FROM usage_sessions WHERE endedAt >= :start AND endedAt < :end GROUP BY packageName"
     )
     fun observeDurationByPackageBetween(start: Long, end: Long): Flow<List<PackageDurationRow>>
+
+    /** 今日（endedAt ≥ startOfDay，specs/015 预算口径）该应用已落库会话的停留总毫秒——
+     *  服务在会话开启时一次性预取（回弹最早也在 N≥5 分钟后，读必就绪）。 */
+    @Query(
+        "SELECT COALESCE(SUM(durationMillis), 0) FROM usage_sessions " +
+            "WHERE packageName = :packageName AND endedAt >= :startOfDay"
+    )
+    suspend fun sumDurationSince(packageName: String, startOfDay: Long): Long
 }
 
 /** 聚合行（SUM/COUNT 投影）。 */

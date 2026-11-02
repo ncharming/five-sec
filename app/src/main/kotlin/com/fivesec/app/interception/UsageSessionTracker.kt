@@ -27,8 +27,12 @@ class UsageSessionTracker(private val timeProvider: TimeProvider) {
         data class CloseSession(val record: UsageSessionRecord) : Action
     }
 
-    /** 计时到点且可回弹：弹回弹层所需信息。 */
-    data class TimerFired(val packageName: String, val elapsedMinutes: Long)
+    /** 计时到点且可回弹：弹回弹层所需信息（[startedAt] 供 specs/015 预算累计=预取值+本场墙钟）。 */
+    data class TimerFired(
+        val packageName: String,
+        val elapsedMinutes: Long,
+        val startedAt: Long,
+    )
 
     /** usage_sessions 落库行（服务转 UsageSession 实体）。 */
     data class UsageSessionRecord(
@@ -113,7 +117,7 @@ class UsageSessionTracker(private val timeProvider: TimeProvider) {
         if (s.guardShownCount >= MAX_GUARD_PER_SESSION) s.guarding = false
         val now = timeProvider.now()
         s.lastForegroundAt = now // 前台终验已过：此刻确在会话应用
-        return TimerFired(s.pkg, elapsedMinutes(now, s.startedAt))
+        return TimerFired(s.pkg, elapsedMinutes(now, s.startedAt), s.startedAt)
     }
 
     /** 回弹层选「继续」：守护中→重装计时（达上限则本场静默）；守护关→纯撤层。 */
