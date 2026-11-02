@@ -19,7 +19,9 @@ class ReminderRinger(private val context: Context) {
     private var player: MediaPlayer? = null
     private var vibrator: Vibrator? = null
 
-    /** 开始响铃+震动；幂等（先停旧再起新）。 */
+    /** 开始响铃+震动；幂等（先停旧再起新）。
+     *  prepare 异步化（2026-11）：prepare() 同步做铃声 URI 的磁盘 I/O，此前跑在服务 onStartCommand
+     *  的主线程上；改 prepareAsync + OnPreparedListener 回调里 start()，就绪即响不阻塞。 */
     fun start() {
         stop()
         val uri = RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)
@@ -35,8 +37,8 @@ class ReminderRinger(private val context: Context) {
                             .build(),
                     )
                     isLooping = true
-                    prepare()
-                    start()
+                    setOnPreparedListener { it -> runCatching { it.start() } } // stop() 竞速安全：异常吞掉不崩
+                    prepareAsync()
                 }
             }
         }

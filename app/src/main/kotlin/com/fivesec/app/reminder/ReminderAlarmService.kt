@@ -31,7 +31,8 @@ import kotlinx.coroutines.launch
  * 12+ 后台启动前台服务的豁免恰好覆盖「精确闹钟触发」这一路径；被拒时 Receiver 侧退化为
  * 「一次性响铃通知」，铃声最多迟到、不会消失。
  *
- * 停铃三路径不变（先到先赢）：① 页面任意交互（ACTION_STOP_RING——人已到场）；
+ * 停铃三路径不变（先到先赢）：① 页面任意交互（ACTION_STOP_RING——人已到场；停铃后挂 30s
+ * 宽限收口：FINISH 先到由其收口，用户按 Home 离页则宽限到点撤通知自灭，前台服务不无限滞留）；
  * ② 60s 无操作自动收底（响前口径重查剩余条目 → 静默通知 → 自灭）；
  * ③ 页面关闭/全勾完（ACTION_FINISH——经 Activity.finish() 统一收口发送）。
  * 响铃期间持 CPU 唤醒锁（60s+余量）：息屏且 FSI 被拒时屏幕不亮，CPU 睡死会让铃声断续。
@@ -48,7 +49,12 @@ class ReminderAlarmService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
     private var ringer: ReminderRinger? = null
     private var timeoutJob: Job? = null
+    private var finishGraceJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
+
+    /** 本场响铃是否进行中（START 成功起、收口路径止）：STOP_RING 冷启动（服务已自灭后
+     *  页面再发动作）的判定源——无铃可停时直接自灭，不留空服务常驻。 */
+    private var alarmActive = false
 
     /** 本场提醒的触发口径（超时收底重查用）：非重排场景下天然非空。 */
     private var pendingIds: List<Long> = emptyList()
@@ -61,14 +67,23 @@ class ReminderAlarmService : Service() {
         when (intent?.action) {
             ACTION_START -> startAlarm(intent)
 
-            // 人已到场（页面任意触摸/勾完成）：铃使命完成；服务保留——全勾/关页时 FINISH 统一收口
+            // 人已到场（页面任意触摸/勾完成）：铃使命完成。两条路径：
+            //  a) 响铃中 → 停铃并挂收口宽限计时：FINISH（关页/全勾）先到则由其收口；用户按 Home
+            //     离开页面（onStop 不 finish）时由宽限计时撤前台通知并自灭——不再无限滞留；
+            //  b) 冷启动（服务已自灭，用户从收底通知进页后再触摸）→ 无铃可停，直接自灭。
             ACTION_STOP_RING -> {
-                timeoutJob?.cancel()
                 stopRing()
+                if (!alarmActive) {
+                    stopSelf()
+                } else {
+                    armFinishGrace()
+                }
             }
 
             // 提醒已处理完（页面关闭或全勾自动关页）：撤前台通知、停铃、自灭
             ACTION_FINISH -> {
+                alarmActive = false
+                finishGraceJob?.cancel()
                 stopRing()
                 runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
                 NotificationManagerCompat.from(this).cancel(TodoReminderReceiver.NOTIFICATION_ID)
@@ -107,12 +122,29 @@ class ReminderAlarmService : Service() {
 
         ringer = (ringer ?: ReminderRinger(this)).also { it.start() }
         acquireWakeLock()
+        alarmActive = true
+        finishGraceJob?.cancel() // 上一场 STOP_RING 的宽限收口不得误杀本场新铃
         timeoutJob?.cancel()
         timeoutJob = scope.launch {
             delay(RING_TIMEOUT_MILLIS)
             onTimeout()
         }
         tryLaunchActivity(pendingIds)
+    }
+
+    /**
+     * STOP_RING 宽限收口：停铃后 FINISH 若迟迟不来（用户按 Home 把页面留在后台——
+     * onStop 不触发 finish），到点撤前台通知并自灭；FINISH 先到则在本计时前收口。
+     */
+    private fun armFinishGrace() {
+        finishGraceJob?.cancel()
+        finishGraceJob = scope.launch {
+            delay(FINISH_GRACE_MILLIS)
+            alarmActive = false
+            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+            NotificationManagerCompat.from(this@ReminderAlarmService).cancel(TodoReminderReceiver.NOTIFICATION_ID)
+            stopSelf()
+        }
     }
 
     /**
@@ -157,6 +189,8 @@ class ReminderAlarmService : Service() {
     }
 
     private suspend fun onTimeout() {
+        alarmActive = false
+        finishGraceJob?.cancel()
         stopRing()
         val remainingIds = runCatching {
             todoRepository.allTodosOnce().filter {
@@ -185,7 +219,11 @@ class ReminderAlarmService : Service() {
             .setContentIntent(contentIntent)
             .setAutoCancel(true)
             .build()
-        NotificationManagerCompat.from(this).notify(NOTICE_ID, notification)
+        // 13+ 未授权 POST_NOTIFICATIONS 时 notify 抛 SecurityException——本方法跑在无异常处理器
+        // 的 scope 里，漏接会杀死进程；与 postDegradedAndStop / Receiver 同一 runCatching 口径
+        runCatching {
+            NotificationManagerCompat.from(this).notify(NOTICE_ID, notification)
+        }
     }
 
     private fun stopRing() {
@@ -223,6 +261,9 @@ class ReminderAlarmService : Service() {
 
         /** 响铃上限（原 Activity 侧决策 15 平移）：待办提醒不是起床闹钟，1 分钟足够引起注意。 */
         private const val RING_TIMEOUT_MILLIS = 60_000L
+
+        /** STOP_RING 宽限收口：停铃后 FINISH 的最长等待——用户把页面留在后台时撤通知并自灭。 */
+        private const val FINISH_GRACE_MILLIS = 30_000L
 
         private const val WAKE_LOCK_SLACK_MILLIS = 5_000L
         private const val REQUEST_NOTICE = 10_013

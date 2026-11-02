@@ -9,6 +9,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -20,11 +21,13 @@ import kotlinx.coroutines.launch
  *
  * [rescheduleNow] 走库直读（allTodosOnce）而非内存快照：开机/时间变更广播到达时，仓库内收集器
  * 可能尚未装载完成，库直读是就绪时序上唯一可靠的数据源。供 BootReceiver 与 FiveSecApp 启动兜底。
- * 串行执行：收集协程天然串行；rescheduleNow 亦在同一注入 scope 排队，无并发排程竞态。
+ * 并发口径（2026-11 修正注释）：注入 scope 为多线程 IO 池，收集协程与 rescheduleNow 可能交错——
+ * 末端 last-write-wins 可能短暂以旧快照覆盖新闹钟，响前查库 + 链式重排兜底自愈，无持久错排。
  *
- * 收集协程显式挂 [CoroutineExceptionHandler]（记日志不冒泡）：重排属尽力而为——DB 异常/环境拆除
- * （Robolectric 会实例化真实 Application，后台 Room 收集线程随环境销毁会抛）绝不毒化进程；
- * 与 FiveSecApp.ensureSeeded 的「runCatching 包住、宁可丢一次重排不崩」同一口径。
+ * 收集协程带自愈重试（2026-11）：此前异常经 handler 记日志后协程即终结，一次 Room 异常后所有
+ * todos 变更不再触发重排（仅靠进 App/下一响自愈）——现在 runCatching + 退避后重订阅，链路
+ * 自恢复；DB 异常/环境拆除（Robolectric 会实例化真实 Application，后台 Room 收集线程随环境
+ * 销毁会抛）绝不毒化进程，与 FiveSecApp.ensureSeeded 的「宁可丢一次重排不崩」同一口径。
  */
 @Singleton
 class TodoReminderCoordinator @Inject constructor(
@@ -39,7 +42,17 @@ class TodoReminderCoordinator @Inject constructor(
 
     init {
         scope.launch(failureHandler) {
-            todoRepository.observeAll().collect { todos -> rescheduleWith(todos) }
+            while (true) {
+                val failed = try {
+                    todoRepository.observeAll().collect { todos -> rescheduleWith(todos) }
+                    false // 正常返回（流完成，理论不可达）：立即重建
+                } catch (t: Throwable) {
+                    if (t is kotlinx.coroutines.CancellationException) throw t
+                    Log.e(TAG, "reminder collector crashed, retrying", t)
+                    true
+                }
+                if (failed) delay(RETRY_BACKOFF_MS) // 退避防异常风暴（如库被持续锁死）
+            }
         }
     }
 
@@ -55,5 +68,8 @@ class TodoReminderCoordinator @Inject constructor(
 
     companion object {
         private const val TAG = "TodoReminder"
+
+        /** 收集器崩溃后的重建退避：异常风暴（库锁死/环境拆除中）别打满 CPU 与日志。 */
+        private const val RETRY_BACKOFF_MS = 10_000L
     }
 }
