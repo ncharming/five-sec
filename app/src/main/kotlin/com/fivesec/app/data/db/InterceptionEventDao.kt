@@ -48,6 +48,10 @@ interface InterceptionEventDao {
     @Query("SELECT COUNT(*) FROM interception_events WHERE timestamp >= :startOfDay AND outcome = :outcome")
     suspend fun countByOutcomeSince(startOfDay: Long, outcome: InterceptionOutcome): Int
 
+    /** 全表指定结局计数（specs/016：抵制累计镜像播种——历史是资产，里程碑看总量）。 */
+    @Query("SELECT COUNT(*) FROM interception_events WHERE outcome = :outcome")
+    suspend fun countByOutcome(outcome: InterceptionOutcome): Int
+
     /** 周期内全部事件时间戳升序（specs/011 时段分布数据源）：半开区间 [rangeStart, rangeEnd)，
      *  小时分桶在 Kotlin 端按显式 ZoneId 做（SQLite localtime 随运行环境漂移，不可测）。 */
     @Query("SELECT timestamp FROM interception_events WHERE timestamp >= :rangeStart AND timestamp < :rangeEnd ORDER BY timestamp ASC")

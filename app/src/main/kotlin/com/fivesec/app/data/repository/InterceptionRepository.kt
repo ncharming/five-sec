@@ -4,6 +4,7 @@ import com.fivesec.app.data.db.InterceptionEventDao
 import com.fivesec.app.data.db.PackageRangeCount
 import com.fivesec.app.domain.model.InterceptionEvent
 import com.fivesec.app.domain.model.InterceptionOutcome
+import com.fivesec.app.domain.model.ResistOrdinals
 import com.fivesec.app.util.DateUtil
 import com.fivesec.app.util.TimeProvider
 import javax.inject.Inject
@@ -34,6 +35,8 @@ class InterceptionRepository @Inject constructor(
     private val resistLock = Any()
     private var resistedDateKey: String = "" // "yyyy-MM-dd"；空串 = 尚未播种/未使用
     private var resistedCount: Int = 0
+    // 抵制累计镜像（specs/016）：全表 CANCELED 总数 + 每次抵制 +1，不跨日归零（总量维度）
+    private var resistedTotal: Long = 0
 
     init {
         // 播种属尽力而为（与 FiveSecApp.ensureSeeded 同一防御口径，runCatching 静默）：
@@ -74,34 +77,43 @@ class InterceptionRepository @Inject constructor(
         eventDao.observeTimestampsBetween(rangeStart, rangeEnd)
 
     /**
-     * 从事件表播种今日抵制镜像（进程重建后恢复计数）：同日取 max(现值, 事件表计数)——
+     * 从事件表播种抵制镜像（进程重建后恢复计数）：同日取 max(现值, 事件表计数)——
      * 播种完成前用户可能已抵制过（镜像领先落库）；未使用（key 空）直接置入；
      * 跨日/时钟回拨保留现值（镜像只认当天，不为旧日期翻旧账）。
+     * 累计镜像（specs/016）：全表 CANCELED 计数，同样 max 防回退（镜像领先事件表 ≤1 次的窗口）。
      */
     suspend fun reseedResistedMirror(now: Long = timeProvider.now()) {
         val today = DateUtil.todayString(now)
         val dbCount = eventDao.countByOutcomeSince(DateUtil.startOfDayMillis(now), InterceptionOutcome.CANCELED)
+        val dbTotal = eventDao.countByOutcome(InterceptionOutcome.CANCELED).toLong()
         synchronized(resistLock) {
             when {
-                resistedDateKey == today -> resistedCount = maxOf(resistedCount, dbCount)
+                resistedDateKey == today -> {
+                    resistedCount = maxOf(resistedCount, dbCount)
+                    resistedTotal = maxOf(resistedTotal, dbTotal)
+                }
+
                 resistedDateKey.isEmpty() -> {
                     resistedDateKey = today
                     resistedCount = dbCount
+                    resistedTotal = dbTotal
                 }
+
                 // 已是别的日期：正常翻日（nextResistedOrdinal 会自行归零）或时钟回拨，保留现值
             }
         }
     }
 
-    /** 覆盖层成功态同步读取（主线程安全）：今日抵制序号（含本次，先记账后展示）；
-     *  日期串不等先归零——跨零点后第一次抵制重新从 1 起。 */
-    fun nextResistedOrdinal(today: String): Int = synchronized(resistLock) {
+    /** 覆盖层成功态同步读取（主线程安全）：今日抵制序号 + 累计抵制总数（均含本次，先记账后展示）；
+     *  日期串不等先归零**今日**序号——跨零点后第一次抵制重新从 1 起；累计与日期无关（specs/016）。 */
+    fun nextResistedOrdinal(today: String): ResistOrdinals = synchronized(resistLock) {
         if (resistedDateKey != today) {
             resistedDateKey = today
             resistedCount = 0
         }
         resistedCount += 1
-        resistedCount
+        resistedTotal += 1
+        ResistOrdinals(today = resistedCount, total = resistedTotal)
     }
 
     data class DayStats(val total: Int, val canceled: Int, val opened: Int)

@@ -31,6 +31,8 @@
     <!-- 拦截反馈（specs/011）：取消成功态 -->
     <string name="blocking_resisted">✓ 已抵制</string>
     <string name="blocking_resisted_count">今日第 %1$d 次抵制</string>
+    <!-- 抵制里程碑（specs/016）：累计命中 50/100 倍数时的追加行 -->
+    <string name="blocking_resisted_total">累计抵制 %1$d 次</string>
 
     <!-- 使用时长守护回弹层（specs/012，二次减速带：无倒计时，按钮立即可点） -->
     <string name="guard_title">已在 %1$s 停留 %2$d 分钟</string>

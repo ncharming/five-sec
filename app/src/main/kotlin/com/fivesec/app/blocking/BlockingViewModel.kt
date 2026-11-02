@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fivesec.app.domain.model.Exercise
 import com.fivesec.app.domain.model.InterceptionOutcome
+import com.fivesec.app.domain.model.ResistOrdinals
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,18 +24,18 @@ import kotlinx.coroutines.launch
  * （跳过剩余成功态展示），绝不翻案为 INTERRUPTED——用户已完成锻炼并做出选择，
  * 事件语义（exerciseCompleted=true）不被反馈层改写。
  *
- * [resistCountProvider] 在 cancel() 时同步求值，返回含本次的今日抵制序号
- * （仓库内存镜像，见 InterceptionRepository.nextResistedOrdinal）；默认 { 1 } 仅供测试便利。
+ * [resistCountProvider] 在 cancel() 时同步求值，返回含本次的**双序号**（specs/011 今日 +
+ * specs/016 累计，见 InterceptionRepository.nextResistedOrdinal）；默认值仅供测试便利。
  */
 class BlockingViewModel(
     val appLabel: String,
-    private val resistCountProvider: () -> Int = { 1 },
+    private val resistCountProvider: () -> ResistOrdinals = { ResistOrdinals(today = 1, total = 1) },
 ) : ViewModel() {
 
     sealed interface UiState {
         data class CountingDown(val remaining: Int) : UiState
         data object ChoiceUnlocked : UiState
-        data class Resisted(val count: Int) : UiState
+        data class Resisted(val count: Int, val totalResisted: Long) : UiState
         data class Finished(val outcome: InterceptionOutcome) : UiState
     }
 
@@ -61,7 +62,8 @@ class BlockingViewModel(
         val current = _ui.value
         if (current !is UiState.ChoiceUnlocked) return
         countdownJob?.cancel()
-        _ui.value = UiState.Resisted(resistCountProvider())
+        val ordinals = resistCountProvider()
+        _ui.value = UiState.Resisted(count = ordinals.today, totalResisted = ordinals.total)
         resistJob = viewModelScope.launch {
             delay(RESIST_DISPLAY_MS)
             _ui.value = UiState.Finished(InterceptionOutcome.CANCELED)

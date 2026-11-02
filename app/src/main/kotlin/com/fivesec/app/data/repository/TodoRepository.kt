@@ -46,11 +46,17 @@ class TodoRepository @Inject constructor(
 
     init {
         scope.launch {
-            todoDao.observeAll().collect { entries ->
-                synchronized(lock) { snapshot = entries }
-                // 惰性清理（007）：已完成的一次性跨日后物理删除。DELETE 触发 Room 重发 → 再收集 →
-                // 无匹配行不再 DELETE，自稳定；无后台任务，纯加载路径顺手清（todos 可删，红线只在事件表）
-                todoDao.purgeCompletedOneOffs(today())
+            // 尽力而为盔甲（与 InterceptionRepository.init 同一防御口径）：Robolectric 下真实
+            // Application 被实例化时本收集器随环境拆除会在后台 SQLite 影子上抛异常，不吞掉会
+            // 毒化后续无关用例（非测试线程未捕获异常归罪当前用例）；生产端收集器只读快照，
+            // 吞掉异常仅意味着内存快照停在最后一致状态，无正确性影响。
+            runCatching {
+                todoDao.observeAll().collect { entries ->
+                    synchronized(lock) { snapshot = entries }
+                    // 惰性清理（007）：已完成的一次性跨日后物理删除。DELETE 触发 Room 重发 → 再收集 →
+                    // 无匹配行不再 DELETE，自稳定；无后台任务，纯加载路径顺手清（todos 可删，红线只在事件表）
+                    todoDao.purgeCompletedOneOffs(today())
+                }
             }
         }
     }

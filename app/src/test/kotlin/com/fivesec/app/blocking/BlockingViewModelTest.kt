@@ -1,6 +1,7 @@
 package com.fivesec.app.blocking
 
 import com.fivesec.app.domain.model.InterceptionOutcome
+import com.fivesec.app.domain.model.ResistOrdinals
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -48,13 +49,14 @@ class BlockingViewModelTest {
 
     @Test
     fun `解锁后选择取消先进入已抵制态并携带今日序号（specs-011）`() = runTest(dispatcher) {
-        val vm = BlockingViewModel("小红书", resistCountProvider = { 3 })
+        val vm = BlockingViewModel("小红书", resistCountProvider = { ResistOrdinals(today = 3, total = 49) })
         advanceTimeBy(5_500)
         advanceUntilIdle()
         vm.cancel()
         val resisted = vm.ui.value
         assertTrue("应处于已抵制态", resisted is BlockingViewModel.UiState.Resisted)
         assertEquals(3, (resisted as BlockingViewModel.UiState.Resisted).count)
+        assertEquals(49L, resisted.totalResisted)
     }
 
     @Test
@@ -72,7 +74,10 @@ class BlockingViewModelTest {
     @Test
     fun `已抵制态再点打开或取消无效且不重复计数（specs-011）`() = runTest(dispatcher) {
         var providerCalls = 0
-        val vm = BlockingViewModel("抖音", resistCountProvider = { providerCalls++; 1 })
+        val vm = BlockingViewModel(
+            "抖音",
+            resistCountProvider = { providerCalls++; ResistOrdinals(today = 1, total = 1) },
+        )
         advanceTimeBy(5_500)
         advanceUntilIdle()
         vm.cancel()

@@ -215,6 +215,9 @@ class StatsViewModelFlowTest {
         override suspend fun countByOutcomeSince(startOfDay: Long, outcome: InterceptionOutcome): Int =
             events.value.count { it.timestamp >= startOfDay && it.outcome == outcome }
 
+        override suspend fun countByOutcome(outcome: InterceptionOutcome): Int =
+            events.value.count { it.outcome == outcome }
+
         override fun observeTimestampsBetween(rangeStart: Long, rangeEnd: Long): Flow<List<Long>> =
             events.map { list ->
                 list.map { it.timestamp }

@@ -140,7 +140,7 @@ ui/theme/       Compose 主题 token（与 colors.xml 的 brand_* 同源）
 - **抑制（Suppression）**：选「打开」后临时放行该应用的重启，防止回到目标应用时二次拦截；`userOpenedPkg`（使用期间永久放行）与 `suppressedPkg`（立即生效）是服务内两个不同字段。
 - **去抖（Debounce）**：`TYPE_WINDOW_STATE_CHANGED` 连发防重复弹窗，窗口 `DEBOUNCE_MS=800`；两者都实现在纯类 `CooldownGate`，常量在 `InterceptionController`。
 - **覆盖层（Overlay）**：`TYPE_ACCESSIBILITY_OVERLAY` 全屏窗口，由无障碍服务绘制，始终浅色。
-- **成功态（Resisted，011）**：选「取消」后覆盖层的正反馈瞬态——「✓ 已抵制 + 今日第 N 次抵制」+ 60ms 短震，展示 `RESIST_DISPLAY_MS=800` 后落 `Finished(CANCELED)`；Resisted 是「已决定」态（此后 open/cancel 无效、打断只提前收尾仍记 CANCELED），事件语义（exerciseCompleted=true）不变。今日序号来自 `InterceptionRepository` 进程内内存镜像（init 从事件表播种 + 每次取消 +1 + 跨日归零；镜像可领先事件表 ≤1 次，进程重启播种自动对齐）。
+- **成功态（Resisted，011）**：选「取消」后覆盖层的正反馈瞬态——「✓ 已抵制 + 今日第 N 次抵制」+ 60ms 短震，展示 `RESIST_DISPLAY_MS=800` 后落 `Finished(CANCELED)`；Resisted 是「已决定」态（此后 open/cancel 无效、打断只提前收尾仍记 CANCELED），事件语义（exerciseCompleted=true）不变。今日序号来自 `InterceptionRepository` 进程内内存镜像（init 从事件表播种 + 每次取消 +1 + 跨日归零；镜像可领先事件表 ≤1 次，进程重启播种自动对齐）。**累计里程碑（016）**：镜像同时维护全表 CANCELED 总数（不随翻日归零），命中 50/100 倍数（谓词 `util/ResistMilestones`）时成功态追加「累计抵制 M 次」行——取号返回 `domain.ResistOrdinals(today, total)` 双序号。
 - **抵制率（011）**：今日取消/(今日取消+今日打开)，INTERRUPTED 不进分母（未完成选择≠一次抵制机会）；分母 0 显示「—」（无选择≠0% 抵制）。纯函数 `util/ResistRate`，展示在统计主页今日拦截卡双 Hero 之下。
 - **复盘卡（014）**：统计主页「本期 vs 上期」对比卡（周/月档位，默认周）——四指标（拦截/抵制率/待办完成/平均单场停留）箭头跟数值方向、颜色跟语义（方向判定纯函数 `util/ReviewTrend`：上期无数据或 0 →「—」无基线，抵制率任一分母 0 同理）；双窗口由档位+今日键推导（跨零点自动换窗），聚合复用既有区间查询求和、零新表。
 - **时段分布（011）**：拦截二级页 24 桶（0–23 时，本地时区）柱状图，计入全部结局（与拦截总数同口径），峰值柱高亮、并列取最前；分桶纯函数 `util/HourDistribution`（显式 ZoneId、Kotlin 端聚合——SQLite localtime 随运行环境漂移不可测），数据源 `observeTimestampsBetween` 半开区间。

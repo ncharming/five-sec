@@ -17,7 +17,9 @@ import androidx.core.content.ContextCompat
 import com.fivesec.app.R
 import com.fivesec.app.domain.model.Exercise
 import com.fivesec.app.domain.model.InterceptionOutcome
+import com.fivesec.app.domain.model.ResistOrdinals
 import com.fivesec.app.domain.model.TodayTodosSnapshot
+import com.fivesec.app.util.ResistMilestones
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -51,7 +53,7 @@ class BlockingOverlay(
     context: Context,
     appLabel: String,
     todos: TodayTodosSnapshot,
-    resistCountProvider: () -> Int = { 1 },
+    resistCountProvider: () -> ResistOrdinals = { ResistOrdinals(today = 1, total = 1) },
     private val onFinished: (InterceptionOutcome) -> Unit,
 ) {
     private val ctx: Context = context
@@ -103,6 +105,14 @@ class BlockingOverlay(
     private val resistCountLine = TextView(ctx).apply {
         setTextColor(onSurfaceVariantColor)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        gravity = Gravity.CENTER
+        visibility = View.GONE
+    }
+    // 累计里程碑行（specs/016）：命中 50/100 倍数才可见的「累计抵制 M 次」——与计数副行同层级，
+    // 不抢「✓ 已抵制」主文案视觉
+    private val resistTotalLine = TextView(ctx).apply {
+        setTextColor(onSurfaceVariantColor)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
         gravity = Gravity.CENTER
         visibility = View.GONE
     }
@@ -168,6 +178,7 @@ class BlockingOverlay(
             addView(spacer(dp(28)))
             addView(countdownLine)
             addView(resistCountLine, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            addView(resistTotalLine, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
             addView(spacer(dp(28)))
             addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
@@ -222,9 +233,17 @@ class BlockingOverlay(
         if (state is BlockingViewModel.UiState.Resisted) {
             resistCountLine.text = ctx.getString(R.string.blocking_resisted_count, state.count)
             resistCountLine.visibility = View.VISIBLE
+            // 里程碑行（specs/016）：累计命中 50/100 倍数才出现——总量维度的正反馈
+            if (ResistMilestones.isMilestone(state.totalResisted)) {
+                resistTotalLine.text = ctx.getString(R.string.blocking_resisted_total, state.totalResisted)
+                resistTotalLine.visibility = View.VISIBLE
+            } else {
+                resistTotalLine.visibility = View.GONE
+            }
             OverlayFeedback.vibrateOneShot(ctx, RESIST_VIBRATE_MS) // 成功态一次性 60ms 短震（specs/011，见 OverlayFeedback 类注）
         } else if (!resisted) {
             resistCountLine.visibility = View.GONE
+            resistTotalLine.visibility = View.GONE
         }
 
         // 倒计时期间功能禁用；颜色按 M3 规范区分启用/禁用态（替代原先 alpha 写法）
