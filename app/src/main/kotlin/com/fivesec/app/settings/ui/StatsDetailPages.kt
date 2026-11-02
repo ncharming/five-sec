@@ -11,9 +11,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -291,10 +294,16 @@ private fun periodLabel(period: StatsPeriod): String = when (period.range) {
 }
 
 /** 应用历史卡：白底 + 真实图标 + 名称 + 三列指标（统一风格，替代原彩色整卡）。
- *  底部停留行（specs/012）：周期内会话墙钟时长，分钟向上取整，无会话不显示。 */
+ *  底部停留行（specs/012）：周期内会话墙钟时长，分钟向上取整，无会话不显示。
+ *  可点下钻（specs/018）：[expanded] 时右侧箭头旋 90°，卡下由页面挂该应用的时段分布图。 */
 @Composable
-internal fun AppRangeStatCard(ui: AppRangeStatsUi, modifier: Modifier = Modifier) {
-    CardSurface(modifier) {
+internal fun AppRangeStatCard(
+    ui: AppRangeStatsUi,
+    expanded: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    CardSurface(modifier, onClick = onClick) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -307,6 +316,15 @@ internal fun AppRangeStatCard(ui: AppRangeStatsUi, modifier: Modifier = Modifier
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = Spacing.md),
+            )
+            Spacer(Modifier.weight(1f))
+            Icon(
+                Icons.Filled.ChevronRight,
+                contentDescription = if (expanded) null else stringResource(R.string.common_more),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer { rotationZ = if (expanded) 90f else 0f },
             )
         }
         Row(

@@ -79,6 +79,10 @@ class InterceptionRepository @Inject constructor(
     fun observeTimestampsBetween(rangeStart: Long, rangeEnd: Long): Flow<List<Long>> =
         eventDao.observeTimestampsBetween(rangeStart, rangeEnd)
 
+    /** 单应用版本（specs/018 应用卡下钻）：同区间同口径，只看该包名。 */
+    fun observeTimestampsByPackageBetween(packageName: String, rangeStart: Long, rangeEnd: Long): Flow<List<Long>> =
+        eventDao.observeTimestampsByPackageBetween(packageName, rangeStart, rangeEnd)
+
     /**
      * 从事件表播种抵制镜像（进程重建后恢复计数）：同日取 max(现值, 事件表计数)——
      * 播种完成前用户可能已抵制过（镜像领先落库）；未使用（key 空）直接置入；

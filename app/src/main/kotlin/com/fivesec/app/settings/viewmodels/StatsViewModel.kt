@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
@@ -304,6 +305,30 @@ class StatsViewModel @Inject constructor(
             .flatMapLatest { period ->
                 interceptionRepository.observeTimestampsBetween(period.startMillis, period.endMillis)
                     .map { HourDistribution.of(it, zone).toList() }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), List(HourDistribution.BUCKETS) { 0 })
+
+    // ── 单应用时段分布下钻（specs/018）：应用卡展开该应用自己的 24 桶，同时只展开一个 ──
+
+    private val _hourPkg = MutableStateFlow<String?>(null)
+    val hourPkg: StateFlow<String?> = _hourPkg.asStateFlow()
+
+    /** 展开/收起某应用的分布（再点同一个=收起；点另一个=切换）。 */
+    fun toggleAppHour(packageName: String) {
+        _hourPkg.value = if (_hourPkg.value == packageName) null else packageName
+    }
+
+    /** 所选应用的 24 桶分布（specs/018）：未选中时恒全零（不订阅查询）；周期/选择任一变化经 flatMapLatest 重订阅。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val hourDistributionFor: StateFlow<List<Int>> =
+        combine(selectedPeriod, _hourPkg) { period, pkg -> period to pkg }
+            .flatMapLatest { (period, pkg) ->
+                if (pkg == null) {
+                    flowOf(List(HourDistribution.BUCKETS) { 0 })
+                } else {
+                    interceptionRepository.observeTimestampsByPackageBetween(pkg, period.startMillis, period.endMillis)
+                        .map { HourDistribution.of(it, zone).toList() }
+                }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), List(HourDistribution.BUCKETS) { 0 })
 

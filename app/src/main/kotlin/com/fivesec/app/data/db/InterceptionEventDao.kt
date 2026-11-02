@@ -57,6 +57,13 @@ interface InterceptionEventDao {
     @Query("SELECT timestamp FROM interception_events WHERE timestamp >= :rangeStart AND timestamp < :rangeEnd ORDER BY timestamp ASC")
     fun observeTimestampsBetween(rangeStart: Long, rangeEnd: Long): Flow<List<Long>>
 
+    /** 单应用版本（specs/018 应用卡下钻）：同区间同口径，只看该包名。 */
+    @Query(
+        "SELECT timestamp FROM interception_events WHERE packageName = :packageName " +
+            "AND timestamp >= :rangeStart AND timestamp < :rangeEnd ORDER BY timestamp ASC"
+    )
+    fun observeTimestampsByPackageBetween(packageName: String, rangeStart: Long, rangeEnd: Long): Flow<List<Long>>
+
     /** 全量快照升序（specs/017 导出只读）：一次性 suspend，观察流复用不了——导出要的是时点快照。 */
     @Query("SELECT * FROM interception_events ORDER BY timestamp ASC")
     suspend fun getAllOrdered(): List<InterceptionEvent>

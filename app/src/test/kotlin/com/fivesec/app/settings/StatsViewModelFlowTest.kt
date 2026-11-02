@@ -170,6 +170,31 @@ class StatsViewModelFlowTest {
         viewModel.viewModelScope.cancel()
     }
 
+    /** specs/018 下钻：应用卡展开该应用自己的 24 桶；切到无事件应用收全零。 */
+    @Test
+    fun `单应用时段分布下钻随选择切换`() = runTest(dispatcher) {
+        val zone = ZoneId.systemDefault()
+        val base = LocalDate.parse("2026-11-01").atStartOfDay(zone).toInstant().toEpochMilli()
+        val pkgA = "com.ss.android.ugc.aweme"
+        val pkgB = "tv.danmaku.bili"
+        eventDao.events.value = listOf(
+            InterceptionEvent(
+                packageName = pkgA,
+                timestamp = base + 23 * 3_600_000L, // 本地 23:00 → 23 号桶
+                exerciseCompleted = true,
+                outcome = InterceptionOutcome.OPENED,
+            ),
+        )
+
+        viewModel.toggleAppHour(pkgA)
+        val distA = viewModel.hourDistributionFor.first { it.sum() == 1 }
+        assertEquals(1, distA[23])
+
+        viewModel.toggleAppHour(pkgB) // A → B：切换（非收起），B 无事件 → 全零
+        assertEquals(List(24) { 0 }, viewModel.hourDistributionFor.first { it.sum() == 0 })
+        viewModel.viewModelScope.cancel()
+    }
+
     // ── 假 DAO：StateFlow 直推（派生查询尊重区间参数——今日窗口滚动必须真实重算） ──
 
     private class FakeInterceptionEventDao : InterceptionEventDao {
@@ -221,6 +246,18 @@ class StatsViewModelFlowTest {
         override fun observeTimestampsBetween(rangeStart: Long, rangeEnd: Long): Flow<List<Long>> =
             events.map { list ->
                 list.map { it.timestamp }
+                    .filter { it >= rangeStart && it < rangeEnd }
+                    .sorted()
+            }
+
+        override fun observeTimestampsByPackageBetween(
+            packageName: String,
+            rangeStart: Long,
+            rangeEnd: Long,
+        ): Flow<List<Long>> =
+            events.map { list -> // 按包名过滤（specs/018 下钻数据源）
+                list.filter { it.packageName == packageName }
+                    .map { it.timestamp }
                     .filter { it >= rangeStart && it < rangeEnd }
                     .sorted()
             }

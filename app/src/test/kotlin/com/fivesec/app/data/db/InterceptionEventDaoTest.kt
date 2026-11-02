@@ -136,6 +136,17 @@ class InterceptionEventDaoTest {
         assertEquals(1, rows.single().total)
     }
 
+    /** 单应用下钻（specs/018）：同区间同口径、包名隔离、半开上界。 */
+    @Test
+    fun `单应用时间戳查询按包名过滤且半开区间`() = runTest {
+        dao.insert(InterceptionEvent(packageName = "tv.danmaku.bili", timestamp = 10, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
+        dao.insert(InterceptionEvent(packageName = "tv.danmaku.bili", timestamp = 30, exerciseCompleted = true, outcome = InterceptionOutcome.CANCELED)) // 区间外（end=30）
+        dao.insert(InterceptionEvent(packageName = "com.xingin.xhs", timestamp = 15, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED)) // 别家应用
+
+        val ts = dao.observeTimestampsByPackageBetween("tv.danmaku.bili", rangeStart = 0, rangeEnd = 30).first()
+        assertEquals(listOf(10L), ts)
+    }
+
     /** 空态契约锚点：统计页不再因"无记录"整页消失，前提是查询层无记录时
      *  照常执行并发射零值（而非不发射/返回 null），这里锁死该前提。 */
     @Test

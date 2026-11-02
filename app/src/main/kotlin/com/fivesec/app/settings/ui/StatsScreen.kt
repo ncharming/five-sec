@@ -45,6 +45,8 @@ fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
     val appStats by viewModel.appRangeStats.collectAsStateWithLifecycle()
     val todoRangeStats by viewModel.todoRangeStats.collectAsStateWithLifecycle()
     val hourDistribution by viewModel.hourDistribution.collectAsStateWithLifecycle()
+    val hourPkg by viewModel.hourPkg.collectAsStateWithLifecycle()
+    val hourDistributionFor by viewModel.hourDistributionFor.collectAsStateWithLifecycle()
     val selectedRange by viewModel.selectedRange.collectAsStateWithLifecycle()
     val availablePeriods by viewModel.availablePeriods.collectAsStateWithLifecycle()
     val selectedPeriod by viewModel.selectedPeriod.collectAsStateWithLifecycle()
@@ -81,7 +83,17 @@ fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
                             onSelectPeriod = viewModel::selectPeriod,
                         )
                         HourDistributionCard(buckets = hourDistribution)
-                        appStats.forEach { s -> AppRangeStatCard(s) }
+                        appStats.forEach { s ->
+                            // 单应用下钻（specs/018）：点应用卡展开该应用的 24 桶（同时只展开一个）
+                            AppRangeStatCard(
+                                ui = s,
+                                expanded = s.packageName == hourPkg,
+                                onClick = { viewModel.toggleAppHour(s.packageName) },
+                            )
+                            if (s.packageName == hourPkg) {
+                                HourDistributionCard(buckets = hourDistributionFor)
+                            }
+                        }
                     }
                 }
 
