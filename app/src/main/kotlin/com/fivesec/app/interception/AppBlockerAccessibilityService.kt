@@ -19,9 +19,11 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 通过 TYPE_WINDOW_STATE_CHANGED 检测目标应用进入前台：
@@ -196,12 +198,21 @@ class AppBlockerAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** 装回弹计时：真实墙钟 delay（无事件依赖——应用内停留期间无窗口事件是常态）。 */
+    /**
+     * 装回弹计时：真实墙钟 delay（无事件依赖——应用内停留期间无窗口事件是常态）。
+     *
+     * 到点必须切回主线程再走 [onSessionTimerFired]：appScope 是 Dispatchers.IO（无 Looper），
+     * 而 WindowManager.addView 经 ViewRootImpl→Choreographer 要求调用线程持有 Looper——
+     * 曾在 IO 线程直接弹层，addView 必抛 IllegalStateException("The current thread must have
+     * a looper")，被 UsageGuardOverlay.show() 的 catch(Throwable) 吞掉并误判「覆盖层不可用」，
+     * 整场静默停守护——回弹层从不出现、无任何可见错误的根因。主线程也让 onTimerFired 的
+     * 状态机读写与其他全部入口（onAccessibilityEvent/onBlockingFinished/onGuardChoice）同线程串行。
+     */
     private fun armSessionTimer(minutes: Int) {
         sessionJob?.cancel()
         sessionJob = appScope.launch {
             delay(minutes * UsageSessionTracker.MILLIS_PER_MINUTE)
-            onSessionTimerFired()
+            withContext(Dispatchers.Main) { onSessionTimerFired() }
         }
     }
 
