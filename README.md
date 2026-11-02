@@ -133,3 +133,5 @@ adb shell pm grant com.fivesec.app android.permission.WRITE_SECURE_SETTINGS
 - [015-stay-budget](specs/015-stay-budget/spec.md)：回弹层每日停留预算——今日累计副行 + 触线红字警示 + 二次短震（全局单值、默认不设、纯展示层）（[tasks](specs/015-stay-budget/tasks.md)、[quickstart](specs/015-stay-budget/quickstart.md)）
 - [016-resist-milestones](specs/016-resist-milestones/spec.md)：抵制累计里程碑——成功态追加「累计抵制 M 次」（50/100 倍数、镜像双序号）（[tasks](specs/016-resist-milestones/tasks.md)、[quickstart](specs/016-resist-milestones/quickstart.md)）
 - [017-data-export](specs/017-data-export/spec.md)：本地数据导出——四段 CSV（UTF-8 BOM、RFC 4180 转义、时间双列）经 SAF 存到用户选定位置，只读导出零网络（[tasks](specs/017-data-export/tasks.md)、[quickstart](specs/017-data-export/quickstart.md)）
+- [018-per-app-hour-distribution](specs/018-per-app-hour-distribution/spec.md)：单应用时段分布——应用卡点开下钻该应用自己的 24 桶（互斥展开、周期联动）（[tasks](specs/018-per-app-hour-distribution/tasks.md)、[quickstart](specs/018-per-app-hour-distribution/quickstart.md)）
+- [019-todo-templates](specs/019-todo-templates/spec.md)：待办习惯模板——新建弹窗 5 个静态 chips 一键填入（编辑不显示、默认规则不动）（[tasks](specs/019-todo-templates/tasks.md)、[quickstart](specs/019-todo-templates/quickstart.md)）
