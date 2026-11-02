@@ -21,12 +21,14 @@ import com.fivesec.app.domain.model.TargetApp
 import com.fivesec.app.domain.model.Todo
 import com.fivesec.app.domain.model.TodoCompletion
 import com.fivesec.app.domain.model.UsageSession
+import com.fivesec.app.settings.viewmodels.ReviewRange
 import com.fivesec.app.settings.viewmodels.StatsRange
 import com.fivesec.app.settings.viewmodels.StatsViewModel
 import com.fivesec.app.settings.viewmodels.currentPeriod
 import com.fivesec.app.util.AppBrandColorExtractor
 import com.fivesec.app.util.DateUtil
 import com.fivesec.app.util.TimeProvider
+import com.fivesec.app.util.ReviewTrend.Trend
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
@@ -135,6 +137,36 @@ class StatsViewModelFlowTest {
         // 异档位（DAY 的周期）在 WEEK 档位下被结构性忽略——不吞不炸
         viewModel.selectPeriod(StatsRange.DAY.currentPeriod(nowMs))
         assertEquals(StatsRange.WEEK, viewModel.selectedPeriod.value.range)
+        viewModel.viewModelScope.cancel()
+    }
+
+    /** specs/014 复盘卡：双窗口聚合随档位切换重订阅。固定日期 2026-11-01（周日）：
+     *  本周=10-26..11-02、上周=10-19..10-26、本月=11 月、上月=10 月。 */
+    @Test
+    fun `复盘卡双窗口随档位切换`() = runTest(dispatcher) {
+        val zone = ZoneId.systemDefault()
+        fun atNoon(date: String): Long =
+            LocalDate.parse(date).atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
+        val pkg = "com.ss.android.ugc.aweme"
+        eventDao.events.value = listOf(
+            InterceptionEvent(packageName = pkg, timestamp = atNoon("2026-10-27"), exerciseCompleted = true, outcome = InterceptionOutcome.OPENED), // 本周、上月
+            InterceptionEvent(packageName = pkg, timestamp = atNoon("2026-10-28"), exerciseCompleted = true, outcome = InterceptionOutcome.OPENED), // 本周、上月
+            InterceptionEvent(packageName = pkg, timestamp = atNoon("2026-10-20"), exerciseCompleted = true, outcome = InterceptionOutcome.OPENED), // 上周、上月
+        )
+
+        // 周档位（默认）：本期 2 vs 上期 1 → 拦截上升=变差（红 ↑）
+        val week = viewModel.reviewStats.first { it.range == ReviewRange.WEEK && it.interceptions.current == "2" }
+        assertEquals("1", week.interceptions.previous)
+        assertEquals(1, week.interceptions.arrow)
+        assertEquals(Trend.WORSE, week.interceptions.trend)
+
+        // 切月档位：本期（11 月）0 vs 上期（10 月）3 → 拦截下降=变好（绿 ↓）
+        viewModel.setReviewRange(ReviewRange.MONTH)
+        val month = viewModel.reviewStats.first { it.range == ReviewRange.MONTH }
+        assertEquals("0", month.interceptions.current)
+        assertEquals("3", month.interceptions.previous)
+        assertEquals(-1, month.interceptions.arrow)
+        assertEquals(Trend.BETTER, month.interceptions.trend)
         viewModel.viewModelScope.cancel()
     }
 

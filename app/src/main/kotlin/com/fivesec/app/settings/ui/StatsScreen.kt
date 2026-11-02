@@ -41,6 +41,7 @@ import com.fivesec.app.ui.theme.Spacing
 fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val todoToday by viewModel.todoToday.collectAsStateWithLifecycle()
+    val review by viewModel.reviewStats.collectAsStateWithLifecycle()
     val appStats by viewModel.appRangeStats.collectAsStateWithLifecycle()
     val todoRangeStats by viewModel.todoRangeStats.collectAsStateWithLifecycle()
     val hourDistribution by viewModel.hourDistribution.collectAsStateWithLifecycle()
@@ -57,7 +58,14 @@ fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
             Modifier.padding(padding).verticalScroll(rememberScrollState()),
         ) {
             when (page) {
-                StatsPage.MAIN -> StatsMainPage(ui, todoToday, onOpenAppHistory = { page = StatsPage.APP_HISTORY }, onOpenTodoHistory = { page = StatsPage.TODO_HISTORY })
+                StatsPage.MAIN -> StatsMainPage(
+                    ui,
+                    todoToday,
+                    review,
+                    onSelectReviewRange = viewModel::setReviewRange,
+                    onOpenAppHistory = { page = StatsPage.APP_HISTORY },
+                    onOpenTodoHistory = { page = StatsPage.TODO_HISTORY },
+                )
 
                 StatsPage.APP_HISTORY -> {
                     DetailHeader(title = stringResource(R.string.stats_entry_intercept_history), onBack = { page = StatsPage.MAIN })

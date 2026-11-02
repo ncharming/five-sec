@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -32,12 +33,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.fivesec.app.R
+import com.fivesec.app.settings.viewmodels.ReviewCardUi
+import com.fivesec.app.settings.viewmodels.ReviewMetricUi
+import com.fivesec.app.settings.viewmodels.ReviewRange
 import com.fivesec.app.settings.viewmodels.StatsUi
 import com.fivesec.app.settings.viewmodels.TodoTodayStatsUi
 import com.fivesec.app.ui.components.CardSurface
 import com.fivesec.app.ui.components.PageHeader
 import com.fivesec.app.ui.theme.Spacing
 import com.fivesec.app.util.ResistRate
+import com.fivesec.app.util.ReviewTrend
 import kotlin.math.roundToInt
 
 /**
@@ -46,11 +51,13 @@ import kotlin.math.roundToInt
  * 数据——Hero 数字、进度条（0/0 → 0%）照常渲染 0。
  */
 
-/** 统计主页：「今日任务」Hero 卡 + 「今日拦截」双 Hero 卡，均整卡可点进二级页（入口即内容）。 */
+/** 统计主页：「今日任务」Hero 卡 + 「今日拦截」双 Hero 卡 + 复盘卡（specs/014），均整卡可点进对应二级页（入口即内容；复盘卡无下钻）。 */
 @Composable
 internal fun StatsMainPage(
     ui: StatsUi,
     todoToday: TodoTodayStatsUi,
+    review: ReviewCardUi,
+    onSelectReviewRange: (ReviewRange) -> Unit,
     onOpenAppHistory: () -> Unit,
     onOpenTodoHistory: () -> Unit,
 ) {
@@ -65,6 +72,7 @@ internal fun StatsMainPage(
     ) {
         TodayTasksCard(stats = todoToday, onClick = onOpenTodoHistory)
         TodayInterceptCard(stats = ui, onClick = onOpenAppHistory)
+        ReviewCard(ui = review, onRangeSelect = onSelectReviewRange)
     }
 }
 
@@ -355,4 +363,109 @@ internal fun VerticalHairline() {
             .width(1.dp)
             .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
     )
+}
+
+/**
+ * 复盘卡（specs/014）：本期 vs 上期四指标对比——箭头跟数值方向、**颜色跟语义**
+ * （拦截↓是好=绿、抵制率/完成↑是好=绿、停留↓是好=绿；上期无数据/为 0 整行「—」不伪造基线）。
+ */
+@Composable
+private fun ReviewCard(ui: ReviewCardUi, onRangeSelect: (ReviewRange) -> Unit) {
+    CardSurface {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.lg, vertical = Spacing.lg),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.stats_review_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    ReviewRangeChip(
+                        label = stringResource(R.string.stats_review_range_week),
+                        selected = ui.range == ReviewRange.WEEK,
+                        onClick = { onRangeSelect(ReviewRange.WEEK) },
+                    )
+                    ReviewRangeChip(
+                        label = stringResource(R.string.stats_review_range_month),
+                        selected = ui.range == ReviewRange.MONTH,
+                        onClick = { onRangeSelect(ReviewRange.MONTH) },
+                    )
+                }
+            }
+            ReviewRow(
+                label = stringResource(R.string.stats_review_metric_intercept),
+                metric = ui.interceptions,
+                modifier = Modifier.padding(top = Spacing.md),
+            )
+            ReviewRow(
+                label = stringResource(R.string.stats_review_metric_resist),
+                metric = ui.resistRate,
+                modifier = Modifier.padding(top = Spacing.sm),
+            )
+            ReviewRow(
+                label = stringResource(R.string.stats_review_metric_completion),
+                metric = ui.completions,
+                modifier = Modifier.padding(top = Spacing.sm),
+            )
+            ReviewRow(
+                label = stringResource(R.string.stats_review_metric_stay),
+                metric = ui.avgStayMinutes,
+                modifier = Modifier.padding(top = Spacing.sm),
+            )
+        }
+    }
+}
+
+/** 复盘卡档位小 chip（周/月）：选中态品牌绿容器。 */
+@Composable
+private fun ReviewRangeChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+    )
+}
+
+/** 复盘单行：指标名 | 本期值（按趋势着色）| 箭头 + 上期值（无基线整段「—」）。 */
+@Composable
+private fun ReviewRow(label: String, metric: ReviewMetricUi, modifier: Modifier = Modifier) {
+    val color = when (metric.trend) {
+        ReviewTrend.Trend.BETTER -> MaterialTheme.colorScheme.primary
+        ReviewTrend.Trend.WORSE -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val arrow = when (metric.arrow) {
+        1 -> "↑"
+        -1 -> "↓"
+        else -> "—"
+    }
+    val previousText = metric.previous?.let { stringResource(R.string.stats_review_prev, it) } ?: "—"
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            metric.current,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = color,
+        )
+        Text(
+            "$arrow $previousText",
+            style = MaterialTheme.typography.labelMedium,
+            color = color,
+            modifier = Modifier.padding(start = Spacing.md),
+        )
+    }
 }

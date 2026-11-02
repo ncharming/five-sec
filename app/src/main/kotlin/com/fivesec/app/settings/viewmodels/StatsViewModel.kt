@@ -10,9 +10,12 @@ import com.fivesec.app.util.AppBrandColorExtractor
 import com.fivesec.app.util.DateUtil
 import com.fivesec.app.util.FALLBACK_BRAND_ARGB
 import com.fivesec.app.util.HourDistribution
+import com.fivesec.app.util.ResistRate
+import com.fivesec.app.util.ReviewTrend
 import com.fivesec.app.util.TimeProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -33,6 +36,38 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class StatsUi(val total: Int, val canceled: Int, val opened: Int, val streak: Int)
+
+/** 复盘卡档位（specs/014）：周（本周 vs 上周，默认）/ 月（本月 vs 上月）。 */
+enum class ReviewRange { WEEK, MONTH }
+
+/** 复盘卡单指标（specs/014）：本期值 + 上期值（null=无基线）+ 数值方向箭头 + 语义趋势
+ *  （箭头跟数值方向、颜色跟语义：如拦截次数下降=数值↓+语义变好=绿）。 */
+data class ReviewMetricUi(
+    val current: String,
+    val previous: String?,
+    val arrow: Int,
+    val trend: ReviewTrend.Trend,
+)
+
+/** 复盘卡四指标（specs/014）：拦截/抵制率/待办完成/平均停留。 */
+data class ReviewCardUi(
+    val range: ReviewRange,
+    val interceptions: ReviewMetricUi,
+    val resistRate: ReviewMetricUi,
+    val completions: ReviewMetricUi,
+    val avgStayMinutes: ReviewMetricUi,
+) {
+    companion object {
+        /** 初值占位（stateIn 初始值）：四行均为「—」无基线态。 */
+        val EMPTY = ReviewCardUi(
+            range = ReviewRange.WEEK,
+            interceptions = ReviewMetricUi("—", null, 0, ReviewTrend.Trend.NO_BASELINE),
+            resistRate = ReviewMetricUi("—", null, 0, ReviewTrend.Trend.NO_BASELINE),
+            completions = ReviewMetricUi("—", null, 0, ReviewTrend.Trend.NO_BASELINE),
+            avgStayMinutes = ReviewMetricUi("—", null, 0, ReviewTrend.Trend.NO_BASELINE),
+        )
+    }
+}
 
 /** 今日任务三数卡（specs/008；口径见 [TodoTodayStatsCalculator]，与覆盖层 D/T 同源）。
  *  [lateCompleted]（2026-10-04）：今日「过期补完」次数——从过期区完成入口勾掉的条目数，
@@ -272,6 +307,136 @@ class StatsViewModel @Inject constructor(
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), List(HourDistribution.BUCKETS) { 0 })
 
+    // ── 复盘卡（specs/014）：本期 vs 上期对比，主页双 Hero 卡之下 ──
+
+    private val _reviewRange = MutableStateFlow(ReviewRange.WEEK)
+    val reviewRange: StateFlow<ReviewRange> = _reviewRange.asStateFlow()
+
+    fun setReviewRange(range: ReviewRange) {
+        _reviewRange.value = range
+    }
+
+    /** 复盘双窗口（本期/上期，自然周期半开区间）：周=本周一起 vs 上周，月=本月 1 号 vs 上月。 */
+    private data class ReviewWindow(val start: LocalDate, val end: LocalDate) {
+        fun startMillis(zone: ZoneId): Long = start.atStartOfDay(zone).toInstant().toEpochMilli()
+        fun endMillis(zone: ZoneId): Long = end.atStartOfDay(zone).toInstant().toEpochMilli()
+    }
+
+    private fun reviewWindows(range: ReviewRange, today: String): Pair<ReviewWindow, ReviewWindow> {
+        val todayDate = LocalDate.parse(today)
+        return when (range) {
+            ReviewRange.WEEK -> {
+                val cur = ReviewWindow(todayDate.with(DayOfWeek.MONDAY), todayDate.with(DayOfWeek.MONDAY).plusWeeks(1))
+                cur to ReviewWindow(cur.start.minusWeeks(1), cur.start)
+            }
+
+            ReviewRange.MONTH -> {
+                val cur = ReviewWindow(todayDate.withDayOfMonth(1), todayDate.withDayOfMonth(1).plusMonths(1))
+                cur to ReviewWindow(cur.start.minusMonths(1), cur.start)
+            }
+        }
+    }
+
+    /** 单期原始聚合（既有区间查询求和，零新 DAO）：拦截三计数、完成计数、会话时长与场次。 */
+    private data class ReviewPeriodRaw(
+        val interceptions: Int,
+        val canceled: Int,
+        val opened: Int,
+        val completions: Int,
+        val stayMillis: Long,
+        val sessionCount: Int,
+    )
+
+    private fun reviewPeriodSummary(start: Long, end: Long) = combine(
+        interceptionRepository.observeCountsByPackageBetween(start, end),
+        todoRepository.observeCompletionCountByTodoBetween(
+            DateUtil.millisToDateString(start, zone),
+            DateUtil.millisToDateString(end, zone),
+        ),
+        usageSessionRepository.observeDurationByPackageBetween(start, end),
+    ) { pkgCounts, todoCounts, sessions ->
+        ReviewPeriodRaw(
+            interceptions = pkgCounts.sumOf { it.total },
+            canceled = pkgCounts.sumOf { it.canceled },
+            opened = pkgCounts.sumOf { it.opened },
+            completions = todoCounts.sumOf { it.completions },
+            stayMillis = sessions.sumOf { it.totalMillis },
+            sessionCount = sessions.sumOf { it.sessionCount },
+        )
+    }
+
+    /** 数值型指标行：上期无数据/为 0 → 无基线（箭头归零、上期文本空）。 */
+    private fun countMetric(current: Int, previous: Int, higherIsBetter: Boolean, unit: String = ""): ReviewMetricUi {
+        val hasBaseline = previous > 0
+        return ReviewMetricUi(
+            current = "$current$unit",
+            previous = if (hasBaseline) "$previous$unit" else null,
+            arrow = if (hasBaseline) current.compareTo(previous).coerceIn(-1, 1) else 0,
+            trend = ReviewTrend.countTrend(current, if (hasBaseline) previous else null, higherIsBetter),
+        )
+    }
+
+    /** 抵制率行：任一分母 0 → 无基线；rate 为 ResistRate 百分比整数。 */
+    private fun rateMetric(currentRate: Int?, previousRate: Int?): ReviewMetricUi = ReviewMetricUi(
+        current = currentRate?.let { "$it%" } ?: "—",
+        previous = previousRate?.let { "$it%" },
+        arrow = if (currentRate != null && previousRate != null) {
+            currentRate.compareTo(previousRate).coerceIn(-1, 1)
+        } else {
+            0
+        },
+        trend = ReviewTrend.rateTrend(currentRate, previousRate),
+    )
+
+    /** 平均停留行（分钟向上取整）：任一期无会话 → 该期「—」，本期无会话不参与方向判定。 */
+    private fun avgStayMetric(curRaw: ReviewPeriodRaw, prevRaw: ReviewPeriodRaw): ReviewMetricUi {
+        val cur = if (curRaw.sessionCount > 0) {
+            ((curRaw.stayMillis + MILLIS_PER_MINUTE - 1) / MILLIS_PER_MINUTE).toInt()
+        } else {
+            null
+        }
+        val prev = if (prevRaw.sessionCount > 0) {
+            ((prevRaw.stayMillis + MILLIS_PER_MINUTE - 1) / MILLIS_PER_MINUTE).toInt()
+        } else {
+            null
+        }
+        return if (cur == null || prev == null) {
+            ReviewMetricUi(
+                current = cur?.let { "$it 分钟" } ?: "—",
+                previous = prev?.let { "$it 分钟" },
+                arrow = 0,
+                trend = ReviewTrend.Trend.NO_BASELINE,
+            )
+        } else {
+            countMetric(cur, prev, higherIsBetter = false, unit = " 分钟")
+        }
+    }
+
+    /** 复盘卡（specs/014）：本期 vs 上期四指标；档位与今日键双驱动——跨零点自动换窗。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val reviewStats: StateFlow<ReviewCardUi> =
+        combine(_reviewRange, todayKey) { range, today -> range to reviewWindows(range, today) }
+            .distinctUntilChanged()
+            .flatMapLatest { (range, windows) ->
+                val (cur, prev) = windows
+                combine(
+                    reviewPeriodSummary(cur.startMillis(zone), cur.endMillis(zone)),
+                    reviewPeriodSummary(prev.startMillis(zone), prev.endMillis(zone)),
+                ) { c, p ->
+                    ReviewCardUi(
+                        range = range,
+                        interceptions = countMetric(c.interceptions, p.interceptions, higherIsBetter = false),
+                        resistRate = rateMetric(
+                            ResistRate.percent(c.canceled, c.opened),
+                            ResistRate.percent(p.canceled, p.opened),
+                        ),
+                        completions = countMetric(c.completions, p.completions, higherIsBetter = true),
+                        avgStayMinutes = avgStayMetric(c, p),
+                    )
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), ReviewCardUi.EMPTY)
+
     companion object {
         /** 今日键采样间隔：跨零点后最长 30s 内切到新一天（本地日期计算，成本可忽略）。 */
         private const val DAY_POLL_MS = 30_000L
@@ -281,5 +446,8 @@ class StatsViewModel @Inject constructor(
 
         /** 连击窗口天数（约 3 年）：远大于任何现实连击，截断让 DISTINCT 聚合成本不随年限增长。 */
         private const val ACTIVE_DAYS_WINDOW_DAYS = 1_100L
+
+        /** 复盘卡平均停留的分钟取整单位（与 UI 展示同值口径）。 */
+        private const val MILLIS_PER_MINUTE = 60_000L
     }
 }
