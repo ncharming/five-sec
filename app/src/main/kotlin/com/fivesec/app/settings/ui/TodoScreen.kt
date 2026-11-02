@@ -8,108 +8,78 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.core.content.ContextCompat
 import com.fivesec.app.R
 import com.fivesec.app.data.repository.TodoRepository
 import com.fivesec.app.domain.model.TodoRule
 import com.fivesec.app.reminder.ReminderPermissions
-import com.fivesec.app.reminder.TodoReminderPlanner
 import com.fivesec.app.settings.viewmodels.TodoRow
 import com.fivesec.app.settings.viewmodels.TodoViewModel
 import com.fivesec.app.ui.components.CardSurface
 import com.fivesec.app.ui.components.FiveSecDialog
-import com.fivesec.app.ui.components.FiveSecTextFieldShape
 import com.fivesec.app.ui.components.PageHeader
-import com.fivesec.app.ui.components.fiveSecSwitchColors
-import com.fivesec.app.ui.components.fiveSecTextFieldColors
 import com.fivesec.app.ui.theme.Spacing
-import com.fivesec.app.util.TodoRecurrence
-import java.time.DayOfWeek
 
 /**
  * 待办页（specs/005-daily-todos；006 增重复规则；007 两区分区，首页默认 Tab）。
  * 分区（specs/007；2026-10-04 修订）：「今日待办」卡（未过期条目 + 过期但今天轮到的重复类——
  * 维持 id 升序与灰显/停用机制）+「过期待办 (n)」卡（一切过期条目：单次失败存量 + 重复类错过的
  * 轮到日，按错过日升序；无过期整卡不显示）。过期的重复类若今天轮到会双区同时出现：过期区记
- * 失败账，今日区保住「今天勾掉即补救」的活路（拖延只顺延）；今天不轮到则只在过期区。
+ * 失败账（统一口径 2026-11：**过期区不再提供勾选入口**，改展示「今天轮到·在今日区完成」指引——
+ * 同一条目的完成行为只有一种统计口径，迟到补完标记只属于「今天不轮到」的过期行），今日区保住
+ * 「今天勾掉即补救」的活路（拖延只顺延）；今天不轮到则只在过期区（可补勾/修改/删除）。
  * 今日卡内按重复规则分组（TodoRuleGroups 纯投影）：组序=编辑弹窗四段（每天→每周→每N天→
  * 单次），不同星期集合/不同 N 各自成组（组名自描述，如「每周一、三」），读侧分类与编辑侧
  * 词汇表一致；过期区语义是「失败存量」而非规则分类，不参与分组。
- * 每行标题下副行纯日期（今日区=创建日「—」兜底、过期区=错过的轮到日）；过期行有补勾框、
- * 无启用开关，菜单单次「改为今天 / 删除」、重复类「修改 / 删除」——失败可重试也可直接补勾
- * （2026-10-04 二次修订：补勾写「过期补完」标记，统计侧显式区分迟到完成，不冒充准时）。
- * 视觉沿用四页统一语言（PageHeader + 白卡行骨架 + FiveSecDialog 弹窗）；名额行已移除——
- * 容量语义由「满员底部提示 + 添加兜底弹窗」承载。标题 ≤200 字：列表单行省略，点条目看只读全文弹窗。
+ * 每行标题下副行纯日期（今日区=创建日「—」兜底、过期区=错过的轮到日）；过期行有补勾框
+ * （仅今天不轮到的行）、无启用开关，菜单单次「改为今天 / 删除」、重复类「修改 / 删除」。
+ * 视觉沿用四页统一语言（PageHeader + 白卡行骨架 + FiveSecDialog 弹窗）；标题 ≤200 字：列表
+ * 单行省略，点条目看只读全文弹窗。
  * 只读约定：拦截覆盖层上的待办卡片由本页数据派生（快照只含轮到条目），勾选只发生在本页（FR-005）。
+ *
+ * 弹窗接线约定（2026-11 修复退场体验）：全部弹窗常驻挂载、[FiveSecDialog] 的 visible 驱动开合
+ * （外壳契约：退场动画播完才卸载窗口）——此前编辑/详情/删除用 `?.let` 挂载、关闭即卸载子树，
+ * 退场动画播不了；session 号每次打开自增，作为表单 rememberSaveable 的重置键（重开重置、
+ * 退场动画期间内容保持，不再闪回空白）。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodoScreen(
     viewModel: TodoViewModel = hiltViewModel(),
@@ -119,10 +89,16 @@ fun TodoScreen(
     val isFull = uiState.todayRows.size + uiState.expiredRows.size >= TodoRepository.MAX_TODOS
     val context = LocalContext.current
 
-    var showAddDialog by remember { mutableStateOf(false) }
+    // 弹窗宿主状态：目标 + visible + 会话号（会话号=表单重置键，见类 KDoc）
+    var addVisible by remember { mutableStateOf(false) }
+    var addSession by remember { mutableStateOf(0) }
     var editTarget by remember { mutableStateOf<TodoRow?>(null) }
+    var editVisible by remember { mutableStateOf(false) }
+    var editSession by remember { mutableStateOf(0) }
     var deleteTarget by remember { mutableStateOf<TodoRow?>(null) }
+    var deleteVisible by remember { mutableStateOf(false) }
     var detailTarget by remember { mutableStateOf<TodoRow?>(null) }
+    var detailVisible by remember { mutableStateOf(false) }
     var showLimitDialog by remember { mutableStateOf(false) }
 
     // 提醒权限横幅状态（specs/010）：ON_RESUME 重查（补授权回来即消），不轮询；
@@ -184,7 +160,8 @@ fun TodoScreen(
                         if (isFull) {
                             showLimitDialog = true
                         } else {
-                            showAddDialog = true
+                            addSession++
+                            addVisible = true
                         }
                     },
                     colors = IconButtonDefaults.filledIconButtonColors(
@@ -270,9 +247,19 @@ fun TodoScreen(
                                     row = row,
                                     onToggleDone = { viewModel.setCompleted(row.todo.id, !row.doneToday) },
                                     onToggleEnabled = { viewModel.setEnabled(row.todo.id, it) },
-                                    onShowDetail = { detailTarget = row },
-                                    onRename = { editTarget = row },
-                                    onDelete = { deleteTarget = row },
+                                    onShowDetail = {
+                                        detailTarget = row
+                                        detailVisible = true
+                                    },
+                                    onRename = {
+                                        editTarget = row
+                                        editSession++
+                                        editVisible = true
+                                    },
+                                    onDelete = {
+                                        deleteTarget = row
+                                        deleteVisible = true
+                                    },
                                 )
                             }
                         }
@@ -294,10 +281,20 @@ fun TodoScreen(
                             TodoExpiredRow(
                                 row = row,
                                 onToggleDone = { viewModel.setCompleted(row.todo.id, true, wasExpired = true) },
-                                onShowDetail = { detailTarget = row },
+                                onShowDetail = {
+                                    detailTarget = row
+                                    detailVisible = true
+                                },
                                 onRevive = { viewModel.revive(row.todo.id) },
-                                onRename = { editTarget = row },
-                                onDelete = { deleteTarget = row },
+                                onRename = {
+                                    editTarget = row
+                                    editSession++
+                                    editVisible = true
+                                },
+                                onDelete = {
+                                    deleteTarget = row
+                                    deleteVisible = true
+                                },
                             )
                         }
                     }
@@ -331,19 +328,20 @@ fun TodoScreen(
 
     // 新建待办弹窗（无完成锚点：下次执行恒为「今天」）
     TodoEditDialog(
-        visible = showAddDialog,
+        visible = addVisible,
+        sessionKey = addSession,
         title = stringResource(R.string.todos_add_title),
         initialText = "",
         initialRule = TodoRule.DAILY,
         initialReminderTimes = "",
         today = today,
-        onDismiss = { showAddDialog = false },
+        onDismiss = { addVisible = false },
         onConfirm = { text, rule, reminderTimes ->
-            if (showAddDialog) { // 退场动画期间防重复提交（外壳约定）
+            if (addVisible) { // 退场动画期间防重复提交（外壳约定）
                 viewModel.add(text, rule, reminderTimes)
                 requestNotifPermissionIfNewlySet(wasEmpty = true, now = reminderTimes)
             }
-            showAddDialog = false
+            addVisible = false
         },
     )
 
@@ -352,16 +350,17 @@ fun TodoScreen(
     editTarget?.let { target ->
         val existingRule = TodoRule(target.todo.repeatType, target.todo.repeatDays, target.todo.intervalDays)
         TodoEditDialog(
-            visible = true,
+            visible = editVisible,
+            sessionKey = editSession,
             title = stringResource(R.string.todos_edit_title),
             initialText = target.todo.text,
             initialRule = existingRule,
             initialReminderTimes = target.todo.reminderTimes,
             today = today,
             lastCompletedDate = target.todo.lastCompletedDate,
-            onDismiss = { editTarget = null },
+            onDismiss = { editVisible = false },
             onConfirm = { text, rule, reminderTimes ->
-                if (editTarget != null) {
+                if (editVisible) {
                     viewModel.rename(target.todo.id, text)
                     if (rule != existingRule) viewModel.setRecurrence(target.todo.id, rule)
                     if (reminderTimes != target.todo.reminderTimes) {
@@ -372,7 +371,7 @@ fun TodoScreen(
                         now = reminderTimes,
                     )
                 }
-                editTarget = null
+                editVisible = false
             },
         )
     }
@@ -380,11 +379,11 @@ fun TodoScreen(
     // 全文只读弹窗（点条目行触发）：列表是单行省略的展示层截断，完整内容 + 日期在这里看全
     detailTarget?.let { target ->
         FiveSecDialog(
-            visible = true,
-            onDismissRequest = { detailTarget = null },
+            visible = detailVisible,
+            onDismissRequest = { detailVisible = false },
             title = stringResource(R.string.todos_detail_title),
             confirmButton = {
-                Button(onClick = { detailTarget = null }) {
+                Button(onClick = { detailVisible = false }) {
                     Text(stringResource(R.string.todos_detail_close))
                 }
             },
@@ -406,19 +405,19 @@ fun TodoScreen(
     // 删除确认弹窗（今日/过期两区共用）
     deleteTarget?.let { target ->
         FiveSecDialog(
-            visible = true,
-            onDismissRequest = { deleteTarget = null },
+            visible = deleteVisible,
+            onDismissRequest = { deleteVisible = false },
             title = stringResource(R.string.todos_delete_confirm),
             confirmButton = {
                 Button(onClick = {
-                    if (deleteTarget != null) viewModel.remove(target.todo.id)
-                    deleteTarget = null
+                    if (deleteVisible) viewModel.remove(target.todo.id)
+                    deleteVisible = false
                 }) {
                     Text(stringResource(R.string.common_confirm))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) {
+                TextButton(onClick = { deleteVisible = false }) {
                     Text(stringResource(R.string.common_cancel))
                 }
             },
@@ -449,713 +448,3 @@ fun TodoScreen(
         )
     }
 }
-
-/** 分区小节标题（specs/007 两卡分区）：统一左对齐 labelMedium 弱化色。 */
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(
-            start = Spacing.lg,
-            end = Spacing.lg,
-            top = Spacing.md,
-            bottom = Spacing.xs,
-        ),
-    )
-}
-
-/** 今日卡内规则分组头：与区标题同字体但缩进对齐行内容（md），组间靠分隔线+组头双重区隔。 */
-@Composable
-private fun RuleGroupHeader(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(
-            start = Spacing.md,
-            end = Spacing.md,
-            top = Spacing.md,
-            bottom = Spacing.xs,
-        ),
-    )
-}
-
-/**
- * 分组名与编辑弹窗同一词汇表：每天 / 每周一、三 / 每 N 天 / 单次——读侧分类不发明新词。
- * 防御：周几空集（脏数据，表单已拦）给类型名「每周几」不伪造天数；未知类型兜底按每天档
- * 命名（与 isDue 的脏值兜底同思路：不让条目凭空消失/错位）。
- */
-@Composable
-private fun ruleGroupLabel(group: TodoRuleGroups.Group): String = when (group.repeatType) {
-    TodoRecurrence.REPEAT_WEEKLY -> {
-        val days = DayOfWeek.values().filter { group.repeatDays and TodoRecurrence.bitOf(it) != 0 }
-        if (days.isEmpty()) {
-            stringResource(R.string.todos_rule_weekly)
-        } else {
-            // 标签须先在组合上下文取好（joinToString 的 transform 非组合上下文），
-            // forEach 是 inline——lambda 内 stringResource 可用
-            val dayNames = ArrayList<String>(days.size)
-            days.forEach { dayNames.add(todoRuleDayLabel(it)) }
-            stringResource(R.string.todos_group_weekly, dayNames.joinToString("、"))
-        }
-    }
-    TodoRecurrence.REPEAT_INTERVAL -> stringResource(R.string.todos_group_interval, group.intervalDays)
-    TodoRecurrence.REPEAT_ONCE -> stringResource(R.string.todos_rule_once)
-    else -> stringResource(R.string.todos_rule_daily)
-}
-
-/** 今日区行：今日勾选框 + 标题（完成划线/停用弱化，单行省略、点击看全文）+ 副行日期 + 启用开关 + ⋯（修改/删除）。
- *  勾选框启用条件（2026-10-04 扩展）：轮到 可勾可取消；不轮到不可勾（FR-003 / specs/006 FR-005），
- *  但「今天已完成」的不轮到行可取消——过期补勾的撤销路径（取消即回过期区），只关不清自来账。 */
-@Composable
-private fun TodoItemRow(
-    row: TodoRow,
-    onToggleDone: () -> Unit,
-    onToggleEnabled: (Boolean) -> Unit,
-    onShowDetail: () -> Unit,
-    onRename: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    var menuOpen by remember { mutableStateOf(false) }
-    val enabled = row.todo.isEnabled
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Spacing.md, vertical = Spacing.xs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(
-            checked = row.doneToday,
-            onCheckedChange = { onToggleDone() },
-            enabled = enabled && (row.dueToday || row.doneToday), // 停用不可勾；不轮到仅已完成的可取消
-            colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary),
-        )
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = Spacing.xs)
-                .alpha(
-                    when {
-                        !enabled -> 0.62f // 停用弱化（既有语义）
-                        !row.dueToday -> 0.45f // 不轮到灰显（specs/006）
-                        else -> 1f
-                    },
-                )
-                .clickable(onClick = onShowDetail), // 单行省略是展示层截断：点条目看全文（任何状态可用）
-        ) {
-            Text(
-                row.todo.text,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                textDecoration = if (row.doneToday) TextDecoration.LineThrough else null,
-                color = if (row.doneToday) MaterialTheme.colorScheme.onSurfaceVariant
-                else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            // 副行（specs/007）：创建日（老条目「—」）；"启用但不轮到"追加「今天不用做」——
-            // 停用行的不可勾原因由开关表达，避免双重误导；已完成的今天行不追加（划线已表达，
-            // 迟到补勾的不轮到行再说"今天不用做"自相矛盾）；010 起已设提醒追加「提醒 HH:mm」
-            val notDueLabel = if (enabled && !row.dueToday && !row.doneToday) {
-                " · " + stringResource(R.string.todos_not_due_today)
-            } else {
-                ""
-            }
-            val reminderLabel = if (row.todo.reminderTimes.isNotEmpty()) {
-                " · " + stringResource(R.string.todos_reminder_inline, reminderTimesForDisplay(row.todo.reminderTimes))
-            } else {
-                ""
-            }
-            Text(
-                row.dateLabel + notDueLabel + reminderLabel,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-        Switch(
-            checked = enabled,
-            onCheckedChange = onToggleEnabled,
-            colors = fiveSecSwitchColors(),
-        )
-        Box {
-            IconButton(onClick = { menuOpen = true }) {
-                Icon(
-                    Icons.Default.MoreVert,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                )
-            }
-            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.todos_menu_rename)) },
-                    onClick = {
-                        menuOpen = false
-                        onRename()
-                    },
-                )
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            stringResource(R.string.todos_menu_delete),
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    },
-                    onClick = {
-                        menuOpen = false
-                        onDelete()
-                    },
-                )
-            }
-        }
-    }
-}
-
-/** 过期区行（specs/007；2026-10 重复类入区 + 可补勾）：完成框 + 标题 + 副行错过的轮到日 + ⋯。
- *  完成框（2026-10-04 二次修订，推翻 007「无迟到补勾」）：过期了也可以点完成——写
- *  lastCompletedDate=今天并给完成事件打「过期补完」标记（统计显式区分，补勾不冒充准时）；
- *  勾掉即离开过期区（今天轮到的留在今日区划线态、不轮到的灰显划线到下次轮到）。
- *  菜单按类型分叉：单次=「改为今天」（重写有效期日回今日区、当天可勾）/「删除」；重复类=
- *  「修改」（dueDate 不参与重复类判定，「改为今天」无语义——直接勾完成即补）/「删除」。
- *  无启用开关（过期无"明天"语义，开关只剩误导）。 */
-@Composable
-private fun TodoExpiredRow(
-    row: TodoRow,
-    onToggleDone: () -> Unit,
-    onShowDetail: () -> Unit,
-    onRevive: () -> Unit,
-    onRename: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    var menuOpen by remember { mutableStateOf(false) }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Spacing.md, vertical = Spacing.xs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // 补勾框恒未选中态：已补完的条目当场离开过期区，这里没有「已勾的过期行」
-        Checkbox(
-            checked = false,
-            onCheckedChange = { onToggleDone() },
-            colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary),
-        )
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .alpha(0.75f) // 失败存量弱化一档，但保持可读（要点开看全文/操作）
-                .clickable(onClick = onShowDetail),
-        ) {
-            Text(
-                row.todo.text,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                // 错过的轮到日（specs/007：过期归因看"哪天失败的"；单次=有效期日、重复类=最近错过的轮到日）；
-                // 010 提醒角标照常展示（配置可见性，非会响承诺）
-                row.dateLabel + (
-                    if (row.todo.reminderTimes.isNotEmpty()) {
-                        " · " + stringResource(
-                            R.string.todos_reminder_inline,
-                            reminderTimesForDisplay(row.todo.reminderTimes),
-                        )
-                    } else {
-                        ""
-                    }
-                    ),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-        Box {
-            IconButton(onClick = { menuOpen = true }) {
-                Icon(
-                    Icons.Default.MoreVert,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                )
-            }
-            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                if (row.todo.repeatType == TodoRecurrence.REPEAT_ONCE) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.todos_menu_revive)) },
-                        onClick = {
-                            menuOpen = false
-                            onRevive()
-                        },
-                    )
-                } else {
-                    // 重复类过期行：dueDate 不参与判定，「改为今天」无语义——给「修改」保住编辑入口
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.todos_menu_rename)) },
-                        onClick = {
-                            menuOpen = false
-                            onRename()
-                        },
-                    )
-                }
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            stringResource(R.string.todos_menu_delete),
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    },
-                    onClick = {
-                        menuOpen = false
-                        onDelete()
-                    },
-                )
-            }
-        }
-    }
-}
-
-/**
- * 新建/编辑共用表单弹窗：多行输入（存真实换行 \n，详见 onValueChange 注释）+ 重复规则区（specs/006 三选一；
- * specs/007 扩为四选一，新增「单次」）+ 提醒时刻区（specs/010 起可选；013 起多条 chips，
- * 上限 [TodoReminderPlanner.MAX_REMINDER_TIMES]），200 字硬截断，空白不可确认。
- * 规则区：每天 / 每周几（多选周几，全空禁存并提示）/ 每N天（越界即时收敛显示 2..365，
- * 下方展示下次执行日——锚点=最近完成日，从未完成=今天）/ 单次（原「仅今天」，只在有效期日
- * 当天轮到，跨日未完成进过期分类）。分段按钮不显示选中 ✓（四段等宽排版 + 选中态已由底色表达）。
- * 弹窗内存态保留用户切走的规则勾选（体验细节），保存只落当前选中规则、其余两列归零（见 data-model 不变式）。
- * 提醒区（013）：时刻 chips 点击改（TimePicker 24h、编辑态可「移除」）、＋ 添加；切到「单次」且无时刻
- * 时预填默认 20:00/21:00/22:00 三时刻（TodoReminderPlanner.timesOnRuleSwitch 纯逻辑，原封未动才随
- * 切走还原）；保存时与初始值不同才发定向 UPDATE（与规则区同口径）。
- */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable
-private fun TodoEditDialog(
-    visible: Boolean,
-    title: String,
-    initialText: String,
-    initialRule: TodoRule,
-    initialReminderTimes: String,
-    today: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String, TodoRule, String) -> Unit,
-    lastCompletedDate: String = "", // 新建传缺省（从未完成）；编辑传最近完成日（下次执行日的锚点）
-) {
-    // rememberSaveable：退场动画期间弹窗仍持内容；重开时由调用方以新 key 重建重置。
-    // 注意 key 必须可存 Bundle（rememberSaveable 会持久化 inputs）：initialRule 是数据类，
-    // 以其 toString（三个 Int 字段、确定性）作 key 参与变化检测，而非对象本身
-    val ruleKey = initialRule.toString()
-    var text by rememberSaveable(visible, initialText, ruleKey) { mutableStateOf(initialText) }
-    var ruleType by rememberSaveable(visible, initialText, ruleKey) { mutableStateOf(initialRule.repeatType) }
-    var repeatDays by rememberSaveable(visible, initialText, ruleKey) { mutableStateOf(initialRule.repeatDays) }
-    var intervalText by rememberSaveable(visible, initialText, ruleKey) {
-        mutableStateOf(
-            initialRule.intervalDays
-                .takeIf { initialRule.repeatType == TodoRecurrence.REPEAT_INTERVAL }
-                ?.toString()
-                ?: "3",
-        )
-    }
-    var reminderTimes by rememberSaveable(visible, initialText, ruleKey, initialReminderTimes) {
-        mutableStateOf(initialReminderTimes)
-    }
-
-    // 013：当前时刻串是否「切单次时自动预填且原封未动」——离开单次时据此还原为空（防默认值泄给重复类）
-    var reminderTimesAutoFilled by rememberSaveable(visible, initialText, ruleKey, initialReminderTimes) {
-        mutableStateOf(false)
-    }
-
-    // TimePicker 目标槽位：TIME_SLOT_CLOSED=关、TIME_SLOT_ADD=新增、≥0=编辑该序号时刻（编辑态多一个「移除」）
-    var timePickerSlot by remember { mutableStateOf(TIME_SLOT_CLOSED) }
-
-    /** 规则段切换：时刻联动（预填/还原）先于规则赋值——联动逻辑全部在 timesOnRuleSwitch 纯函数里。 */
-    fun selectRuleType(type: Int) {
-        if (type == ruleType) return
-        val switched = TodoReminderPlanner.timesOnRuleSwitch(ruleType, type, reminderTimes, reminderTimesAutoFilled)
-        reminderTimes = switched.first
-        reminderTimesAutoFilled = switched.second
-        ruleType = type
-    }
-
-    /** 落定一次 TimePicker 选择：改槽/新增统一走归一化（去重升序），用户动手即摘掉 autoFilled 标记。 */
-    fun applyPickedTime(slot: Int, hhmm: String) {
-        val current = TodoReminderPlanner.parseReminderTimes(reminderTimes).toMutableList()
-        if (slot == TIME_SLOT_ADD) current += hhmm else current[slot] = hhmm
-        reminderTimes = TodoReminderPlanner.normalizeReminderTimes(current.joinToString(","))
-        reminderTimesAutoFilled = false
-    }
-
-    /** 移除一个时刻：摘 autoFilled；移空即回「未设置」态。 */
-    fun removeTimeAt(slot: Int) {
-        val current = TodoReminderPlanner.parseReminderTimes(reminderTimes).toMutableList()
-        if (slot in current.indices) {
-            current.removeAt(slot)
-            reminderTimes = current.joinToString(",")
-            reminderTimesAutoFilled = false
-        }
-    }
-
-    val weeklyIncomplete = ruleType == TodoRecurrence.REPEAT_WEEKLY && repeatDays == 0
-    val intervalDays = (intervalText.toIntOrNull() ?: TodoRecurrence.MIN_INTERVAL_DAYS)
-        .coerceIn(TodoRecurrence.MIN_INTERVAL_DAYS, TodoRecurrence.MAX_INTERVAL_DAYS)
-
-    // 时刻列表（派生只读视图：解析即升序去重）——提醒区 chips 与底部 TimePicker 槽位共用
-    val times = TodoReminderPlanner.parseReminderTimes(reminderTimes)
-
-    FiveSecDialog(
-        visible = visible,
-        onDismissRequest = onDismiss,
-        title = title,
-        confirmButton = {
-            Button(
-                onClick = {
-                    val rule = when (ruleType) {
-                        TodoRecurrence.REPEAT_WEEKLY -> {
-                            val days = DayOfWeek.values()
-                                .filter { repeatDays and TodoRecurrence.bitOf(it) != 0 }
-                                .toSet()
-                            if (days.isEmpty()) return@Button // 防御：按钮已禁用，正常不可达
-                            TodoRule.weekly(days)
-                        }
-
-                        TodoRecurrence.REPEAT_INTERVAL -> TodoRule.interval(intervalDays)
-                        TodoRecurrence.REPEAT_ONCE -> TodoRule.ONCE
-                        else -> TodoRule.DAILY
-                    }
-                    onConfirm(text.trim(), rule, reminderTimes)
-                },
-                enabled = text.trim().isNotBlank() && !weeklyIncomplete,
-            ) {
-                Text(stringResource(R.string.todos_save))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_cancel))
-            }
-        },
-    ) {
-        OutlinedTextField(
-            value = text,
-            onValueChange = { raw ->
-                // 真实换行（2026-09 口径修订，取代「换行折叠为空格」）：回车存 \n——
-                // 详情弹窗按行渲染、列表单行省略、拦截卡片取首个非空行（TodoCardText）；
-                // 保存时 trim 剥掉首尾空白行；200 字预算含换行符，不另立计数规则
-                if (raw.length <= TodoRepository.MAX_TEXT_LENGTH) text = raw
-            },
-            placeholder = { Text(stringResource(R.string.todos_input_hint)) },
-            minLines = 3,
-            maxLines = 6,
-            shape = FiveSecTextFieldShape,
-            colors = fiveSecTextFieldColors(),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Text(
-            stringResource(R.string.common_char_count, text.length, TodoRepository.MAX_TEXT_LENGTH),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = Spacing.xs),
-        )
-
-        // ── 重复规则区（specs/006；007 扩四选一） ──
-        Text(
-            stringResource(R.string.todos_rule_title),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = Spacing.md),
-        )
-        SingleChoiceSegmentedButtonRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = Spacing.xs),
-        ) {
-            SegmentedButton(
-                selected = ruleType == TodoRecurrence.REPEAT_DAILY,
-                onClick = { selectRuleType(TodoRecurrence.REPEAT_DAILY) },
-                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 4),
-                icon = {}, // 选中态由底色表达，不再画 ✓——省宽度，四段文案不再换行重叠
-            ) {
-                Text(stringResource(R.string.todos_rule_daily))
-            }
-            SegmentedButton(
-                selected = ruleType == TodoRecurrence.REPEAT_WEEKLY,
-                onClick = { selectRuleType(TodoRecurrence.REPEAT_WEEKLY) },
-                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 4),
-                icon = {},
-            ) {
-                Text(stringResource(R.string.todos_rule_weekly))
-            }
-            SegmentedButton(
-                selected = ruleType == TodoRecurrence.REPEAT_INTERVAL,
-                onClick = { selectRuleType(TodoRecurrence.REPEAT_INTERVAL) },
-                shape = SegmentedButtonDefaults.itemShape(index = 2, count = 4),
-                icon = {},
-            ) {
-                Text(stringResource(R.string.todos_rule_interval))
-            }
-            SegmentedButton(
-                selected = ruleType == TodoRecurrence.REPEAT_ONCE,
-                onClick = { selectRuleType(TodoRecurrence.REPEAT_ONCE) },
-                shape = SegmentedButtonDefaults.itemShape(index = 3, count = 4),
-                icon = {},
-            ) {
-                Text(stringResource(R.string.todos_rule_once))
-            }
-        }
-
-        when (ruleType) {
-            TodoRecurrence.REPEAT_WEEKLY -> {
-                FlowRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = Spacing.xs),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
-                ) {
-                    DayOfWeek.values().forEach { day ->
-                        val bit = TodoRecurrence.bitOf(day)
-                        FilterChip(
-                            selected = repeatDays and bit != 0,
-                            onClick = { repeatDays = repeatDays xor bit },
-                            label = { Text(todoRuleDayLabel(day)) },
-                        )
-                    }
-                }
-                if (weeklyIncomplete) {
-                    Text(
-                        stringResource(R.string.todos_rule_weekly_required),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = Spacing.xs),
-                    )
-                }
-            }
-
-            TodoRecurrence.REPEAT_INTERVAL -> {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = Spacing.xs),
-                ) {
-                    OutlinedTextField(
-                        value = intervalText,
-                        onValueChange = { raw ->
-                            // 只留数字 + 越界即时收敛显示（输 1 → 2、输 999 → 365）；清空允许（保存时兜底 MIN）
-                            val digits = raw.filter { it.isDigit() }.take(3)
-                            intervalText = if (digits.isEmpty()) {
-                                ""
-                            } else {
-                                digits.toInt()
-                                    .coerceIn(TodoRecurrence.MIN_INTERVAL_DAYS, TodoRecurrence.MAX_INTERVAL_DAYS)
-                                    .toString()
-                            }
-                        },
-                        label = { Text(stringResource(R.string.todos_rule_interval)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        shape = FiveSecTextFieldShape,
-                        colors = fiveSecTextFieldColors(),
-                        modifier = Modifier.width(120.dp),
-                    )
-                    Text(stringResource(R.string.todos_rule_interval_days))
-                }
-                // 下次执行日（用户要求：选中每N天时展示）：与灰显判定同源的纯函数算出，随 N 输入即时联动；
-                // 已到期/从未完成收敛为「今天」，today 非法（防御不可达）返回 null 整行隐藏
-                val nextDue = TodoRecurrence.nextIntervalDueDate(lastCompletedDate, intervalDays, today)
-                if (nextDue != null) {
-                    Text(
-                        stringResource(
-                            R.string.todos_rule_interval_next,
-                            if (nextDue == today) {
-                                stringResource(R.string.todos_rule_interval_next_today)
-                            } else {
-                                nextDue
-                            },
-                        ),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = Spacing.xs),
-                    )
-                }
-                Text(
-                    stringResource(R.string.todos_rule_interval_hint),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = Spacing.xs),
-                )
-            }
-
-            TodoRecurrence.REPEAT_ONCE -> {
-                Text(
-                    stringResource(R.string.todos_rule_once_hint),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = Spacing.xs),
-                )
-            }
-        }
-
-        // ── 提醒时刻区（specs/010；013 起多条 chips）：点 chip 改时刻、＋ 添加、空态点击开选 ──
-        Text(
-            stringResource(R.string.todos_reminder_section),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = Spacing.md),
-        )
-        FlowRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = Spacing.xs),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
-        ) {
-            if (times.isEmpty()) {
-                Text(
-                    stringResource(R.string.todos_reminder_none),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.clickable { timePickerSlot = TIME_SLOT_ADD },
-                )
-            } else {
-                times.forEachIndexed { index, time ->
-                    InputChip(
-                        selected = false,
-                        onClick = { timePickerSlot = index },
-                        label = { Text(time) },
-                    )
-                }
-                AssistChip(
-                    onClick = { timePickerSlot = TIME_SLOT_ADD },
-                    label = { Text(stringResource(R.string.todos_reminder_add)) },
-                    enabled = times.size < TodoReminderPlanner.MAX_REMINDER_TIMES, // 满上限即藏入口，下方提示上限
-                )
-            }
-        }
-        if (times.size >= TodoReminderPlanner.MAX_REMINDER_TIMES) {
-            Text(
-                stringResource(R.string.todos_reminder_max, TodoReminderPlanner.MAX_REMINDER_TIMES),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = Spacing.xs),
-            )
-        }
-        if (ruleType == TodoRecurrence.REPEAT_ONCE && times.isNotEmpty()) {
-            Text(
-                stringResource(
-                    R.string.todos_reminder_once_hint,
-                    TodoReminderPlanner.DEFAULT_ONCE_REMINDER_TIMES.joinToString("、"),
-                ),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = Spacing.xs),
-            )
-        }
-    }
-
-    // 提醒时刻选择器（specs/010；013 起按槽位复用）：统一弹窗外壳包 Material3 TimePicker
-    // （24 小时制、分钟精度）；确认回写 HH:mm（秒恒 00 不暴露）经归一化落 chips；编辑既有时刻时
-    // 多一个「移除」入口（destructive 放次按钮区最左）；取消不动
-    if (timePickerSlot != TIME_SLOT_CLOSED) {
-        val editing = timePickerSlot >= 0
-        val initial = (if (editing) times.getOrNull(timePickerSlot) else null)?.split(":")
-        val pickerState = rememberTimePickerState(
-            initialHour = initial?.getOrNull(0)?.toIntOrNull() ?: DEFAULT_REMINDER_HOUR,
-            initialMinute = initial?.getOrNull(1)?.toIntOrNull() ?: 0,
-            is24Hour = true,
-        )
-        FiveSecDialog(
-            visible = true,
-            onDismissRequest = { timePickerSlot = TIME_SLOT_CLOSED },
-            title = stringResource(R.string.todos_reminder_pick_title),
-            confirmButton = {
-                Button(onClick = {
-                    applyPickedTime(timePickerSlot, "%02d:%02d".format(pickerState.hour, pickerState.minute))
-                    timePickerSlot = TIME_SLOT_CLOSED
-                }) {
-                    Text(stringResource(R.string.common_confirm))
-                }
-            },
-            dismissButton = {
-                if (editing) {
-                    TextButton(onClick = {
-                        removeTimeAt(timePickerSlot)
-                        timePickerSlot = TIME_SLOT_CLOSED
-                    }) {
-                        Text(
-                            stringResource(R.string.todos_reminder_remove),
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                }
-                TextButton(onClick = { timePickerSlot = TIME_SLOT_CLOSED }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
-            },
-        ) {
-            TimePicker(state = pickerState)
-        }
-    }
-}
-
-/** 周几 FilterChip 文案（资源引用，中文第一语言）。 */
-@Composable
-private fun todoRuleDayLabel(day: DayOfWeek): String = when (day) {
-    DayOfWeek.MONDAY -> stringResource(R.string.todos_rule_dow_1)
-    DayOfWeek.TUESDAY -> stringResource(R.string.todos_rule_dow_2)
-    DayOfWeek.WEDNESDAY -> stringResource(R.string.todos_rule_dow_3)
-    DayOfWeek.THURSDAY -> stringResource(R.string.todos_rule_dow_4)
-    DayOfWeek.FRIDAY -> stringResource(R.string.todos_rule_dow_5)
-    DayOfWeek.SATURDAY -> stringResource(R.string.todos_rule_dow_6)
-    else -> stringResource(R.string.todos_rule_dow_7)
-}
-
-/** 提醒权限缺口快照（specs/010 横幅判定源）：三项各自独立（ReminderPermissions 同口径）。 */
-private data class ReminderPermGaps(
-    val notifications: Boolean = false,
-    val battery: Boolean = false,
-    val fullScreen: Boolean = false,
-)
-
-/** 提醒权限横幅行：说明文案 + 「去开启」；出现/消失由 ON_RESUME 重查驱动，不跟踪一次性动作结果。 */
-@Composable
-private fun ReminderPermBanner(text: String, onAction: () -> Unit) {
-    CardSurface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Spacing.lg, vertical = Spacing.xs),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = onAction) {
-                Text(stringResource(R.string.todo_reminder_banner_action))
-            }
-        }
-    }
-}
-
-/** TimePicker 缺省初始小时（specs/010）：晚间自律场景的常见提醒档位，纯 UX 缺省无语义。 */
-private const val DEFAULT_REMINDER_HOUR = 20
-
-/** 提醒时刻选择器的目标槽位（013）：-2=关闭；-1=新增（无「移除」）；≥0=编辑该序号时刻。 */
-private const val TIME_SLOT_CLOSED = -2
-private const val TIME_SLOT_ADD = -1
-
-/** 行内角标的多时刻展示形（013）：CSV → 「20:00、21:00、22:00」（顿号连接，中文第一语言）。 */
-private fun reminderTimesForDisplay(raw: String): String =
-    TodoReminderPlanner.parseReminderTimes(raw).joinToString("、")

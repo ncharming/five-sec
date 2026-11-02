@@ -21,12 +21,17 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -35,6 +40,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import com.fivesec.app.ui.theme.Spacing
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 统一视觉组件库（AppList 重设计确立的风格，四页面共用）：
@@ -165,7 +172,18 @@ fun CapacitySegments(
     }
 }
 
-/** 应用图标锚点：读系统真实图标；加载失败回退为首字方块。dimmed 用于"已暂停"弱化。 */
+/**
+ * 进程级图标位图缓存（LRU，2026-11）：PackageManager 图标解码（binder + bitmap）跨屏复用——
+ * 拦截页/统计页的应用卡与应用选择列表共享。只在主线程读写（remember 读、LaunchedEffect 完成
+ * 时写），无并发问题。
+ */
+private val appIconCache = object : LinkedHashMap<String, ImageBitmap>(8, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?): Boolean = size > 32
+}
+
+/** 应用图标锚点：读系统真实图标；加载失败回退为首字方块。dimmed 用于"已暂停"弱化。
+ *  解码异步化（2026-11）：此前 remember{} 组合期同步 getApplicationIcon().toBitmap()——
+ *  binder 调用 + 位图解码跑在主线程首帧路径；现在 IO 线程解码、就绪回填，期间显示回退底色。 */
 @Composable
 fun AppIcon(
     packageName: String,
@@ -175,11 +193,20 @@ fun AppIcon(
     size: Dp = 46.dp,
 ) {
     val context = LocalContext.current
-    val icon = remember(packageName) {
-        runCatching {
-            context.packageManager.getApplicationIcon(packageName).toBitmap().asImageBitmap()
-        }.getOrNull()
+    var icon by remember(packageName) { mutableStateOf(appIconCache[packageName]) }
+    LaunchedEffect(packageName) {
+        if (icon == null) {
+            val decoded = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.packageManager.getApplicationIcon(packageName).toBitmap().asImageBitmap()
+                }.getOrNull()
+            }
+            if (decoded != null) appIconCache[packageName] = decoded
+            icon = decoded
+        }
     }
+    // 局部快照供 smart cast（icon 是 var 委托属性，不能智能转换）
+    val bitmap = icon
     Box(
         modifier = modifier
             .size(size)
@@ -188,9 +215,9 @@ fun AppIcon(
             .alpha(if (dimmed) 0.62f else 1f),
         contentAlignment = Alignment.Center,
     ) {
-        if (icon != null) {
+        if (bitmap != null) {
             Image(
-                bitmap = icon,
+                bitmap = bitmap,
                 contentDescription = appName,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),

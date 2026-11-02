@@ -156,6 +156,13 @@
     <string name="common_cancel">取消</string>
     <string name="common_done">完成</string>
     <string name="common_char_count">%1$d/%2$d</string>
+    <string name="common_more">更多操作</string>
+
+    <!-- 过期区（统一口径 2026-11）：过期重复类今天轮到时不再提供过期区补勾入口——补勾只发生在
+         「今天不轮到」的过期行（迟到补完标记 wasExpired 语义唯一）；今天轮到的行只在今日区勾选 -->
+    <string name="todos_expired_due_today_hint">今天轮到 · 在今日区完成</string>
+    <string name="app_list_remove_confirm">移除该应用的拦截？</string>
+    <string name="app_list_add_failed">添加失败，请重试</string>
 
     <!-- Stats -->
     <string name="stats_title">统计</string>

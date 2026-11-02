@@ -37,11 +37,15 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -107,6 +111,20 @@ fun InterceptScreen(
     var searchQuery by remember { mutableStateOf("") }
     val isFull = apps.size >= TargetAppRepository.MAX_APPS
 
+    // 移除确认（2026-11：此前菜单点「移除」直接执行——误触即丢配置，与待办删除的确认弹窗对齐）
+    var removeTarget by remember { mutableStateOf<TargetApp?>(null) }
+    var removeVisible by remember { mutableStateOf(false) }
+
+    // 添加失败反馈（2026-11：此前仅 Log.e 无用户提示，名额满/写库失败点了没反应）：
+    // snackbar 消费 VM 的一次性失败事件，null 文案以本地兜底资源呈现
+    val snackbarHostState = remember { SnackbarHostState() }
+    val addFailedText = stringResource(R.string.app_list_add_failed)
+    LaunchedEffect(Unit) {
+        appListViewModel.addFailure.collect { message ->
+            snackbarHostState.showSnackbar(message ?: addFailedText)
+        }
+    }
+
     // 无障碍服务状态：ON_RESUME 重查（用户跳系统设置开启后返回时刷新），与原五秒页一致
     var serviceEnabled by remember { mutableStateOf(AccessibilityPermissionHelper.isServiceEnabled(context)) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -120,7 +138,9 @@ fun InterceptScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Scaffold { padding ->
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) { padding ->
         Column(
             modifier = Modifier
                 .padding(padding)
@@ -225,7 +245,10 @@ fun InterceptScreen(
                             app = app,
                             interceptionPaused = !globalEnabled, // 总开关关闭：整行降透明度（仅视觉联动）
                             onToggle = { appListViewModel.setEnabled(app.packageName, it) },
-                            onRemove = { appListViewModel.remove(app.packageName) },
+                            onRemove = {
+                                removeTarget = app
+                                removeVisible = true
+                            },
                             onToggleGuard = { appListViewModel.setSessionGuard(app.packageName, !app.sessionGuardEnabled) },
                         )
                     }
@@ -259,6 +282,34 @@ fun InterceptScreen(
             GuardCard(
                 minutes = settings.sessionGuardMinutes,
                 onPickInterval = { showIntervalPicker = true },
+            )
+        }
+    }
+
+    // 移除确认弹窗（2026-11）：与待办删除同款——菜单「移除」先确认再执行
+    removeTarget?.let { target ->
+        FiveSecDialog(
+            visible = removeVisible,
+            onDismissRequest = { removeVisible = false },
+            title = stringResource(R.string.app_list_remove_confirm),
+            confirmButton = {
+                Button(onClick = {
+                    if (removeVisible) appListViewModel.remove(target.packageName)
+                    removeVisible = false
+                }) {
+                    Text(stringResource(R.string.common_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { removeVisible = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        ) {
+            Text(
+                target.appName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -562,7 +613,7 @@ private fun AppRow(
             IconButton(onClick = { menuOpen = true }) {
                 Icon(
                     Icons.Default.MoreVert,
-                    contentDescription = null,
+                    contentDescription = stringResource(R.string.common_more),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                 )
             }
