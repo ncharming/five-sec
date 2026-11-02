@@ -31,6 +31,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -60,6 +61,9 @@ import java.time.DayOfWeek
  * 状态重置口径（2026-11 修复闪白）：rememberSaveable 以 [sessionKey]（调用方每次打开自增）为重置键
  * ——**重开时重置、退场动画期间保持**。此前以 visible 为键：确认关闭的瞬间 visible=false 即重置回
  * 初始值，而 FiveSecDialog 退场动画 160ms 内内容仍在屏上，观感是「关闭瞬间表单闪回空白」。
+ *
+ * 习惯模板区（specs/019，[showTemplates] 仅新建弹窗开启）：静态 string-array chips 点击**整体替换**
+ * 当前草稿（模板是起点不是追加）；编辑既有待办不显示——模板只服务冷启动填内容，规则与提醒仍走默认。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -73,6 +77,7 @@ internal fun TodoEditDialog(
     today: String,
     onDismiss: () -> Unit,
     onConfirm: (String, TodoRule, String) -> Unit,
+    showTemplates: Boolean = false, // 新建 true：输入框上方显示习惯模板 chips（specs/019）
     lastCompletedDate: String = "", // 新建传缺省（从未完成）；编辑传最近完成日（下次执行日的锚点）
 ) {
     // rememberSaveable 的键须可存 Bundle：initialRule 是数据类，以其 toString（三个 Int 字段、
@@ -168,6 +173,22 @@ internal fun TodoEditDialog(
             }
         },
     ) {
+        // 习惯模板 chips（specs/019）：仅新建弹窗——点击整体替换草稿，随后的字数计数/规则照常
+        if (showTemplates) {
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = Spacing.sm),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+            ) {
+                stringArrayResource(R.array.todo_templates).forEach { template ->
+                    AssistChip(
+                        onClick = { text = template },
+                        label = { Text(template, style = MaterialTheme.typography.labelMedium) },
+                    )
+                }
+            }
+        }
         OutlinedTextField(
             value = text,
             onValueChange = { raw ->

@@ -326,7 +326,7 @@ fun TodoScreen(
         }
     }
 
-    // 新建待办弹窗（无完成锚点：下次执行恒为「今天」）
+    // 新建待办弹窗（无完成锚点：下次执行恒为「今天」；模板 chips 只在新建开启，specs/019）
     TodoEditDialog(
         visible = addVisible,
         sessionKey = addSession,
@@ -335,6 +335,7 @@ fun TodoScreen(
         initialRule = TodoRule.DAILY,
         initialReminderTimes = "",
         today = today,
+        showTemplates = true,
         onDismiss = { addVisible = false },
         onConfirm = { text, rule, reminderTimes ->
             if (addVisible) { // 退场动画期间防重复提交（外壳约定）

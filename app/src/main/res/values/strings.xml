@@ -54,6 +54,15 @@
     <string name="export_success">已导出</string>
     <string name="export_failed">导出失败，请重试</string>
 
+    <!-- 待办习惯模板（specs/019）：新建弹窗一键填入（整体替换草稿；编辑不显示） -->
+    <string-array name="todo_templates">
+        <item>喝水 8 杯</item>
+        <item>拉伸 5 分钟</item>
+        <item>读书 20 页</item>
+        <item>走动 10 分钟</item>
+        <item>复盘今天的 3 件事</item>
+    </string-array>
+
     <!-- Intercept（合并页：拦截总开关 + 无障碍状态 + 应用清单，specs/005-daily-todos） -->
     <string name="intercept_title">拦截</string>
     <string name="intercept_subtitle">给无意识的刷手机加一道减速带</string>
