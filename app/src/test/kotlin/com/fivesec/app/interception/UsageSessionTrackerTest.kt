@@ -188,4 +188,47 @@ class UsageSessionTrackerTest {
         assertEquals(emptyList<UsageSessionTracker.Action>(), tracker.onGuardEnded())
         assertEquals(emptyList<UsageSessionTracker.Action>(), tracker.onServiceStopped())
     }
+
+    @Test
+    fun `连续停留靠同包心跳入账，闲置关闭时长止于最后心跳`() {
+        tracker.onOpened(pkg, minutes)
+        // 连续停留 39 分钟无任何切换事件——最后停留时刻只能靠同包窗口事件心跳刷新
+        time.nowMs = 39 * minute
+        tracker.onHeartbeat(pkg)
+        time.nowMs = 40 * minute
+        tracker.onForegroundSwitched(other, minutes) // 切走（距最后心跳 1 分钟 < 30，不关）
+        // 另一应用事件在 80 分钟到达：80-39=41 分钟 ≥30 → 惰性关闭
+        time.nowMs = 80 * minute
+        val close = closes(tracker.onForegroundSwitched(other, minutes)).single()
+        assertEquals(UsageSessionEndReason.IDLE_TIMEOUT, close.record.endReason)
+        assertEquals(39 * minute, close.record.endedAt) // 若无心跳，endedAt 会停在打开时刻（时长≈0）
+        assertEquals(39 * minute, close.record.durationMillis)
+    }
+
+    @Test
+    fun `守护关应用靠心跳全程入账`() {
+        tracker.onOpened(pkg, null) // 守护关：无回弹，切换/计时都不会刷新最后停留时刻
+        time.nowMs = 50 * minute
+        tracker.onHeartbeat(pkg)
+        val close = closes(tracker.onServiceStopped()).single()
+        assertEquals(UsageSessionEndReason.SERVICE_STOPPED, close.record.endReason)
+        assertEquals(50 * minute, close.record.endedAt)
+        assertEquals(50 * minute, close.record.durationMillis)
+    }
+
+    @Test
+    fun `非会话应用的心跳被忽略`() {
+        tracker.onOpened(pkg, minutes)
+        time.nowMs = 10 * minute
+        tracker.onHeartbeat(other) // 别家应用的同包事件：不许污染会话的最后停留时刻
+        val close = closes(tracker.onServiceStopped()).single()
+        assertEquals(0L, close.record.endedAt)
+        assertEquals(0L, close.record.durationMillis)
+    }
+
+    @Test
+    fun `无会话时心跳安全空返回`() {
+        tracker.onHeartbeat(pkg) // 不抛异常、不建会话
+        assertEquals(emptyList<UsageSessionTracker.Action>(), tracker.onServiceStopped())
+    }
 }

@@ -89,6 +89,10 @@ class AppBlockerAccessibilityService : AccessibilityService() {
             // 使用时长守护（specs/012）：前台切换路由给会话状态机——必须在一切放行/覆盖层早退之前
             // （切走取消计时、切回重装、闲置惰性关闭都要记账）；配置运行中变更在下次装计时点生效
             handleSessionActions(sessionTracker.onForegroundSwitched(pkg, controller.sessionGuardMinutes(pkg)))
+        } else {
+            // 同包窗口事件（应用内连续停留的常态）：会话心跳刷新最后停留时刻——同样必须在
+            // userOpenedPkg/suppressedPkg 放行早退之前，否则会话应用的事件大多到不了这里（specs/012 墙钟口径）
+            sessionTracker.onHeartbeat(pkg)
         }
 
         // 如果用户主动打开了该应用，则忽略其所有窗口事件

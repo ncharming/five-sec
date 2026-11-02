@@ -53,6 +53,7 @@ v11 → **v12**；`MIGRATION_11_12`：`ALTER TABLE target_apps ADD COLUMN sessio
 (无会话) ──onOpened(pkg)──▶ (会话: pkg/startedAt/lastForegroundAt/guardShownCount=0/guarding=真)
    │                              │
    │  前台==pkg: 刷 lastForegroundAt；计时未装且守护中 → ArmTimer(N)（切回重计整段）
+   │  同包窗口事件（连续停留无切换，2026-11 补漏）: onHeartbeat 刷 lastForegroundAt——只靠切换/回弹刷新时守护关的应用时长恒≈0
    │  前台!=pkg: CancelTimer；now-lastForegroundAt≥30min → CloseSession(IDLE_TIMEOUT, endedAt=lastForegroundAt)
    │  onTimerFired(前台==pkg且guarding): guardShownCount++（达3→guarding=假）
    │                                       → 弹回弹层（标题分钟=自startedAt向上取整）

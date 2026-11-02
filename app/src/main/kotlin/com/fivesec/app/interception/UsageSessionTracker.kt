@@ -92,6 +92,18 @@ class UsageSessionTracker(private val timeProvider: TimeProvider) {
         return actions
     }
 
+    /**
+     * 同包前台事件心跳（specs/012 墙钟口径补漏）：应用内**连续停留**（刷信息流不切应用）不产生
+     * 切换事件，最后停留时刻若只靠切换/回弹刷新，守护关的应用会全程无刷新（时长恒≈0）、
+     * 长会话也只记到最后一次回弹点。服务把每个同包 TYPE_WINDOW_STATE_CHANGED 路由进来
+     * （在 userOpenedPkg/suppressedPkg 放行早退之前——会话应用的事件大多在那里早退），
+     * 这里只刷新时刻、不产生动作；非会话应用的心跳静默忽略。
+     */
+    fun onHeartbeat(pkg: String) {
+        val s = session ?: return
+        if (pkg == s.pkg) s.lastForegroundAt = timeProvider.now()
+    }
+
     /** 计时到点（服务回调）：前台已切走或本场不再守护→静默；否则计一次回弹并要求弹层。 */
     fun onTimerFired(foregroundPkg: String?): TimerFired? {
         val s = session ?: return null
