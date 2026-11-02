@@ -58,7 +58,9 @@ class InterceptionRepository @Inject constructor(
         }
     }
 
-    fun observeActiveDays(): Flow<List<String>> = eventDao.observeActiveDays()
+    /** 连击数据源：已完成锻炼的活跃日（yyyy-MM-dd 降序）。[since] 下界由调用方给
+     *  （连击窗口截断，见 DAO 注释——DateUtil.computeStreak 只向过去回溯，窗口内列表足够）。 */
+    fun observeActiveDays(since: String): Flow<List<String>> = eventDao.observeActiveDays(since)
 
     /** 周期内按应用聚合的拦截/打开/取消计数（供应用级历史统计卡片使用）。 */
     fun observeCountsByPackageBetween(rangeStart: Long, rangeEnd: Long): Flow<List<PackageRangeCount>> =

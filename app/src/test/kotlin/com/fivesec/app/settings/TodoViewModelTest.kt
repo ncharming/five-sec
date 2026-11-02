@@ -19,7 +19,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -354,6 +356,36 @@ class TodoViewModelTest {
         assertEquals(day1, ui.expiredRows.single().dateLabel)
     }
 
+    /** 统一口径（2026-11）：过期行携带**真实** dueToday（此前恒 false）——渲染层据此决定过期行给
+     *  补勾框还是「今天轮到·在今日区完成」指引：双区行（今天轮到）在过期区不给补勾入口（完成
+     *  只走今日区、记准时口径），补勾（wasExpired=true 迟到标记）只属于「今天不轮到」的过期行。 */
+    @Test
+    fun `过期行携带真实dueToday_双区行不给过期区补勾入口`() = runTest(dispatcher) {
+        nowMillis = 1_789_000_000_000L
+        viewModel.refreshToday()
+        val todayStr = DateUtil.todayString(nowMillis)
+        val yesterdayStr = DateUtil.todayString(nowMillis - 24 * 60 * 60 * 1000L)
+        val missedDay = LocalDate.parse(todayStr).minusDays(3)
+        val missedBit = TodoRecurrence.bitOf(missedDay.dayOfWeek)
+        dao.state.value = listOf(
+            // 每天：昨天在册未完成 → 过期（错过昨天）且今天轮到 → 双区展示
+            Todo(id = 1, text = "过期但今天轮到", repeatType = TodoRecurrence.REPEAT_DAILY, createdAt = yesterdayStr),
+            // 周几（≠今天）：三天前错过、今天不轮到 → 只在过期区
+            Todo(
+                id = 2,
+                text = "过期且今天不轮到",
+                repeatType = TodoRecurrence.REPEAT_WEEKLY,
+                repeatDays = missedBit,
+                createdAt = missedDay.minusDays(1).toString(),
+            ),
+        )
+        advanceUntilIdleAndFlush()
+
+        val expired = viewModel.uiState.value.expiredRows.associate { it.todo.id to it.dueToday }
+        assertEquals(true, expired[1L]) // 双区行：过期区不给补勾入口，完成只走今日区（准时口径）
+        assertEquals(false, expired[2L]) // 今天不轮到：过期区补勾（wasExpired=true）唯一入口
+    }
+
     @Test
     fun `僵尸行过滤_已完成一次性跨日不进任何区`() = runTest(dispatcher) {
         nowMillis = 1_789_000_000_000L
@@ -488,7 +520,20 @@ class TodoViewModelTest {
         assertEquals(false, flags[2L])
     }
 
-    private fun advanceUntilIdleAndFlush() {
+    /** uiState 的 WhileSubscribed 驱动者是否已挂（2026-11 契约升级：断言读 .value 快照前必须有订阅者）。 */
+    private var uiStateDriven = false
+
+    /**
+     * 排空调度器并冲刷后台协程。**先保证 uiState 有订阅者**（2026-11 起 uiState 为
+     * WhileSubscribed(5s)——无订阅上游不跑，直接读 .value 恒为初始空态；订阅者挂
+     * backgroundScope，随测试自动取消、不阻塞收尾）。fake 数据源全是 StateFlow/挂起读，
+     * advanceUntilIdle 可正常归寂。
+     */
+    private fun TestScope.advanceUntilIdleAndFlush() {
+        if (!uiStateDriven) {
+            uiStateDriven = true
+            backgroundScope.launch { viewModel.uiState.collect {} }
+        }
         dispatcher.scheduler.advanceUntilIdle() // 排空 Main 调度器上的 VM 协程
         Thread.sleep(150) // 排空可能存在的 Repository 真实后台协程
     }

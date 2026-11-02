@@ -29,12 +29,16 @@ interface InterceptionEventDao {
     )
     fun observeCountsByPackageBetween(rangeStart: Long, rangeEnd: Long): Flow<List<PackageRangeCount>>
 
-    /** 已完成锻炼的日期（按本地日，YYYY-MM-DD），按日期降序。用于计算连击。 */
+    /** 已完成锻炼的日期（按本地日，YYYY-MM-DD），按日期降序。用于计算连击。
+     *  下界 [since]（yyyy-MM-dd）：连击窗口截断——无界 DISTINCT 会随年限增长每次 INSERT
+     *  全量重发（2026-11 优化）；窗口远大于任何现实连击，行为无感知。 */
     @Query(
         "SELECT DISTINCT strftime('%Y-%m-%d', timestamp / 1000, 'unixepoch', 'localtime') AS d " +
-            "FROM interception_events WHERE exerciseCompleted = 1 ORDER BY d DESC"
+            "FROM interception_events WHERE exerciseCompleted = 1 " +
+            "AND strftime('%Y-%m-%d', timestamp / 1000, 'unixepoch', 'localtime') >= :since " +
+            "ORDER BY d DESC"
     )
-    fun observeActiveDays(): Flow<List<String>>
+    fun observeActiveDays(since: String): Flow<List<String>>
 
     /** 最早拦截事件时间；无事件时为 null。用于生成年份筛选的可选范围。 */
     @Query("SELECT MIN(timestamp) FROM interception_events")

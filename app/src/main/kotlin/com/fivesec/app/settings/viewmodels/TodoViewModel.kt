@@ -72,17 +72,8 @@ class TodoViewModel @Inject constructor(
                         todo.createdAt,
                         todayString,
                     )
-                    if (missed != null) {
-                        expiredRows += TodoRow(
-                            todo = todo,
-                            doneToday = false,
-                            dueToday = false,
-                            dateLabel = missed, // 过期区副行=错过的轮到日（哪天失败的；单次即有效期日）
-                        )
-                    }
-                    // 双区归属：过期单次不回今日区（无迟到补勾，007 口径）；过期重复类仅当今天
-                    // 轮到时回今日区可勾（拖延只顺延——今天就是补救日，勾掉即离开过期区），
-                    // 今天不轮到则只在过期区；未过期条目照旧全量进今日区（含停用/不轮到灰显）。
+                    // 今日是否轮到：两区共用同一次求值（过期行的 dueToday 供统一口径渲染——
+                    // 今天轮到的行在过期区不提供补勾入口，勾选只发生在今日区，wasExpired 语义唯一）
                     val dueToday = TodoRecurrence.isDue(
                         todo.repeatType,
                         todo.repeatDays,
@@ -91,6 +82,17 @@ class TodoViewModel @Inject constructor(
                         todo.dueDate,
                         todayString,
                     )
+                    if (missed != null) {
+                        expiredRows += TodoRow(
+                            todo = todo,
+                            doneToday = false,
+                            dueToday = dueToday,
+                            dateLabel = missed, // 过期区副行=错过的轮到日（哪天失败的；单次即有效期日）
+                        )
+                    }
+                    // 双区归属：过期单次不回今日区（无迟到补勾，007 口径）；过期重复类仅当今天
+                    // 轮到时回今日区可勾（拖延只顺延——今天就是补救日，勾掉即离开过期区），
+                    // 今天不轮到则只在过期区；未过期条目照旧全量进今日区（含停用/不轮到灰显）。
                     val backToToday = when {
                         missed == null -> true
                         todo.repeatType == TodoRecurrence.REPEAT_ONCE -> false
@@ -111,7 +113,7 @@ class TodoViewModel @Inject constructor(
                 // 错过日升序=最早失败在前（单次=有效期日、重复类=最近错过的轮到日）；同日稳定保 id 序
                 expiredRows = expiredRows.sortedBy { it.dateLabel },
             )
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, TodoUiState(emptyList(), emptyList()))
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), TodoUiState(emptyList(), emptyList()))
 
     /** 页面 ON_RESUME 调用：跨日后重算今日口径（完成态、灰显态与过期分区随之联动）。 */
     fun refreshToday() {
@@ -169,5 +171,8 @@ class TodoViewModel @Inject constructor(
     companion object {
         /** 老数据（v7 迁移回填空串）的创建日占位——展示「—」，不伪造迁移日（specs/007 拍板口径）。 */
         const val UNKNOWN_DATE = "—"
+
+        /** 无 UI 订阅后查询链的存活余量（VM 随返回栈常驻，2026-11 与 Eagerly 约定一并修订）。 */
+        private const val STOP_TIMEOUT_MS = 5_000L
     }
 }

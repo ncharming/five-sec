@@ -9,9 +9,12 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -24,7 +27,12 @@ class AppListViewModel @Inject constructor(
 ) : ViewModel() {
 
     val targetApps: StateFlow<List<TargetApp>> =
-        targetAppRepository.observeAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+        targetAppRepository.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())
+
+    /** 添加失败一次性事件（中文文案来自仓库，null=未知原因由 UI 兜底资源呈现）：
+     *  2026-11 前仅 Log.e 无用户提示——名额满/写库失败的反馈必须可见。 */
+    private val _addFailure = MutableSharedFlow<String?>(extraBufferCapacity = 1)
+    val addFailure: SharedFlow<String?> = _addFailure.asSharedFlow()
 
     private val _installedApps = MutableStateFlow<List<PackageUtil.InstalledApp>>(emptyList())
     val installedApps: StateFlow<List<PackageUtil.InstalledApp>> = _installedApps.asStateFlow()
@@ -40,8 +48,10 @@ class AppListViewModel @Inject constructor(
 
     fun add(packageName: String, now: Long) {
         viewModelScope.launch {
-            // 获取应用名称
-            val appName = PackageUtil.label(app.packageManager, packageName)
+            // 应用名查询是 PackageManager binder 调用，挪 IO（2026-11：此前在 Main）；查不到兜底包名
+            val appName = withContext(Dispatchers.IO) {
+                runCatching { PackageUtil.label(app.packageManager, packageName) }.getOrDefault(packageName)
+            }
 
             // 使用新的 addNewApp 方法，包含 3 个应用限制检查
             val result = targetAppRepository.addNewApp(
@@ -54,11 +64,7 @@ class AppListViewModel @Inject constructor(
                 )
             )
 
-            // 处理结果（可以添加错误提示UI）
-            result.onFailure { error ->
-                // 这里可以添加错误提示逻辑
-                android.util.Log.e("AppListViewModel", "Failed to add app: ${error.message}")
-            }
+            result.onFailure { error -> _addFailure.tryEmit(error.message) }
         }
     }
 
@@ -73,5 +79,10 @@ class AppListViewModel @Inject constructor(
     /** 每应用会话守护开关（specs/012）：关=该应用会话永不回弹（会话记录照写）。 */
     fun setSessionGuard(packageName: String, enabled: Boolean) {
         viewModelScope.launch { targetAppRepository.setSessionGuardEnabled(packageName, enabled) }
+    }
+
+    companion object {
+        /** 无 UI 订阅后查询链的存活余量（VM 随返回栈常驻，2026-11 与 Eagerly 约定一并修订）。 */
+        private const val STOP_TIMEOUT_MS = 5_000L
     }
 }

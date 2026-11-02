@@ -18,7 +18,8 @@ class SettingsViewModel @Inject constructor(
 
     val settings: StateFlow<AppSettings> = settingsDataStore.settings.stateIn(
         viewModelScope,
-        SharingStarted.Eagerly,
+        // VM 随返回栈常驻：无 UI 订阅即停（2026-11 与 Eagerly 约定一并修订）
+        SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
         AppSettings(
             globalInterceptionEnabled = true,
             onboardingCompleted = false,
@@ -33,5 +34,10 @@ class SettingsViewModel @Inject constructor(
     /** 全局回弹间隔（specs/012）：夹取在仓库 setter 内兜底，这里直接透传。 */
     fun setSessionGuardMinutes(minutes: Int) {
         viewModelScope.launch { settingsDataStore.setSessionGuardMinutes(minutes) }
+    }
+
+    companion object {
+        /** 无 UI 订阅后流的存活余量（切 Tab/瞬断往返不清空画面、长离场即停）。 */
+        private const val STOP_TIMEOUT_MS = 5_000L
     }
 }

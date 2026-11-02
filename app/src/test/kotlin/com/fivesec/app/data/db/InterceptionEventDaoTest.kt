@@ -150,8 +150,21 @@ class InterceptionEventDaoTest {
     @Test
     fun `空表时按应用聚合与连击日期查询返回空集合而非不发射`() = runTest {
         assertEquals(emptyList<PackageRangeCount>(), dao.observeCountsByPackageBetween(0, Long.MAX_VALUE).first())
-        assertEquals(emptyList<String>(), dao.observeActiveDays().first())
+        assertEquals(emptyList<String>(), dao.observeActiveDays("1970-01-01").first())
         assertEquals(null, dao.observeEarliestTimestamp().first())
+    }
+
+    /** 连击窗口截断（2026-11）：下界外的活跃日不再返回——聚合成本不随全历史增长；
+     *  下界含当日（>= 语义），窗口内照常降序全量。 */
+    @Test
+    fun `连击日期查询按下界截断且下界含当日`() = runTest {
+        val day1 = 43_200_000L        // 1970-01-01 12:00Z（本地时区仍为同日，任意常见偏移安全）
+        val day2 = day1 + 86_400_000L // 1970-01-02
+        dao.insert(InterceptionEvent(packageName = "tv.danmaku.bili", timestamp = day1, exerciseCompleted = true, outcome = InterceptionOutcome.OPENED))
+        dao.insert(InterceptionEvent(packageName = "tv.danmaku.bili", timestamp = day2, exerciseCompleted = true, outcome = InterceptionOutcome.CANCELED))
+
+        assertEquals(listOf("1970-01-02"), dao.observeActiveDays("1970-01-02").first())
+        assertEquals(listOf("1970-01-02", "1970-01-01"), dao.observeActiveDays("1970-01-01").first())
     }
 
     @Test

@@ -16,13 +16,18 @@ import javax.inject.Inject
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -49,6 +54,18 @@ data class AppRangeStatsUi(
     val stayMillis: Long = 0L,
 )
 
+/**
+ * 统计页状态源（specs/003/008/011/012）。
+ *
+ * 「今日」锚点随零点滚动（2026-11 修复：锚点曾在构造时定格，深夜常驻统计页跨零点后持续
+ * 显示昨日数据）：[todayKey] 每 30s 采样一次本地日期，日期变化才向下游发射——今日四数与
+ * 今日任务按它 `flatMapLatest` 重订阅新一天的查询窗口；选中的「当前周期」也跟随翻日滚动。
+ *
+ * 重聚合链全部 `WhileSubscribed(5s)`（2026-11 与 Eagerly 约定一并修订）：VM 随 Home 返回栈
+ * 常驻存活，Eagerly 会让用户在其他 Tab/后台时每次事件 INSERT 都触发 6 条链的 Room 重聚合；
+ * 改为无 UI 订阅即停，仅 [todayKey]（本地日期计算，零 IO）与品牌色收集器（≤3 行的
+ * target_apps 轻表）常驻。
+ */
 @HiltViewModel
 class StatsViewModel @Inject constructor(
     private val interceptionRepository: InterceptionRepository,
@@ -59,44 +76,70 @@ class StatsViewModel @Inject constructor(
     private val timeProvider: TimeProvider,
 ) : ViewModel() {
 
-    private val now = timeProvider.now()
     private val zone = ZoneId.systemDefault()
-    private val startOfDay = DateUtil.startOfDayMillis(timeProvider.now())
-    private val today = DateUtil.todayString(timeProvider.now())
+    private val initialNow = timeProvider.now() // 仅初始值用（默认周期/初值占位），后续由 todayKey 滚动
+    private val initialToday = DateUtil.todayString(initialNow, zone)
 
-    val ui: StateFlow<StatsUi> =
-        combine(
-            interceptionRepository.observeStats(startOfDay),
-            interceptionRepository.observeActiveDays(),
-        ) { day, days ->
-            StatsUi(
-                total = day.total,
-                canceled = day.canceled,
-                opened = day.opened,
-                streak = DateUtil.computeStreak(days, today),
-            )
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, StatsUi(0, 0, 0, 0))
+    /** 今日键（yyyy-MM-dd）：采样一次本地日期计算、零 IO；协程延时在设备休眠时挂起无耗电代价。 */
+    private val todayKey: SharedFlow<String> = flow {
+        while (true) {
+            emit(DateUtil.todayString(timeProvider.now()))
+            delay(DAY_POLL_MS)
+        }
+    }
+        .distinctUntilChanged()
+        .shareIn(viewModelScope, SharingStarted.Eagerly, replay = 1)
 
-    /** 今日任务三数 + 今日补完（specs/008；2026-10-04 补完标记）：todos 行集实时派生 + 事件表
-     *  过期补完聚合，today 沿用构造锚点（与今日拦截卡同一跨日口径）。 */
-    val todoToday: StateFlow<TodoTodayStatsUi> =
-        combine(
-            todoRepository.observeAll(),
-            todoRepository.observeLateCompletionCountBetween(today, LocalDate.parse(today).plusDays(1).toString()),
-        ) { rows, lateCount ->
-            TodoTodayStatsCalculator.compute(rows, today).let {
-                TodoTodayStatsUi(
-                    total = it.total,
-                    completed = it.completed,
-                    expired = it.expired,
-                    lateCompleted = lateCount,
+    /** 今日四数（拦截/取消/打开/连击）：按今日键重订阅——跨零点自动切到新一天的查询窗口；
+     *  连击数据源带窗口下界（见 DAO 注释，窗口远大于任何现实连击）。 */
+    val ui: StateFlow<StatsUi> = todayKey
+        .flatMapLatest { today ->
+            val startOfDay = requireNotNull(DateUtil.dateStringToMillis(today, zone))
+            val activeSince = LocalDate.parse(today).minusDays(ACTIVE_DAYS_WINDOW_DAYS).toString()
+            combine(
+                interceptionRepository.observeStats(startOfDay),
+                interceptionRepository.observeActiveDays(activeSince),
+            ) { day, days ->
+                StatsUi(
+                    total = day.total,
+                    canceled = day.canceled,
+                    opened = day.opened,
+                    streak = DateUtil.computeStreak(days, today),
                 )
             }
         }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, TodoTodayStatsUi(0, 0, 0, 0))
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), StatsUi(0, 0, 0, 0))
+
+    /** 今日任务三数 + 今日补完（specs/008；2026-10-04 补完标记）：todos 行集实时派生 + 事件表
+     *  过期补完聚合，同按今日键重订阅。 */
+    val todoToday: StateFlow<TodoTodayStatsUi> = todayKey
+        .flatMapLatest { today ->
+            combine(
+                todoRepository.observeAll(),
+                todoRepository.observeLateCompletionCountBetween(today, LocalDate.parse(today).plusDays(1).toString()),
+            ) { rows, lateCount ->
+                TodoTodayStatsCalculator.compute(rows, today).let {
+                    TodoTodayStatsUi(
+                        total = it.total,
+                        completed = it.completed,
+                        expired = it.expired,
+                        lateCompleted = lateCount,
+                    )
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), TodoTodayStatsUi(0, 0, 0, 0))
 
     /** 应用品牌色（ARGB），按包名；提取在后台进行，就绪后逐个回填。 */
     private val brandColors = MutableStateFlow<Map<String, Int>>(emptyMap())
+
+    /** 当前时间档位（日/周/月/年），默认"日"；两个二级页共享（specs/008：同一时间视角对比两块数据）。 */
+    private val _selectedRange = MutableStateFlow(StatsRange.DAY)
+    val selectedRange: StateFlow<StatsRange> = _selectedRange.asStateFlow()
+
+    /** 当前时间档位下选中的自然周期，默认最新周期。 */
+    private val _selectedPeriod = MutableStateFlow(StatsRange.DAY.currentPeriod(initialNow, zone))
+    val selectedPeriod: StateFlow<StatsPeriod> = _selectedPeriod.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -110,49 +153,67 @@ class StatsViewModel @Inject constructor(
                 }
             }
         }
+        // 翻日跟随：选中的「当前周期」跨零点后滚动到新周期（「今天」从昨天切到今天、本周→新本周…）
+        viewModelScope.launch {
+            var previous: String? = null
+            todayKey.collect { today ->
+                if (previous != null && today != previous && _selectedPeriod.value.isCurrent) {
+                    _selectedPeriod.value = _selectedPeriod.value.range.currentPeriod(
+                        requireNotNull(DateUtil.dateStringToMillis(today, zone)),
+                        zone,
+                    )
+                }
+                previous = today
+            }
+        }
     }
-
-    /** 当前时间档位（日/周/月/年），默认"日"；两个二级页共享（specs/008：同一时间视角对比两块数据）。 */
-    private val _selectedRange = MutableStateFlow(StatsRange.DAY)
-    val selectedRange: StateFlow<StatsRange> = _selectedRange.asStateFlow()
-
-    /** 当前时间档位下选中的自然周期，默认最新周期。 */
-    private val _selectedPeriod = MutableStateFlow(StatsRange.DAY.currentPeriod(now, zone))
-    val selectedPeriod: StateFlow<StatsPeriod> = _selectedPeriod.asStateFlow()
 
     /** 筛选行可选项：周仅本周/上周，月至当年 1 月，年至最早数据年份——
      *  拦截最早事件与完成最早日期二者取更早（年档位两个二级页都覆盖各自历史，specs/008）。 */
     val availablePeriods: StateFlow<List<StatsPeriod>> =
-        _selectedRange
-            .combine(
-                combine(
-                    interceptionRepository.observeEarliestTimestamp(),
-                    todoRepository.observeEarliestCompletionDate(),
-                ) { earliestEvent, earliestCompletion ->
-                    listOfNotNull(earliestEvent, DateUtil.dateStringToMillis(earliestCompletion, zone)).minOrNull()
-                },
-            ) { range, earliest ->
-                range.availablePeriods(now, zone, earliest)
-            }
+        combine(
+            _selectedRange,
+            combine(
+                interceptionRepository.observeEarliestTimestamp(),
+                todoRepository.observeEarliestCompletionDate(),
+            ) { earliestEvent, earliestCompletion ->
+                listOfNotNull(earliestEvent, DateUtil.dateStringToMillis(earliestCompletion, zone)).minOrNull()
+            },
+            todayKey,
+        ) { range, earliest, today ->
+            range.availablePeriods(
+                requireNotNull(DateUtil.dateStringToMillis(today, zone)),
+                zone,
+                earliest,
+            )
+        }
             .stateIn(
                 viewModelScope,
-                SharingStarted.Eagerly,
-                StatsRange.DAY.availablePeriods(now, zone),
+                SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                StatsRange.DAY.availablePeriods(initialNow, zone),
             )
 
     fun selectRange(range: StatsRange) {
         _selectedRange.value = range
-        _selectedPeriod.value = range.currentPeriod(now, zone)
+        // 当前日期取今日键的已发值（首发射前 replayCache 仍空，退回构造锚点）
+        val today = todayKey.replayCache.firstOrNull() ?: initialToday
+        _selectedPeriod.value = range.currentPeriod(
+            requireNotNull(DateUtil.dateStringToMillis(today, zone)),
+            zone,
+        )
     }
 
+    /**
+     * 选择周期：仅做档位结构校验——成员校验读流瞬时值反而制造竞态（切档瞬间旧列表静默吞掉
+     * 合法选择）；合法选项的唯一来源本就是 [availablePeriods] 渲染出的 UI 列表。
+     */
     fun selectPeriod(period: StatsPeriod) {
         if (period.range != _selectedRange.value) return
-        if (period !in availablePeriods.value) return
         _selectedPeriod.value = period
     }
 
     /** 每个目标应用在所选自然周期内的统计（拦截/打开/取消）+ 停留时长 + 品牌色，供统计页渲染卡片。
-     *  周期切换时重新订阅查询；页面停留跨周期不自动刷新（沿用现状）。
+     *  周期切换时重新订阅查询；页面停留跨周期不自动刷新（跨零点的当前周期跟随见 init 翻日收集器）。
      *  stayMillis（specs/012）：会话按 endedAt 归期聚合（半开区间），墙钟口径。 */
     @OptIn(ExperimentalCoroutinesApi::class)
     val appRangeStats: StateFlow<List<AppRangeStatsUi>> =
@@ -180,7 +241,7 @@ class StatsViewModel @Inject constructor(
                     }
                 }
             }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())
 
     /** 所选自然周期内按条目的完成次数与过期补完拆分（specs/008 任务历史二级页）：总次数由 UI 侧
      *  sumOf 派生。周期端点毫秒 → yyyy-MM-dd 半开区间字符串比较（字典序=时间序）；与 appRangeStats 共享周期选择。 */
@@ -197,7 +258,7 @@ class StatsViewModel @Inject constructor(
                     }
                 }
             }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), emptyList())
 
     /** 所选周期内拦截事件的 24 小时分布（specs/011 时段分布卡）：0–23 时桶、本地时区，
      *  含全部结局（与「拦截次数」总数同口径）。分桶是显式 ZoneId 的纯函数
@@ -209,6 +270,16 @@ class StatsViewModel @Inject constructor(
                 interceptionRepository.observeTimestampsBetween(period.startMillis, period.endMillis)
                     .map { HourDistribution.of(it, zone).toList() }
             }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, List(HourDistribution.BUCKETS) { 0 })
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), List(HourDistribution.BUCKETS) { 0 })
 
+    companion object {
+        /** 今日键采样间隔：跨零点后最长 30s 内切到新一天（本地日期计算，成本可忽略）。 */
+        private const val DAY_POLL_MS = 30_000L
+
+        /** 无 UI 订阅后查询链的存活余量（切 Tab/瞬断往返不清空画面、长离场即停）。 */
+        private const val STOP_TIMEOUT_MS = 5_000L
+
+        /** 连击窗口天数（约 3 年）：远大于任何现实连击，截断让 DISTINCT 聚合成本不随年限增长。 */
+        private const val ACTIVE_DAYS_WINDOW_DAYS = 1_100L
+    }
 }
