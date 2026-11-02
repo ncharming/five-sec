@@ -1,5 +1,7 @@
 package com.fivesec.app.settings.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -66,6 +68,7 @@ import com.fivesec.app.R
 import com.fivesec.app.data.repository.TargetAppRepository
 import com.fivesec.app.domain.model.TargetApp
 import com.fivesec.app.settings.viewmodels.AppListViewModel
+import com.fivesec.app.settings.viewmodels.DataExportViewModel
 import com.fivesec.app.settings.viewmodels.SettingsViewModel
 import com.fivesec.app.ui.components.AppIcon
 import com.fivesec.app.ui.components.CardSurface
@@ -97,6 +100,7 @@ import com.fivesec.app.util.TimeProvider
 fun InterceptScreen(
     settingsViewModel: SettingsViewModel = hiltViewModel(),
     appListViewModel: AppListViewModel = hiltViewModel(),
+    exportViewModel: DataExportViewModel = hiltViewModel(),
     timeProvider: TimeProvider = SystemTimeProvider(),
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -120,11 +124,27 @@ fun InterceptScreen(
     // snackbar 消费 VM 的一次性失败事件，null 文案以本地兜底资源呈现
     val snackbarHostState = remember { SnackbarHostState() }
     val addFailedText = stringResource(R.string.app_list_add_failed)
+    val exportSuccessText = stringResource(R.string.export_success)
+    val exportFailedText = stringResource(R.string.export_failed)
     LaunchedEffect(Unit) {
         appListViewModel.addFailure.collect { message ->
             snackbarHostState.showSnackbar(message ?: addFailedText)
         }
     }
+    // 导出结果反馈（specs/017）：成功/失败一次性事件；用户取消选择器无回调（天然静默）
+    LaunchedEffect(Unit) {
+        exportViewModel.events.collect { event ->
+            val text = when (event) {
+                DataExportViewModel.ExportEvent.Success -> exportSuccessText
+                is DataExportViewModel.ExportEvent.Failed -> event.reason?.let { "$exportFailedText（$it）" } ?: exportFailedText
+            }
+            snackbarHostState.showSnackbar(text)
+        }
+    }
+    // SAF 建文件（specs/017）：用户选位置与文件名（预填建议名），确认即回调 URI 写入
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri -> if (uri != null) exportViewModel.exportTo(uri) }
 
     // 无障碍服务状态：ON_RESUME 重查（用户跳系统设置开启后返回时刷新），与原五秒页一致
     var serviceEnabled by remember { mutableStateOf(AccessibilityPermissionHelper.isServiceEnabled(context)) }
@@ -286,6 +306,36 @@ fun InterceptScreen(
                 onPickInterval = { showIntervalPicker = true },
                 onPickBudget = { showBudgetPicker = true },
             )
+
+            // ── 数据导出行（specs/017）：SAF 选位置存 CSV，只读导出 ──
+            CardSurface(Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md)) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { exportLauncher.launch(exportViewModel.suggestedFileName()) }
+                        .padding(horizontal = Spacing.lg, vertical = Spacing.md),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            stringResource(R.string.settings_data_export),
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            Icons.Filled.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    Text(
+                        stringResource(R.string.settings_data_export_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
         }
     }
 

@@ -23,4 +23,7 @@ class UsageSessionRepository @Inject constructor(
     /** 今日已落库会话的停留总毫秒（specs/015 预算：endedAt ≥ startOfDay，与统计归期同口径）。 */
     suspend fun todayStayMillisBefore(packageName: String, startOfDay: Long): Long =
         usageSessionDao.sumDurationSince(packageName, startOfDay)
+
+    /** 全量快照升序（specs/017 导出只读）。 */
+    suspend fun exportSnapshot(): List<UsageSession> = usageSessionDao.getAllOrdered()
 }

@@ -106,6 +106,8 @@ class TodoViewModelTest {
 
         override suspend fun deleteByTodoAndDate(todoId: Long, date: String) = Unit
 
+        override suspend fun getAllOrdered(): List<TodoCompletion> = upserts.sortedBy { it.completedDate }
+
         override fun observeCountByTodoBetween(startDate: String, endDate: String): Flow<List<TodoRangeCount>> = flow { emit(emptyList()) }
 
         override fun observeLateCountBetween(startDate: String, endDate: String): Flow<Int> = flow { emit(0) }

@@ -116,6 +116,7 @@ adb shell pm grant com.fivesec.app android.permission.WRITE_SECURE_SETTINGS
 - 仅读取应用包名以判断哪个应用进入前台，**绝不读取窗口内容**。
 - 拦截日志（应用、时间、是否完成锻炼、打开/取消）仅存于本机，不上传、不联网。
 - **系统自动备份**（2026-11 披露）：Android 的「自动备份」可能把本机数据库（含拦截/会话/完成事件流水）备份到你自己的 Google 账号——这是系统级行为、数据只进你自己的云端账号，本应用自身零联网零上传；不希望备份可在系统设置（Google → 备份）关闭，或备份规则中排除「五秒」。
+- **数据导出**（[specs/017](specs/017-data-export/spec.md)）：设置页「导出数据」把全部历史导出为 CSV 存到**你选择的本机位置**（SAF 文件选择器；零联网、零新权限）；导出文件的归属与去向由你掌握。
 
 ## 文档
 
@@ -128,3 +129,7 @@ adb shell pm grant com.fivesec.app android.permission.WRITE_SECURE_SETTINGS
 - [009-retire-hints](specs/009-retire-hints/spec.md)：提示语功能退役——待办成为拦截页唯一缓冲内容（空态引导 / 提示语 Tab 移除 / 存量数据零破坏）（[plan](specs/009-retire-hints/plan.md)、[data-model](specs/009-retire-hints/data-model.md)、[quickstart](specs/009-retire-hints/quickstart.md)）
 - [010-todo-reminders](specs/010-todo-reminders/spec.md)：待办到点主动提醒——每条待办可选 `HH:mm` 提醒时刻，到点全屏页 + 闹钟铃声 + 震动（单一「下一响」闹钟 / 响前查库 / 重启恢复 / 权限降级链）（[plan](specs/010-todo-reminders/plan.md)、[data-model](specs/010-todo-reminders/data-model.md)、[quickstart](specs/010-todo-reminders/quickstart.md)）
 - [013-once-default-reminders](specs/013-once-default-reminders/spec.md)：单次待办默认提醒——提醒列单列多条时刻（CSV 零迁移、上限 3），单次新建默认 20:00/21:00/22:00 三时刻（切规则预填/离开还原纯逻辑），完成即取消剩余提醒（[tasks](specs/013-once-default-reminders/tasks.md)、[quickstart](specs/013-once-default-reminders/quickstart.md)）
+- [014-weekly-review](specs/014-weekly-review/spec.md)：复盘卡——统计主页本期 vs 上期四指标对比（周/月档位、箭头跟数值/颜色跟语义、无基线不伪造）（[tasks](specs/014-weekly-review/tasks.md)、[quickstart](specs/014-weekly-review/quickstart.md)）
+- [015-stay-budget](specs/015-stay-budget/spec.md)：回弹层每日停留预算——今日累计副行 + 触线红字警示 + 二次短震（全局单值、默认不设、纯展示层）（[tasks](specs/015-stay-budget/tasks.md)、[quickstart](specs/015-stay-budget/quickstart.md)）
+- [016-resist-milestones](specs/016-resist-milestones/spec.md)：抵制累计里程碑——成功态追加「累计抵制 M 次」（50/100 倍数、镜像双序号）（[tasks](specs/016-resist-milestones/tasks.md)、[quickstart](specs/016-resist-milestones/quickstart.md)）
+- [017-data-export](specs/017-data-export/spec.md)：本地数据导出——四段 CSV（UTF-8 BOM、RFC 4180 转义、时间双列）经 SAF 存到用户选定位置，只读导出零网络（[tasks](specs/017-data-export/tasks.md)、[quickstart](specs/017-data-export/quickstart.md)）

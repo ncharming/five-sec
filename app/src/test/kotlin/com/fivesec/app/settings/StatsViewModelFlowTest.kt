@@ -224,6 +224,9 @@ class StatsViewModelFlowTest {
                     .filter { it >= rangeStart && it < rangeEnd }
                     .sorted()
             }
+
+        override suspend fun getAllOrdered(): List<InterceptionEvent> =
+            events.value.sortedBy { it.timestamp }
     }
 
     private class FakeTargetAppDao : TargetAppDao {
@@ -266,6 +269,7 @@ class StatsViewModelFlowTest {
     private class FakeTodoCompletionDao : TodoCompletionDao {
         override suspend fun upsert(completion: TodoCompletion) = Unit
         override suspend fun deleteByTodoAndDate(todoId: Long, date: String) = Unit
+        override suspend fun getAllOrdered(): List<TodoCompletion> = emptyList()
         override fun observeCountByTodoBetween(startDate: String, endDate: String): Flow<List<TodoRangeCount>> =
             MutableStateFlow(emptyList())
         override fun observeLateCountBetween(startDate: String, endDate: String): Flow<Int> =
@@ -279,5 +283,6 @@ class StatsViewModelFlowTest {
             MutableStateFlow(emptyList())
 
         override suspend fun sumDurationSince(packageName: String, startOfDay: Long): Long = 0L
+        override suspend fun getAllOrdered(): List<UsageSession> = emptyList()
     }
 }

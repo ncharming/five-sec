@@ -27,6 +27,10 @@ interface UsageSessionDao {
             "WHERE packageName = :packageName AND endedAt >= :startOfDay"
     )
     suspend fun sumDurationSince(packageName: String, startOfDay: Long): Long
+
+    /** 全量快照升序（specs/017 导出只读）。 */
+    @Query("SELECT * FROM usage_sessions ORDER BY startedAt ASC")
+    suspend fun getAllOrdered(): List<UsageSession>
 }
 
 /** 聚合行（SUM/COUNT 投影）。 */

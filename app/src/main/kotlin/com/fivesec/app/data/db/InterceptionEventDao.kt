@@ -56,6 +56,10 @@ interface InterceptionEventDao {
      *  小时分桶在 Kotlin 端按显式 ZoneId 做（SQLite localtime 随运行环境漂移，不可测）。 */
     @Query("SELECT timestamp FROM interception_events WHERE timestamp >= :rangeStart AND timestamp < :rangeEnd ORDER BY timestamp ASC")
     fun observeTimestampsBetween(rangeStart: Long, rangeEnd: Long): Flow<List<Long>>
+
+    /** 全量快照升序（specs/017 导出只读）：一次性 suspend，观察流复用不了——导出要的是时点快照。 */
+    @Query("SELECT * FROM interception_events ORDER BY timestamp ASC")
+    suspend fun getAllOrdered(): List<InterceptionEvent>
 }
 
 /** 周期范围内按应用聚合的查询结果投影（非持久化实体）。 */

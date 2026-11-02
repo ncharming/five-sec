@@ -113,7 +113,7 @@ ui/theme/       Compose 主题 token（与 colors.xml 的 brand_* 同源）
 - **不提交密钥**：keystore/jks/local.properties/google-services.json 永不入库（`.gitignore` 已覆盖）；本应用无签名密钥需求，不要引入。
 - **不运行破坏性命令**：禁止 `fallbackToDestructiveMigration`；禁止对 `interception_events` 做 DELETE/清库——这张表只增不删，历史数据是产品价值本身。
 - **不擅自升级依赖**：版本号只在 `gradle/libs.versions.toml` 改；Kotlin/AGP/Gradle/compileSdk 的升降级必须先与用户确认。
-- **数据只进不出**：不联网、不埋点、不上传；只读包名判断前台，绝不读取窗口内容。新增任何网络/分析依赖等于违背产品宪法（FR-013）。
+- **数据只进不出**：不联网、不埋点、不上传；只读包名判断前台，绝不读取窗口内容。新增任何网络/分析依赖等于违背产品宪法（FR-013）。唯一例外（2026-11 用户拍板）：**本机文件导出**（specs/017，SAF 导出到用户选定位置，零网络零新权限）——导入（恢复）不在已批准范围，别擅自加。
 - `WRITE_SECURE_SETTINGS` 只用于写入本应用的无障碍开关（且保留用户已开启的其他无障碍服务），不触碰其他安全设置。
 - `QUERY_ALL_PACKAGES` 与无障碍权限仅适用于自用/侧载/国内商店分发；为「合规」顺手删权限或改拦截逻辑前先与用户确认。
 - 不得拦截本应用自身与系统必备应用；必须保证用户随时能完全关闭拦截（FR-014）。

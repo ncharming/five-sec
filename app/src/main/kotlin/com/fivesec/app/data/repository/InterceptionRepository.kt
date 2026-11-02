@@ -51,6 +51,9 @@ class InterceptionRepository @Inject constructor(
         eventDao.insert(event)
     }
 
+    /** 全量快照升序（specs/017 导出只读）。 */
+    suspend fun exportSnapshot(): List<InterceptionEvent> = eventDao.getAllOrdered()
+
     fun observeStats(startOfDay: Long): Flow<DayStats> {
         return combine(
             eventDao.observeTodayCount(startOfDay),

@@ -153,6 +153,8 @@ class TodoRepositoryTest {
             rows.removeAll { it.todoId == todoId && it.completedDate == date }
         }
 
+        override suspend fun getAllOrdered(): List<TodoCompletion> = rows.sortedBy { it.completedDate }
+
         override fun observeCountByTodoBetween(startDate: String, endDate: String): Flow<List<TodoRangeCount>> = flow {
             emit(
                 rows.filter { it.completedDate >= startDate && it.completedDate < endDate }

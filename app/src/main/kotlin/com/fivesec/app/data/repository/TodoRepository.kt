@@ -165,6 +165,9 @@ class TodoRepository @Inject constructor(
     /** 按 id 批量取（010：提醒页装载，FSI 通知携带 ids → 打开时取对应条目）。 */
     suspend fun findByIds(ids: List<Long>): List<Todo> = todoDao.findByIds(ids)
 
+    /** 完成事件全量快照（specs/017 导出只读）：完成日升序。 */
+    suspend fun completionsSnapshot(): List<TodoCompletion> = todoCompletionDao.getAllOrdered()
+
     /** 规则兜底校验（主拦截在编辑弹窗表单层）：周几至少一天；间隔收敛 2..365；仅今天原样通过。 */
     private fun normalizeRule(rule: TodoRule): Result<TodoRule> = when {
         rule.repeatType == TodoRecurrence.REPEAT_WEEKLY && rule.repeatDays == 0 ->

@@ -43,6 +43,10 @@ interface TodoCompletionDao {
     /** 最早完成日期；无记录时为 null。用于年档位可选范围（与拦截最早事件取更早）。 */
     @Query("SELECT MIN(completedDate) FROM todo_completions")
     fun observeEarliestDate(): Flow<String?>
+
+    /** 全量快照（specs/017 导出只读）：完成日升序、同日按 id 稳定。 */
+    @Query("SELECT * FROM todo_completions ORDER BY completedDate ASC, id ASC")
+    suspend fun getAllOrdered(): List<TodoCompletion>
 }
 
 /** 周期内按待办条目聚合的查询结果投影（非持久化实体；todoText 为事件行内快照，同一 todoId 恒同值或取任一行）。 */
