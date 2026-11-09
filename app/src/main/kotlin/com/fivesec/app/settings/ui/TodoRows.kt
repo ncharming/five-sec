@@ -77,8 +77,10 @@ internal fun RuleGroupHeader(text: String) {
 
 /**
  * 分组名与编辑弹窗同一词汇表：每天 / 每周一、三 / 每 N 天 / 单次——读侧分类不发明新词。
- * 防御：周几空集（脏数据，表单已拦）给类型名「每周几」不伪造天数；未知类型兜底按每天档
- * 命名（与 isDue 的脏值兜底同思路：不让条目凭空消失/错位）。
+ * 单次组名带有效期日（020）：「单次/2026-11-23」——不同日子的单次各自成组，组名自描述。
+ * 防御：周几空集（脏数据，表单已拦）给类型名「每周几」不伪造天数；单次空 dueDate（007 前
+ * 脏形态）退裸「单次」不伪造日期；未知类型兜底按每天档命名（与 isDue 的脏值兜底同思路：
+ * 不让条目凭空消失/错位）。
  */
 @Composable
 internal fun ruleGroupLabel(group: TodoRuleGroups.Group): String = when (group.repeatType) {
@@ -95,7 +97,12 @@ internal fun ruleGroupLabel(group: TodoRuleGroups.Group): String = when (group.r
         }
     }
     TodoRecurrence.REPEAT_INTERVAL -> stringResource(R.string.todos_group_interval, group.intervalDays)
-    TodoRecurrence.REPEAT_ONCE -> stringResource(R.string.todos_rule_once)
+    TodoRecurrence.REPEAT_ONCE ->
+        if (group.dueDate.isEmpty()) {
+            stringResource(R.string.todos_rule_once)
+        } else {
+            stringResource(R.string.todos_group_once, group.dueDate)
+        }
     else -> stringResource(R.string.todos_rule_daily)
 }
 

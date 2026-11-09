@@ -501,6 +501,42 @@ class TodoViewModelTest {
         assertEquals(listOf(1L), viewModel.uiState.value.expiredRows.map { it.todo.id })
     }
 
+    /** 020：单次可选未来日期——建时未到期：今日区灰显（今天不用做）、不进过期区；
+     *  到期日当天轮到可勾；跨过到期日未完成进过期区（既有 007 流转对未来日同样成立）。 */
+    @Test
+    fun `未来单次建时今日区灰显_到期日轮到_跨日过期`() = runTest(dispatcher) {
+        nowMillis = 1_789_000_000_000L
+        viewModel.refreshToday()
+        val day1 = DateUtil.todayString(nowMillis)
+        val dueDay = LocalDate.parse(day1).plusDays(14).toString() // 11.9 建、11.23 到期的形态
+        dao.state.value = listOf(
+            Todo(id = 1, text = "两周后的事", repeatType = TodoRecurrence.REPEAT_ONCE, createdAt = day1, dueDate = dueDay),
+        )
+        advanceUntilIdleAndFlush()
+        var ui = viewModel.uiState.value
+        assertEquals(listOf(1L), ui.todayRows.map { it.todo.id }) // 未过期条目照旧全量进今日区
+        assertEquals(false, ui.todayRows.single().dueToday) // 不轮到 → 灰显禁勾
+        assertEquals(0, ui.expiredRows.size) // 未来不是失败，不进过期区
+
+        // 到期日：当天轮到、可勾
+        nowMillis += 14 * 24 * 60 * 60 * 1000L
+        viewModel.refreshToday()
+        advanceUntilIdleAndFlush()
+        ui = viewModel.uiState.value
+        assertEquals(listOf(1L), ui.todayRows.map { it.todo.id })
+        assertEquals(true, ui.todayRows.single().dueToday)
+        assertEquals(0, ui.expiredRows.size)
+
+        // 再跨日未完成 → 过期区（单次失败存量）
+        nowMillis += 24 * 60 * 60 * 1000L
+        viewModel.refreshToday()
+        advanceUntilIdleAndFlush()
+        ui = viewModel.uiState.value
+        assertEquals(0, ui.todayRows.size)
+        assertEquals(listOf(1L), ui.expiredRows.map { it.todo.id })
+        assertEquals(dueDay, ui.expiredRows.single().dateLabel) // 过期区副行=有效期日
+    }
+
     @Test
     fun `过期行完成转发带过期补完标记_今日区正常勾选不带`() = runTest(dispatcher) {
         nowMillis = 1_789_000_000_000L

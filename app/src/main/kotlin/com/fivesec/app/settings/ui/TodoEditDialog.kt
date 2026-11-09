@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.InputChip
@@ -18,10 +19,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,14 +48,19 @@ import com.fivesec.app.ui.components.fiveSecTextFieldColors
 import com.fivesec.app.ui.theme.Spacing
 import com.fivesec.app.util.TodoRecurrence
 import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 /**
  * 新建/编辑共用表单弹窗（自 TodoScreen 拆出，2026-11）：多行输入（存真实换行 \n）+ 重复规则区
  * （specs/006 三选一；007 扩为四选一，新增「单次」）+ 提醒时刻区（specs/010 起可选；013 起多条
  * chips，上限 [TodoReminderPlanner.MAX_REMINDER_TIMES]），200 字硬截断，空白不可确认。
  * 规则区：每天 / 每周几（多选周几，全空禁存并提示）/ 每N天（越界即时收敛显示 2..365，
- * 下方展示下次执行日——锚点=最近完成日，从未完成=今天）/ 单次（原「仅今天」，只在有效期日
- * 当天轮到，跨日未完成进过期分类）。分段按钮不显示选中 ✓（四段等宽排版 + 选中态已由底色表达）。
+ * 下方展示下次执行日——锚点=最近完成日，从未完成=今天）/ 单次（specs/020 起可选具体日期：
+ * 「生效日期」chip 点开 DatePicker 日历，可选域=今天起，默认今天/编辑回显原值——只在那天轮到，
+ * 跨日未完成进过期分类；007 的「仅今天」即缺省形态）。分段按钮不显示选中 ✓（四段等宽排版 +
+ * 选中态已由底色表达）。
  * 弹窗内存态保留用户切走的规则勾选（体验细节），保存只落当前选中规则、其余两列归零（见 data-model 不变式）。
  * 提醒区（013）：时刻 chips 点击改（TimePicker 24h、编辑态可「移除」）、＋ 添加；切到「单次」且无时刻
  * 时预填默认 20:00/21:00/22:00 三时刻（TodoReminderPlanner.timesOnRuleSwitch 纯逻辑，原封未动才随
@@ -103,8 +111,22 @@ internal fun TodoEditDialog(
         mutableStateOf(false)
     }
 
+    // 020：单次的生效日期（yyyy-MM-dd）——编辑回显原有效期日（解析失败=脏值兜底今天），
+    // 新建/非单次缺省今天；与周几 chips 同口径：切走再切回保留用户此前所选（体验细节）
+    var onceDueDate by rememberSaveable(sessionKey, initialText, ruleKey) {
+        mutableStateOf(
+            initialRule.takeIf { it.repeatType == TodoRecurrence.REPEAT_ONCE }
+                ?.dueDate
+                ?.takeIf { runCatching { LocalDate.parse(it) }.isSuccess }
+                ?: today,
+        )
+    }
+
     // TimePicker 目标槽位：TIME_SLOT_CLOSED=关、TIME_SLOT_ADD=新增、≥0=编辑该序号时刻（编辑态多一个「移除」）
     var timePickerSlot by remember { mutableStateOf(TIME_SLOT_CLOSED) }
+
+    // 020：生效日期 DatePicker 是否打开（FiveSecDialog 外壳同 TimePicker；关闭即离开组合，重开重置初始选中）
+    var datePickerOpen by remember { mutableStateOf(false) }
 
     /** 规则段切换：时刻联动（预填/还原）先于规则赋值——联动逻辑全部在 timesOnRuleSwitch 纯函数里。 */
     fun selectRuleType(type: Int) {
@@ -157,7 +179,7 @@ internal fun TodoEditDialog(
                         }
 
                         TodoRecurrence.REPEAT_INTERVAL -> TodoRule.interval(intervalDays)
-                        TodoRecurrence.REPEAT_ONCE -> TodoRule.ONCE
+                        TodoRecurrence.REPEAT_ONCE -> TodoRule.once(onceDueDate)
                         else -> TodoRule.DAILY
                     }
                     onConfirm(text.trim(), rule, reminderTimes)
@@ -351,6 +373,26 @@ internal fun TodoEditDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = Spacing.xs),
                 )
+                // 生效日期（specs/020）：chip 点开日历选择，可选域=今天起（过去日无提醒意义——
+                // 落库即过期且永不响铃）；选未来日 = 排期到那天的单次，今日区灰显、分组名带日期
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = Spacing.xs),
+                ) {
+                    Text(
+                        stringResource(R.string.todos_rule_once_date_label),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    InputChip(
+                        selected = false,
+                        onClick = { datePickerOpen = true },
+                        label = { Text(onceDueDate) },
+                    )
+                }
             }
         }
 
@@ -455,7 +497,63 @@ internal fun TodoEditDialog(
             TimePicker(state = pickerState)
         }
     }
+
+    // 生效日期选择器（specs/020）：统一弹窗外壳包 Material3 DatePicker（纯日历，不提供文本输入态
+    // ——输入态绕过日历交互，可选域约束在两种形态下都要成立就不如只留一种）；DatePicker 的选中值
+    // 是 UTC 日界毫秒，yyyy-MM-dd 与之经 LocalDate 互转（时区责任在此收口，不污染存储编码）。
+    // 可选域=今天起（今天由调用方注入，弹窗不读系统时钟）；确认须有选中且选中不早于今天——
+    // 编辑回显的历史日期（时钟回拨等脏形态）不重选就确认会被禁用按钮拦下，不静默落过去日
+    if (datePickerOpen) {
+        val todayUtcMillis = remember(today) { localDateToUtcMillis(today) }
+        val initialUtcMillis = remember(onceDueDate) { localDateToUtcMillis(onceDueDate) }
+        val dateState = rememberDatePickerState(
+            initialSelectedDateMillis = initialUtcMillis,
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                    todayUtcMillis?.let { utcTimeMillis >= it } ?: true
+
+                override fun isSelectableYear(year: Int): Boolean =
+                    todayUtcMillis?.let { year >= utcMillisToYear(it) } ?: true
+            },
+        )
+        val selected = dateState.selectedDateMillis
+        val selectedOk = selected != null &&
+            (todayUtcMillis == null || selected >= todayUtcMillis)
+        FiveSecDialog(
+            visible = true,
+            onDismissRequest = { datePickerOpen = false },
+            title = stringResource(R.string.todos_rule_once_date_pick_title),
+            confirmButton = {
+                Button(
+                    onClick = {
+                        selected?.let {
+                            onceDueDate = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toString()
+                        }
+                        datePickerOpen = false
+                    },
+                    enabled = selectedOk,
+                ) {
+                    Text(stringResource(R.string.common_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { datePickerOpen = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        ) {
+            DatePicker(state = dateState, showModeToggle = false)
+        }
+    }
 }
+
+/** yyyy-MM-dd → DatePicker 用的 UTC 日界毫秒；非法（脏值防御）返回 null（选择器退化为不限可选）。 */
+private fun localDateToUtcMillis(date: String): Long? =
+    runCatching { LocalDate.parse(date).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() }.getOrNull()
+
+/** DatePicker 用的 UTC 毫秒 → 年份（isSelectableYear 的可选下界）。 */
+private fun utcMillisToYear(utcMillis: Long): Int =
+    Instant.ofEpochMilli(utcMillis).atZone(ZoneOffset.UTC).year
 
 /** TimePicker 缺省初始小时（specs/010）：晚间自律场景的常见提醒档位，纯 UX 缺省无语义。 */
 private const val DEFAULT_REMINDER_HOUR = 20

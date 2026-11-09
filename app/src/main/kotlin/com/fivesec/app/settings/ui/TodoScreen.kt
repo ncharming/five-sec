@@ -57,6 +57,7 @@ import com.fivesec.app.ui.components.CardSurface
 import com.fivesec.app.ui.components.FiveSecDialog
 import com.fivesec.app.ui.components.PageHeader
 import com.fivesec.app.ui.theme.Spacing
+import com.fivesec.app.util.TodoRecurrence
 
 /**
  * 待办页（specs/005-daily-todos；006 增重复规则；007 两区分区，首页默认 Tab）。
@@ -67,8 +68,9 @@ import com.fivesec.app.ui.theme.Spacing
  * 同一条目的完成行为只有一种统计口径，迟到补完标记只属于「今天不轮到」的过期行），今日区保住
  * 「今天勾掉即补救」的活路（拖延只顺延）；今天不轮到则只在过期区（可补勾/修改/删除）。
  * 今日卡内按重复规则分组（TodoRuleGroups 纯投影）：组序=编辑弹窗四段（每天→每周→每N天→
- * 单次），不同星期集合/不同 N 各自成组（组名自描述，如「每周一、三」），读侧分类与编辑侧
- * 词汇表一致；过期区语义是「失败存量」而非规则分类，不参与分组。
+ * 单次），不同星期集合/不同 N/不同有效期日各自成组（组名自描述，如「每周一、三」「单次/2026-11-23」，
+ * 单次组按日期升序、今天在前——020），读侧分类与编辑侧词汇表一致；过期区语义是「失败存量」
+ * 而非规则分类，不参与分组。
  * 每行标题下副行纯日期（今日区=创建日「—」兜底、过期区=错过的轮到日）；过期行有补勾框
  * （仅今天不轮到的行）、无启用开关，菜单单次「改为今天 / 删除」、重复类「修改 / 删除」。
  * 视觉沿用四页统一语言（PageHeader + 白卡行骨架 + FiveSecDialog 弹窗）；标题 ≤200 字：列表
@@ -347,9 +349,15 @@ fun TodoScreen(
     )
 
     // 编辑弹窗（菜单「修改」进；specs/006 起承载规则编辑，规则变了才发定向 UPDATE，文本照旧独立走 rename；
-    // 010 起同样承载提醒时刻列表：变了才发定向 UPDATE——「没改不发」的既有口径逐列延续）
+    // 010 起同样承载提醒时刻列表：变了才发定向 UPDATE——「没改不发」的既有口径逐列延续；
+    // 020 起单次规则的 dueDate 随 TodoRule 携带：编辑回显原日期、只改日期也正确触发 UPDATE）
     editTarget?.let { target ->
-        val existingRule = TodoRule(target.todo.repeatType, target.todo.repeatDays, target.todo.intervalDays)
+        val existingRule = TodoRule(
+            target.todo.repeatType,
+            target.todo.repeatDays,
+            target.todo.intervalDays,
+            if (target.todo.repeatType == TodoRecurrence.REPEAT_ONCE) target.todo.dueDate else "",
+        )
         TodoEditDialog(
             visible = editVisible,
             sessionKey = editSession,

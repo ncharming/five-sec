@@ -12,12 +12,25 @@ import org.junit.Test
 
 /**
  * 今日待办规则分组判定表（TodoRuleGroups 纯投影）：组序与编辑弹窗四段一致、
- * 不同星期集合/不同 N 各自成组、组内保传入序、脏值不丢行。
+ * 不同星期集合/不同 N/不同有效期日各自成组、组内保传入序、脏值不丢行。
  */
 class TodoRuleGroupsTest {
 
-    private fun row(id: Long, type: Int, days: Int = 0, interval: Int = 0) = TodoRow(
-        todo = Todo(id = id, text = "t$id", repeatType = type, repeatDays = days, intervalDays = interval),
+    private fun row(
+        id: Long,
+        type: Int,
+        days: Int = 0,
+        interval: Int = 0,
+        dueDate: String = "",
+    ) = TodoRow(
+        todo = Todo(
+            id = id,
+            text = "t$id",
+            repeatType = type,
+            repeatDays = days,
+            intervalDays = interval,
+            dueDate = dueDate,
+        ),
         doneToday = false,
         dueToday = false,
         dateLabel = "",
@@ -55,6 +68,46 @@ class TodoRuleGroupsTest {
         )
 
         assertEquals(listOf(3, 7), groups.map { it.intervalDays })
+    }
+
+    @Test
+    fun `单次不同有效期日各自成组且按日期升序`() {
+        // 020：11.9 建的两条单次分别指向 11.23/11.16 → 「单次/2026-11-16」在前（近的活先看见），
+        // 与传入顺序（远的在前）相反——组序由键决定而非出现顺序
+        val groups = TodoRuleGroups.groupByRule(
+            listOf(
+                row(1, REPEAT_ONCE, dueDate = "2026-11-23"),
+                row(2, REPEAT_ONCE, dueDate = "2026-11-10"),
+                row(3, REPEAT_ONCE, dueDate = "2026-11-16"),
+            ),
+        )
+
+        assertEquals(listOf("2026-11-10", "2026-11-16", "2026-11-23"), groups.map { it.dueDate })
+        assertEquals(listOf(listOf(2L), listOf(3L), listOf(1L)), groups.map { g -> g.rows.map { it.todo.id } })
+    }
+
+    @Test
+    fun `单次同有效期日合入同组保持传入序`() {
+        val groups = TodoRuleGroups.groupByRule(
+            listOf(row(1, REPEAT_ONCE, dueDate = "2026-11-23"), row(2, REPEAT_ONCE, dueDate = "2026-11-23")),
+        )
+
+        assertEquals(1, groups.size)
+        assertEquals("2026-11-23", groups.single().dueDate)
+        assertEquals(listOf(1L, 2L), groups.single().rows.map { it.todo.id })
+    }
+
+    @Test
+    fun `重复类脏dueDate不拆组_分组键归一为空`() {
+        // 防御：dueDate 恒空是重复类的写入不变式，脏值（理论上不可达）不按日期拆组——
+        // 与「脏值不让条目凭空消失/错位」同一兜底思路
+        val groups = TodoRuleGroups.groupByRule(
+            listOf(row(1, REPEAT_DAILY, dueDate = "2026-11-23"), row(2, REPEAT_DAILY)),
+        )
+
+        assertEquals(1, groups.size)
+        assertEquals("", groups.single().dueDate)
+        assertEquals(listOf(1L, 2L), groups.single().rows.map { it.todo.id })
     }
 
     @Test

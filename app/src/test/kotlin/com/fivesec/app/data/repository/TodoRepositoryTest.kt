@@ -27,7 +27,8 @@ import org.junit.Test
  * 快照过滤（只含启用且今天轮到；一次性当天计入、过期排除）、空态二分（无启用条目 vs 有启用今日不轮到，
  * 009 覆盖层空态文案的判定源）、覆盖层排序（类型优先级 仅今天→每N天→
  * 每周几→每天，同类型创建日倒序、同日按 id 倒序、老空串垫底）、完成态按日期惰性求值、
- * 入口校验（空白/200 字/周几空集/间隔收敛）、上限 20、定向 UPDATE 转发、dueDate/createdAt 写入口径、
+ * 入口校验（空白/200 字/周几空集/间隔收敛/单次日期格式 020）、上限 20、定向 UPDATE 转发、
+ * dueDate/createdAt 写入口径（020 起单次可为弹窗选定未来日）、
  * revive、惰性清理（已完成一次性跨日物理删除；2026-10 修复口径：完成日须≥有效期日——切换前
  * 旧规则锚点不误删、过期补勾跨日照删）、完成事件（勾选 upsert 含文本快照/取消删当日/重勾不重复）。
  * 快照收集与惰性清理走真实后台协程，用轮询 await 观测就绪；DAO 用 StateFlow 手控 fake
@@ -496,6 +497,33 @@ class TodoRepositoryTest {
     }
 
     @Test
+    fun `add单次带未来日期_有效期日落传入值创建日仍当天`() = runTest {
+        val dao = FakeTodoDao()
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
+
+        // 020：11.9 建 11.23 提醒的单次——dueDate=选定日（提醒排程/轮到/过期判定全按它），
+        // createdAt 恒=创建当天（「复活可改写有效期」与「创建时间不可变」两个不变量不混）
+        assertTrue(repo.add("11月23日的待办", TodoRule.once("2026-11-23")).isSuccess)
+
+        val inserted = dao.inserted.single()
+        assertEquals(TodoRecurrence.REPEAT_ONCE, inserted.repeatType)
+        assertEquals(today, inserted.createdAt)
+        assertEquals("2026-11-23", inserted.dueDate)
+    }
+
+    @Test
+    fun `add单次非法日期拒绝且不落库`() = runTest {
+        val dao = FakeTodoDao()
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
+
+        // 脏调用方兜底（表单 DatePicker 产出恒合法）；仓库只拦格式不拦过去日——过去是合法状态
+        //（落库即过期、可改为今天），拒绝会让跨零点保存静默失败
+        assertTrue(repo.add("坏日期", TodoRule.once("2026-11-32")).isFailure)
+        assertTrue(repo.add("坏格式", TodoRule.once("11/23")).isFailure)
+        assertEquals(0, dao.inserted.size)
+    }
+
+    @Test
     fun `add重复类_dueDate空串`() = runTest {
         val dao = FakeTodoDao()
         val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
@@ -525,6 +553,24 @@ class TodoRepositoryTest {
             dao.recurrenceCalls.last(),
         )
         assertEquals("2026-01-01", dao.state.value.single().createdAt) // 创建时间永不被改写
+    }
+
+    @Test
+    fun `setRecurrence转单次带指定日期_dueDate落传入值`() = runTest {
+        val dao = FakeTodoDao()
+        dao.state.value = listOf(Todo(id = 7, text = "旧文案", createdAt = "2026-01-01"))
+        val repo = TodoRepository(dao, FakeTodoCompletionDao(), timeProvider)
+
+        // 020：编辑弹窗改单次并选未来日 → 定向 UPDATE 落选定日（改期=规则变化，随 TodoRule 相等触发）
+        assertTrue(repo.setRecurrence(7, TodoRule.once("2026-11-30")).isSuccess)
+        assertEquals(
+            listOf(RecurrenceCall(7L, TodoRecurrence.REPEAT_ONCE, 0, 0, "2026-11-30")),
+            dao.recurrenceCalls.toList(),
+        )
+
+        // 同日再改日期 → 再次落新值（「没改不发」由弹窗层比对，仓库幂等直写）
+        assertTrue(repo.setRecurrence(7, TodoRule.once("2026-12-05")).isSuccess)
+        assertEquals("2026-12-05", dao.recurrenceCalls.last().dueDate)
     }
 
     @Test

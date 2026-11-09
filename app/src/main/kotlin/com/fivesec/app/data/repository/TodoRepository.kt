@@ -12,6 +12,7 @@ import com.fivesec.app.reminder.TodoReminderPlanner
 import com.fivesec.app.util.DateUtil
 import com.fivesec.app.util.TimeProvider
 import com.fivesec.app.util.TodoRecurrence
+import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -31,7 +32,8 @@ import kotlinx.coroutines.launch
  * "每日重置"是惰性求值：完成判定 = lastCompletedDate == today（调用方经 DateUtil 产出 today，
  * 纯逻辑不读系统时钟），跨日自动失效，无任何清理任务。一次性规则（007）的日期列由本层按注入的
  * [TimeProvider] 产出（仓库约定：时间一律经注入，禁在纯逻辑直接取系统时钟）：
- * createdAt=插入当天（永不改写）；dueDate=规则生效当天（转仅今天/新建/复活时写，转回重复类清空）。
+ * createdAt=插入当天（永不改写）；dueDate=单次的有效期日（020 起为弹窗选定日、空/非法回落保存当天；
+ * 转回重复类清空；复活=当天）。
  */
 @Singleton
 class TodoRepository @Inject constructor(
@@ -89,9 +91,9 @@ class TodoRepository @Inject constructor(
     fun observeAll(): Flow<List<Todo>> = todoDao.observeAll()
 
     /** 新增：校验（trim/空白拒/200 字截断 + 规则兜底校验）+ 上限 20；失败返回中文文案的 Result。
-     *  [rule] 缺省 = 每天（既有调用零改动）。createdAt=今天；仅今天规则 dueDate=今天、其余空串；
-     *  [reminderTimes]（010；013 起多条 CSV）缺省空串=无提醒，非空须每段 HH:mm 且 ≤3 段——
-     *  「单次」的三时刻默认由编辑弹窗切规则时预填（TodoReminderPlanner.timesOnRuleSwitch），
+     *  [rule] 缺省 = 每天（既有调用零改动）。createdAt=今天；单次规则 dueDate=规则携带日（020，
+     *  空/非法回落今天）、其余空串；[reminderTimes]（010；013 起多条 CSV）缺省空串=无提醒，非空须
+     *  每段 HH:mm 且 ≤3 段——「单次」的三时刻默认由编辑弹窗切规则时预填（TodoReminderPlanner.timesOnRuleSwitch），
      *  仓库只认传入值：用户在弹窗里清空后保存 = 明确不要提醒，不强制回填（默认≠不可关）。 */
     suspend fun add(text: String, rule: TodoRule = TodoRule.DAILY, reminderTimes: String = ""): Result<Unit> {
         val normalized = normalize(text)
@@ -108,7 +110,7 @@ class TodoRepository @Inject constructor(
             repeatDays = safeRule.repeatDays,
             intervalDays = safeRule.intervalDays,
             createdAt = today,
-            dueDate = if (safeRule.repeatType == TodoRecurrence.REPEAT_ONCE) today else "",
+            dueDate = onceDueDate(safeRule, today),
             reminderTimes = TodoReminderPlanner.normalizeReminderTimes(reminderTimes),
         )
         return runCatching { todoDao.insert(todo); Unit }
@@ -127,12 +129,18 @@ class TodoRepository @Inject constructor(
 
     /** 修改重复规则：定向更新规则三列 + dueDate（同一语句原子落库，不触碰并发勾选/启停/文本/创建日）；
      *  周几空集拒绝、间隔越界收敛（与 TodoRule 工厂同一口径的兜底）。
-     *  dueDate 口径（007）：转「仅今天」= 修改当天（当天即轮到）；转回重复类 = 清空。 */
+     *  dueDate 口径（007；020 扩）：转「单次」= 规则携带日（编辑弹窗日期选择产出，空/非法回落修改
+     *  当天）；转回重复类 = 清空。 */
     suspend fun setRecurrence(id: Long, rule: TodoRule): Result<Unit> {
         val safeRule = normalizeRule(rule).getOrElse { return Result.failure(it) }
-        val dueDate = if (safeRule.repeatType == TodoRecurrence.REPEAT_ONCE) today() else ""
         return runCatching {
-            todoDao.updateRecurrence(id, safeRule.repeatType, safeRule.repeatDays, safeRule.intervalDays, dueDate)
+            todoDao.updateRecurrence(
+                id,
+                safeRule.repeatType,
+                safeRule.repeatDays,
+                safeRule.intervalDays,
+                onceDueDate(safeRule, today()),
+            )
         }
     }
 
@@ -168,7 +176,10 @@ class TodoRepository @Inject constructor(
     /** 完成事件全量快照（specs/017 导出只读）：完成日升序。 */
     suspend fun completionsSnapshot(): List<TodoCompletion> = todoCompletionDao.getAllOrdered()
 
-    /** 规则兜底校验（主拦截在编辑弹窗表单层）：周几至少一天；间隔收敛 2..365；仅今天原样通过。 */
+    /** 规则兜底校验（主拦截在编辑弹窗表单层）：周几至少一天；间隔收敛 2..365；单次带日期时
+     *  须可解析 yyyy-MM-dd（020；表单 DatePicker 产出恒合法，此为脏调用方兜底）。过去日期
+     *  刻意不拒——那是合法状态（落库即过期，可「改为今天」），且拒绝会让跨零点保存静默失败
+     *  （VM 对失败静默忽略）；表单的可选域（≥今天）已是主拦截。 */
     private fun normalizeRule(rule: TodoRule): Result<TodoRule> = when {
         rule.repeatType == TodoRecurrence.REPEAT_WEEKLY && rule.repeatDays == 0 ->
             Result.failure(IllegalArgumentException("每周至少选择一天"))
@@ -176,8 +187,23 @@ class TodoRepository @Inject constructor(
         rule.repeatType == TodoRecurrence.REPEAT_INTERVAL ->
             Result.success(rule.copy(intervalDays = TodoRecurrence.coerceIntervalDays(rule.intervalDays)))
 
+        rule.repeatType == TodoRecurrence.REPEAT_ONCE && rule.dueDate.isNotEmpty() &&
+            !isParsableDate(rule.dueDate) ->
+            Result.failure(IllegalArgumentException("单次日期格式须为 yyyy-MM-dd"))
+
         else -> Result.success(rule)
     }
+
+    /** 单次规则的有效期日落库值（020）：携带合法日 → 原样；空串/非法 → 保存当天（007「仅今天」
+     *  缺省——once 行的 dueDate 空串会是永不轮到也永不过期的幽灵行，回落当天兜死）；重复类 → 清空。 */
+    private fun onceDueDate(rule: TodoRule, today: String): String = when {
+        rule.repeatType != TodoRecurrence.REPEAT_ONCE -> ""
+        isParsableDate(rule.dueDate) -> rule.dueDate
+        else -> today
+    }
+
+    /** yyyy-MM-dd 可解析判定（normalizeRule/onceDueDate 共用）；空串由调用方先行分支。 */
+    private fun isParsableDate(date: String): Boolean = runCatching { LocalDate.parse(date) }.isSuccess
 
     /** 勾选写 [today]、取消写空串；today 由调用方按当天口径传入（VM 持 TimeProvider）。
      *  双写完成事件（008）：勾选 upsert 一行（todoId+当日+文本快照——快照取勾选当时的文本，

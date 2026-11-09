@@ -115,14 +115,17 @@
     <string name="todos_rule_weekly_required">至少选择一天</string>
     <string name="todos_not_due_today">今天不用做</string>
 
-    <!-- Todos 一次性与过期（specs/007-oneoff-todos） -->
+    <!-- Todos 一次性与过期（specs/007-oneoff-todos；020 起单次可选具体日期） -->
     <string name="todos_rule_once">单次</string>
-    <string name="todos_rule_once_hint">只在今天生效，未完成将进入过期待办</string>
+    <string name="todos_rule_once_hint">只在生效日期当天轮到，未完成将进入过期待办</string>
+    <string name="todos_rule_once_date_label">生效日期</string>
+    <string name="todos_rule_once_date_pick_title">选择生效日期</string>
     <string name="todos_section_today">今日待办</string>
     <string name="todos_section_expired">过期待办（%1$d）</string>
-    <!-- 今日卡规则分组名（读侧分类=编辑弹窗四选一的镜像；每天/单次复用 todos_rule_daily / todos_rule_once） -->
+    <!-- 今日卡规则分组名（读侧分类=编辑弹窗四选一的镜像；每天复用 todos_rule_daily；单次带日期 specs/020） -->
     <string name="todos_group_weekly">每周%1$s</string>
     <string name="todos_group_interval">每 %1$d 天</string>
+    <string name="todos_group_once">单次/%1$s</string>
     <string name="todos_date_unknown">—</string>
     <string name="todos_menu_revive">改为今天</string>
 
@@ -133,7 +136,7 @@
     <string name="todos_reminder_remove">移除</string>
     <string name="todos_reminder_max">最多 %1$d 个提醒时刻</string>
     <string name="todos_reminder_pick_title">提醒时刻</string>
-    <string name="todos_reminder_once_hint">单次待办默认当天 %1$s 各提醒一次，可增删改</string>
+    <string name="todos_reminder_once_hint">单次待办默认在生效日 %1$s 各提醒一次，可增删改</string>
     <string name="todos_reminder_inline">提醒 %1$s</string>
     <string name="todo_reminder_banner_notifications">未开启通知权限，到点提醒将无法显示</string>
     <string name="todo_reminder_banner_battery">未忽略电池优化，息屏时提醒可能被系统省电冻结</string>
