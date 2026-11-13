@@ -502,23 +502,24 @@ internal fun TodoEditDialog(
     // ——输入态绕过日历交互，可选域约束在两种形态下都要成立就不如只留一种）；DatePicker 的选中值
     // 是 UTC 日界毫秒，yyyy-MM-dd 与之经 LocalDate 互转（时区责任在此收口，不污染存储编码）。
     // 可选域=今天起（今天由调用方注入，弹窗不读系统时钟）；确认须有选中且选中不早于今天——
-    // 编辑回显的历史日期（时钟回拨等脏形态）不重选就确认会被禁用按钮拦下，不静默落过去日
+    // 编辑回显的历史日期（时钟回拨等脏形态）不重选就确认会被禁用按钮拦下，不静默落过去日。
+    // 判定收敛在 [OnceDueDateSelection]（2026-11-13 用户确认口径：周一~周日全可选——工作日/周末
+    // 不参与任何逻辑，唯一不可选的是今天之前的日子）
     if (datePickerOpen) {
-        val todayUtcMillis = remember(today) { localDateToUtcMillis(today) }
-        val initialUtcMillis = remember(onceDueDate) { localDateToUtcMillis(onceDueDate) }
+        val todayUtcMillis = remember(today) { OnceDueDateSelection.toUtcMillis(today) }
+        val initialUtcMillis = remember(onceDueDate) { OnceDueDateSelection.toUtcMillis(onceDueDate) }
         val dateState = rememberDatePickerState(
             initialSelectedDateMillis = initialUtcMillis,
             selectableDates = object : SelectableDates {
                 override fun isSelectableDate(utcTimeMillis: Long): Boolean =
-                    todayUtcMillis?.let { utcTimeMillis >= it } ?: true
+                    OnceDueDateSelection.isSelectableDate(utcTimeMillis, todayUtcMillis)
 
                 override fun isSelectableYear(year: Int): Boolean =
-                    todayUtcMillis?.let { year >= utcMillisToYear(it) } ?: true
+                    OnceDueDateSelection.isSelectableYear(year, todayUtcMillis)
             },
         )
         val selected = dateState.selectedDateMillis
-        val selectedOk = selected != null &&
-            (todayUtcMillis == null || selected >= todayUtcMillis)
+        val selectedOk = OnceDueDateSelection.isSelectableDate(selected, todayUtcMillis)
         FiveSecDialog(
             visible = true,
             onDismissRequest = { datePickerOpen = false },
@@ -526,9 +527,7 @@ internal fun TodoEditDialog(
             confirmButton = {
                 Button(
                     onClick = {
-                        selected?.let {
-                            onceDueDate = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toString()
-                        }
+                        selected?.let { onceDueDate = OnceDueDateSelection.toDateString(it) }
                         datePickerOpen = false
                     },
                     enabled = selectedOk,
@@ -547,13 +546,33 @@ internal fun TodoEditDialog(
     }
 }
 
-/** yyyy-MM-dd → DatePicker 用的 UTC 日界毫秒；非法（脏值防御）返回 null（选择器退化为不限可选）。 */
-private fun localDateToUtcMillis(date: String): Long? =
-    runCatching { LocalDate.parse(date).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() }.getOrNull()
+/**
+ * 单次生效日的可选域判定（specs/020；纯逻辑、零 Compose import——抽离弹窗只为可单测）：
+ * **周一~周日全可选**（2026-11-13 用户确认口径：所有日期都能设，不存在「只有工作日」的限定——
+ * 星期几在任何分支都不参与判定），唯一不可选的是**今天之前**的日子（过去日=建完即过期且提醒
+ * 永不响，放开只会造成误操作；007 的过期存量另有「改为今天」活路）。
+ *
+ * todayUtcMillis 为 null（today 脏值防御，正常不可达）时退化为全可选——宁可多放开不崩溃，
+ * 与 isDue/分组的脏值兜底同思路。
+ */
+internal object OnceDueDateSelection {
 
-/** DatePicker 用的 UTC 毫秒 → 年份（isSelectableYear 的可选下界）。 */
-private fun utcMillisToYear(utcMillis: Long): Int =
-    Instant.ofEpochMilli(utcMillis).atZone(ZoneOffset.UTC).year
+    /** yyyy-MM-dd → DatePicker 用的 UTC 日界毫秒；非法（脏值防御）返回 null。 */
+    fun toUtcMillis(date: String): Long? =
+        runCatching { LocalDate.parse(date).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() }.getOrNull()
+
+    /** DatePicker 用的 UTC 日界毫秒 → yyyy-MM-dd（确认回写存储编码的唯一路径）。 */
+    fun toDateString(utcMillis: Long): String =
+        Instant.ofEpochMilli(utcMillis).atZone(ZoneOffset.UTC).toLocalDate().toString()
+
+    /** 日格可选：不早于今天即选（null=脏值退化全可选）；星期几不参与判定。 */
+    fun isSelectableDate(utcTimeMillis: Long?, todayUtcMillis: Long?): Boolean =
+        utcTimeMillis != null && (todayUtcMillis == null || utcTimeMillis >= todayUtcMillis)
+
+    /** 年份可选下界=今天的年份（年列表联动，防跳到无意义的历史年）。 */
+    fun isSelectableYear(year: Int, todayUtcMillis: Long?): Boolean =
+        todayUtcMillis == null || year >= Instant.ofEpochMilli(todayUtcMillis).atZone(ZoneOffset.UTC).year
+}
 
 /** TimePicker 缺省初始小时（specs/010）：晚间自律场景的常见提醒档位，纯 UX 缺省无语义。 */
 private const val DEFAULT_REMINDER_HOUR = 20
