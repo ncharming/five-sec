@@ -14,9 +14,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -49,7 +53,13 @@ import kotlinx.coroutines.delay
  *  - 退场动画期间按钮仍在屏幕上（只是淡出中），有副作用的确认动作由调用方以 visible 状态
  *    自行防重复提交（见 InterceptScreen 的 confirm 守卫）；
  *  - 圆角 24dp（比卡片 22dp 略大，强化浮层语义，与主题 shapes.extraLarge 同值）；
- *  - 左右 24dp 屏幕边距 + 480dp 最大宽度：手机上是贴齐页面边距的卡片式弹窗，平板不无限拉宽。
+ *  - 左右 24dp 屏幕边距 + 480dp 最大宽度：手机上是贴齐页面边距的卡片式弹窗，平板不无限拉宽；
+ *  - **标准弹窗窗口结构**（2026-11-13 修复「整块不可滚」）：标题与按钮区固定，中间是独立的
+ *    **可垂直滚动内容区**——内容超出弹窗封顶高度（屏高 85%）时在弹窗内部上下滑动查看，
+ *    而非像此前那样内容撑破窗口、底部被屏幕硬裁（待办编辑弹窗 020 起含模板/规则/提醒/日期
+ *    多区，加上 DatePicker 日历在小屏机上必超屏高，被裁掉的日历底部整周「未来周六/日」点
+ *    不到，观感即「只能选工作日」）。短内容不受影响：weight(fill=false) 有多少占多少，
+ *    弹窗仍按内容自适应高度。
  */
 
 /** 弹窗圆角：与主题 shapes.extraLarge 同值，卡片（22dp）之上再大一档的"浮层"语义。 */
@@ -59,8 +69,12 @@ private val DialogShape = RoundedCornerShape(24.dp)
 private const val ENTER_MILLIS = 220
 private const val EXIT_MILLIS = 160
 
+/** 弹窗高度封顶占屏高比例：超出即转「内容区内部滚动」，保住浮层四周留白的卡片观感（不铺满屏）。 */
+private const val MAX_HEIGHT_RATIO = 0.85f
+
 /**
- * 统一弹窗：标题 + 内容槽 + 右对齐按钮区（次按钮在左、主按钮在右）。
+ * 统一弹窗：标题（固定）+ **独立可滚动内容槽** + 右对齐按钮区（固定；次按钮在左、主按钮在右）
+ * ——标准弹窗窗口结构：内容超高时在弹窗内部上下滑动，标题与按钮始终可见。
  * [confirmButton]/[dismissButton] 是无约束槽位：主按钮用实心 [androidx.compose.material3.Button]、
  * 次按钮用 [androidx.compose.material3.TextButton]，由调用方按语义填充。
  */
@@ -77,6 +91,9 @@ fun FiveSecDialog(
     // mounted：Dialog 窗口是否挂载；targetVisible：动画目标态（true=展开，false=退场中）
     var mounted by remember { mutableStateOf(false) }
     var targetVisible by remember { mutableStateOf(false) }
+
+    // 弹窗高度封顶（屏高 85%）：给「窗口结构」立边界，超出部分由内容区内部滚动消化
+    val maxDialogHeight = (LocalConfiguration.current.screenHeightDp * MAX_HEIGHT_RATIO).dp
 
     // 可见态迁移：visible 置真一律展开（含退场中途快速重开：取消退场、原地转为入场）
     LaunchedEffect(visible) {
@@ -123,11 +140,14 @@ fun FiveSecDialog(
                     ),
             ) {
                 Surface(
+                    // 高度封顶（屏高 85%）：内容超高时不再撑破窗口被屏幕硬裁，而是收进下方
+                    // 可滚动的独立内容区——「窗口结构」由这里先立住边界，weight 才有界可分
                     modifier = modifier
                         // widthIn 必须在 fillMaxWidth 之前：先封顶 480dp 再撑满，
                         // 否则 fillMaxWidth 先吃掉全部宽度，平板上卡片会被拉宽而内容仍居中
                         .widthIn(max = 480.dp)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .heightIn(max = maxDialogHeight),
                     shape = DialogShape,
                     color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
@@ -140,8 +160,13 @@ fun FiveSecDialog(
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(horizontal = Spacing.xl),
                         )
+                        // 独立内容区（标准弹窗结构的中段）：weight(fill=false) = 有多少占多少、
+                        // 超出封顶余量即收为滚动区——短弹窗观感与既往逐位一致，长表单/日历
+                        // 在弹窗内部上下滑动，标题与按钮不被顶出屏
                         Column(
                             Modifier
+                                .weight(1f, fill = false)
+                                .verticalScroll(rememberScrollState())
                                 .padding(top = Spacing.md)
                                 .padding(horizontal = Spacing.xl),
                             content = content,

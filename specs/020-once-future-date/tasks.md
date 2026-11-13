@@ -15,3 +15,8 @@
        （未来日落库/非法拒绝/改期直写）+ TodoViewModelTest（建时灰显→到期轮到→跨日过期全流转）
 - [x] 9. 文档：specs/020 新建（spec/tasks/quickstart）、README 待办段与提醒段、AGENTS.md 术语表同步
 - [x] 10. `:app:assembleDebug` + `:app:testDebugUnitTest` 全绿（323 例 0 失败），提交推送 master
+- [x] 11. 可选域判定抽 `OnceDueDateSelection` 纯逻辑 + 判定表 6 例（2026-11-13：锚定周一~周日全可选、
+       仅过去日不可选——星期几不参与任何分支）
+- [x] 12. FiveSecDialog 标准窗口结构：标题/按钮固定 + 独立垂直滚动内容区 + 屏高 85% 封顶
+       （2026-11-13 修复「整块不可滚」——长表单与日历超屏被硬裁，日历底部未来周六/日点不到
+       即「只能选工作日」观感的根因；短弹窗 fill=false 观感不变）
