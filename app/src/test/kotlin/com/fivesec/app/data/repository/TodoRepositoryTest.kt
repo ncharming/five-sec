@@ -107,7 +107,10 @@ class TodoRepositoryTest {
 
         val reminderCalls = CopyOnWriteArrayList<Pair<Long, String>>()
 
-        override suspend fun updateReminderTimes(id: Long, times: String) {
+        // synchronized 与其它写方法同约定（2026-11-16 补）：010 后补的此方法曾漏锁——收集器在
+        // Default 线程对每次发射做 purge 读改写，无锁的「读 state→写回」与它交错会丢失更新
+        // （CI 时序撞上：清除提醒被 purge 的陈旧写回覆盖，expected 空 but was 旧值）
+        override suspend fun updateReminderTimes(id: Long, times: String): Unit = synchronized(this) {
             reminderCalls += id to times
             state.value = state.value.map { if (it.id == id) it.copy(reminderTimes = times) else it }
         }
