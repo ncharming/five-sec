@@ -67,11 +67,11 @@ import com.fivesec.app.util.TodoRecurrence
  * 失败账（统一口径 2026-11：**过期区不再提供勾选入口**，改展示「今天轮到·在今日区完成」指引——
  * 同一条目的完成行为只有一种统计口径，迟到补完标记只属于「今天不轮到」的过期行），今日区保住
  * 「今天勾掉即补救」的活路（拖延只顺延）；今天不轮到则只在过期区（可补勾/修改/删除）。
- * 今日卡内按重复规则分组（TodoRuleGroups 纯投影）：**当天单次组置顶**（2026-11-16 用户拍板：
- * 有效期日=今天的单次是「今天不做就没了」的死线，提到每天组之前，与覆盖层卡片单次最前同向），
- * 其余组序=编辑弹窗四段（每天→每周→每N天→单次），不同星期集合/不同 N/不同有效期日各自成组
- * （组名自描述，如「每周一、三」「单次/2026-11-23」，单次组按日期升序、今天在前——020），
- * 读侧分类与编辑侧词汇表一致；过期区语义是「失败存量」而非规则分类，不参与分组。
+ * 今日卡内按重复规则分组（TodoRuleGroups 纯投影）：**当天轮到的组置顶卡首**（2026-11-16 用户拍板：
+ * 单次（有效期日=今天）→每N天（今天复活）→每周几（今天选中），档内与覆盖层卡片紧急度同序；
+ * 每天恒轮到不参与置顶），其余组序=编辑弹窗四段（每天→每周→每N天→单次），不同星期集合/不同 N/
+ * 不同有效期日各自成组（组名自描述，如「每周一、三」「单次/2026-11-23」，单次组按日期升序、
+ * 今天在前——020），读侧分类与编辑侧词汇表一致；过期区语义是「失败存量」而非规则分类，不参与分组。
  * 每行标题下副行纯日期（今日区=创建日「—」兜底、过期区=错过的轮到日）；过期行有补勾框
  * （仅今天不轮到的行）、无启用开关，菜单单次「改为今天 / 删除」、重复类「修改 / 删除」。
  * 视觉沿用四页统一语言（PageHeader + 白卡行骨架 + FiveSecDialog 弹窗）；标题 ≤200 字：列表
@@ -233,7 +233,7 @@ fun TodoScreen(
                 if (uiState.todayRows.isNotEmpty()) {
                     SectionLabel(stringResource(R.string.todos_section_today))
                     CardSurface(Modifier.padding(horizontal = Spacing.lg)) {
-                        TodoRuleGroups.groupByRule(uiState.todayRows, today).forEachIndexed { groupIndex, group ->
+                        TodoRuleGroups.groupByRule(uiState.todayRows).forEachIndexed { groupIndex, group ->
                             if (groupIndex > 0) {
                                 HorizontalDivider(
                                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
